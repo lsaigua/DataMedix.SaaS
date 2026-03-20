@@ -1,0 +1,161 @@
+:root {
+    --dm-primary: #0d3b66;
+    --dm-primary-600: #124e78;
+    --dm-primary-700: #0a2f4d;
+    --dm-accent: #2ec4b6;
+    --dm-bg-main: #f4f7fb;
+    --dm-surface: #ffffff;
+    --dm-border: #e2e8f0;
+    --dm-text-main: #1e293b;
+    --dm-text-soft: #64748b;
+    --dm-error: #dc2626;
+    --dm-success: #16a34a;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    font-family: "Inter", "Segoe UI", sans-serif;
+    background: var(--dm-bg-main);
+    color: var(--dm-text-main);
+}
+
+body {
+    overflow-x: hidden;
+}
+
+a {
+    color: inherit;
+}
+
+.btn-primary {
+    width: 100%;
+    height: 48px;
+    background: linear-gradient(90deg, #0066ff, #0047cc);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 28px rgba(13,59,102,0.20);
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.75;
+        cursor: not-allowed;
+    }
+
+.footer-text {
+    margin-top: 22px;
+    font-size: 12px;
+    color: #64748b;
+    text-align: center;
+}
+
+.hero-subtitle {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 16px;
+    line-height: 1.2;
+    max-width: 560px;
+}
+
+.hero-description {
+    font-size: 1rem;
+    line-height: 1.8;
+    opacity: 0.92;
+    max-width: 560px;
+}
+
+.hero-subtitle::after {
+    content: "";
+    display: block;
+    width: 72px;
+    height: 4px;
+    margin-top: 16px;
+    background: #4dd0e1;
+    border-radius: 999px;
+}
+
+/* Loading base login */
+.dm-overlay-root {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+}
+
+.loader-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 28px 36px;
+    min-width: 280px;
+    max-width: 420px;
+    text-align: center;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+    border: 1px solid #eef2f7;
+}
+
+    .loader-card p {
+        margin: 14px 0 0 0;
+        font-size: 15px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+.spinner-large {
+    width: 44px;
+    height: 44px;
+    border: 4px solid #e5e7eb;
+    border-top: 4px solid #2563eb;
+    border-radius: 50%;
+    animation: dm-spin 0.9s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes dm-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Toast simple login */
+.toast-container {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 100000;
+}
+
+.toast-message {
+    min-width: 280px;
+    max-width: 420px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+    color: #ffffff;
+}
+
+.toast-success {
+    background: #16a34a;
+}
+
+.toast-error {
+    background: #dc2626;
+}

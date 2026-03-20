@@ -1,0 +1,41 @@
+﻿<div class="dm-nav-root">
+    <div class="dm-nav-header">
+        <div class="dm-nav-logo">MD</div>
+        <div class="dm-nav-brand">
+            <span class="dm-nav-brand-title">MedixData</span>
+            <span class="dm-nav-brand-subtitle">Clinical SaaS</span>
+        </div>
+    </div>
+
+    <nav class="dm-nav-menu">
+        <div class="dm-nav-section-title">GENERAL</div>
+
+        <NavLink href="/" Match="NavLinkMatch.All" class="dm-nav-link">
+            <span>Dashboard</span>
+        </NavLink>
+
+        <div class="dm-nav-section-title">LABORATORIO</div>
+
+        <NavLink href="/laboratorio/importar" class="dm-nav-link">
+            <span>Importar Resultados</span>
+        </NavLink>
+
+        <NavLink href="/laboratorio/historial" class="dm-nav-link">
+            <span>Historial de Cargas</span>
+        </NavLink>
+
+        <div class="dm-nav-section-title">GESTIÓN</div>
+
+        <NavLink href="/reportes" class="dm-nav-link">
+            <span>Reportes</span>
+        </NavLink>
+
+        <NavLink href="/configuracion" class="dm-nav-link">
+            <span>Configuración</span>
+        </NavLink>
+    </nav>
+
+    <div class="dm-nav-footer">
+        <a href="/auth/logout" class="dm-nav-logout">Cerrar sesión</a>
+    </div>
+</div>

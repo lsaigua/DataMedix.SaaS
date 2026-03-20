@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Application/DataMedix.Application.csproj" Id="ff9ac68b-3055-4fd8-abdb-3624b6f50841" />
+  <Project Path="DataMedix.Core/DataMedix.Core.csproj" />
+  <Project Path="DataMedix.Domain/DataMedix.Domain.csproj" Id="157340ba-1c3b-4f59-a82e-51def3e69200" />
+  <Project Path="DataMedix.Infrastructure/DataMedix.Infrastructure.csproj" />
+  <Project Path="DataMedix.Portal/DataMedix.Portal.csproj" />
+</Solution>

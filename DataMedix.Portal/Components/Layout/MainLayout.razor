@@ -1,0 +1,33 @@
+﻿@inherits LayoutComponentBase
+
+<div class="dm-shell">
+    <aside class="dm-shell-sidebar">
+        <NavMenu />
+    </aside>
+
+    <div class="dm-shell-main">
+        <header class="dm-shell-topbar">
+            <div class="dm-shell-topbar-left">
+                <span class="dm-shell-title">DataMedix</span>
+                <span class="dm-shell-subtitle">Plataforma clínica SaaS</span>
+            </div>
+
+            <div class="dm-shell-topbar-right">
+                <a href="/auth/logout" class="dm-shell-logout">Cerrar sesión</a>
+            </div>
+        </header>
+
+        <main class="dm-shell-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ocurrió un error inesperado.
+    <a href="." class="reload">Recargar</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+<Components.Shared.GlobalLoading />
+<Components.Shared.GlobalToast />

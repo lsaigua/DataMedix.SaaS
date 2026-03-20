@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Remove="wwwroot\css\theme.css" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="wwwroot\css\theme.css" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Application\DataMedix.Application.csproj" />
+    <ProjectReference Include="..\DataMedix.Core\DataMedix.Core.csproj" />
+    <ProjectReference Include="..\DataMedix.Infrastructure\DataMedix.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,85 @@
+﻿@page "/login"
+@using DataMedix.Portal.Components.Layout
+@layout EmptyLayout
+@inject NavigationManager Navigation
+
+<div class="login-wrapper">
+    <div class="login-left">
+        <div class="hero-text">
+            <p class="hero-subtitle">
+                Plataforma inteligente de gestión y análisis clínico
+            </p>
+
+            <p class="hero-description">
+                Optimiza procesos, controla inventario y analiza resultados en tiempo real con tecnología avanzada para laboratorios modernos.
+            </p>
+        </div>
+    </div>
+
+    <div class="login-right">
+        <div class="login-card">
+
+            <div class="logo">
+                <img src="images/baner_2.png" alt="DataMedix Logo" />
+            </div>
+
+            @if (HasError)
+            {
+                <div class="toast-container">
+                    <div class="toast-message toast-error">
+                        Credenciales inválidas. Verifique su correo y contraseña.
+                    </div>
+                </div>
+            }
+
+            <form method="post" action="/auth/login" onsubmit="showLoginLoading()">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="Email" class="input-control" required />
+                </div>
+
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="Password" class="input-control" required />
+                </div>
+
+                <button type="submit" class="btn-primary" id="loginSubmitBtn">
+                    Iniciar sesión
+                </button>
+            </form>
+
+            <div id="login-loading-overlay" class="dm-overlay-root" style="display:none;">
+                <div class="loader-card">
+                    <div class="spinner-large"></div>
+                    <p>Validando credenciales...</p>
+                </div>
+            </div>
+
+            <div class="footer-text">
+                © @DateTime.Now.Year DataMedix - Todos los derechos reservados
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool HasError =>
+        Navigation.Uri.Contains("error=1", StringComparison.OrdinalIgnoreCase);
+}
+
+<script>
+    function showLoginLoading() {
+        const overlay = document.getElementById('login-loading-overlay');
+        const button = document.getElementById('loginSubmitBtn');
+
+        if (overlay) overlay.style.display = 'flex';
+
+        if (button) {
+            button.disabled = true;
+            button.innerText = 'Validando...';
+        }
+
+        return true;
+    }
+</script>

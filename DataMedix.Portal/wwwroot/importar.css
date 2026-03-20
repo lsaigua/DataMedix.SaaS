@@ -1,0 +1,107 @@
+﻿.dm-upload-box {
+    border: 1px dashed #cbd5e1;
+    background: #f8fafc;
+    border-radius: 16px;
+    padding: 22px;
+    margin-top: 12px;
+}
+
+.dm-upload-label {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 12px;
+}
+
+.dm-file-input {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.dm-help-text {
+    color: #64748b;
+    font-size: 13px;
+}
+
+.dm-inline-loading {
+    margin-top: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid #bfdbfe;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.dm-inline-spinner {
+    width: 18px;
+    height: 18px;
+    border: 3px solid #bfdbfe;
+    border-top: 3px solid #2563eb;
+    border-radius: 50%;
+    animation: dm-inline-spin 0.8s linear infinite;
+}
+
+@keyframes dm-inline-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.dm-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dm-btn {
+    border: none;
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.dm-btn-primary {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+    .dm-btn-primary:hover {
+        background: #1d4ed8;
+    }
+
+.dm-alert-success {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.dm-alert-error {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+    font-size: 14px;
+    font-weight: 600;
+}

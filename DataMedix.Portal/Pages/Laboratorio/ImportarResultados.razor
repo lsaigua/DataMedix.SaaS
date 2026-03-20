@@ -1,0 +1,66 @@
+﻿@page "/laboratorio/importar"
+@attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using DataMedix.Application.UseCases.Laboratorio
+
+@inject ProcesarArchivoLaboratorioUseCase UseCase
+@inject DataMedix.Portal.Services.GlobalLoadingService GlobalLoadingService
+@inject DataMedix.Portal.Services.GlobalToastService GlobalToastService
+
+<div class="dm-container">
+    <h1 class="dm-title">Carga Masiva de Resultados Clínicos</h1>
+    <p class="dm-subtitle">
+        Cargue archivos Excel (.xlsx) enviados por laboratorios para procesar resultados clínicos de manera masiva.
+    </p>
+
+    <div class="dm-upload-card">
+        <label class="dm-label">Seleccionar archivo Excel</label>
+        <InputFile OnChange="HandleFile" class="dm-file-input" />
+        <small class="dm-help">Tamaño máximo permitido: 50 MB</small>
+    </div>
+</div>
+
+@code {
+    private async Task HandleFile(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+
+        if (file is null)
+        {
+            GlobalToastService.ShowWarning("Debe seleccionar un archivo.");
+            return;
+        }
+
+        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            GlobalToastService.ShowError("Formato inválido. Solo se permite archivos .xlsx");
+            return;
+        }
+
+        if (file.Size > 50_000_000)
+        {
+            GlobalToastService.ShowError("Archivo demasiado grande. Máximo permitido: 50 MB.");
+            return;
+        }
+
+        try
+        {
+            GlobalLoadingService.Show("Procesando archivo clínico...");
+
+            using var stream = file.OpenReadStream(maxAllowedSize: 50_000_000);
+            await UseCase.EjecutarDesdeArchivoAsync(stream);
+
+            GlobalToastService.ShowSuccess("Carga completada exitosamente.");
+        }
+        catch (Exception ex)
+        {
+            GlobalToastService.ShowError($"Ocurrió un error al procesar el archivo: {ex.Message}");
+        }
+        finally
+        {
+            GlobalLoadingService.Hide();
+        }
+    }
+}

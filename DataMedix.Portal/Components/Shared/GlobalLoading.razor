@@ -1,0 +1,29 @@
+﻿@implements IDisposable
+@inject DataMedix.Portal.Services.GlobalLoadingService GlobalLoadingService
+
+@if (GlobalLoadingService.IsLoading)
+{
+    <div class="dm-global-loading-backdrop">
+        <div class="dm-global-loading-card">
+            <div class="dm-global-spinner"></div>
+            <div class="dm-global-loading-text">@GlobalLoadingService.Message</div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        GlobalLoadingService.OnChange += HandleChange;
+    }
+
+    private void HandleChange()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        GlobalLoadingService.OnChange -= HandleChange;
+    }
+}

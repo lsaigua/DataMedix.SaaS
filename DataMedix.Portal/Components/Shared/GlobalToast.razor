@@ -1,0 +1,34 @@
+﻿@implements IDisposable
+@inject DataMedix.Portal.Services.GlobalToastService GlobalToastService
+
+@if (GlobalToastService.Visible)
+{
+    <div class="dm-toast-container">
+        <div class="dm-toast dm-toast-@GlobalToastService.Type">
+            <span>@GlobalToastService.Message</span>
+            <button class="dm-toast-close" @onclick="Close">×</button>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        GlobalToastService.OnChange += HandleChange;
+    }
+
+    private void HandleChange()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Close()
+    {
+        GlobalToastService.Hide();
+    }
+
+    public void Dispose()
+    {
+        GlobalToastService.OnChange -= HandleChange;
+    }
+}
