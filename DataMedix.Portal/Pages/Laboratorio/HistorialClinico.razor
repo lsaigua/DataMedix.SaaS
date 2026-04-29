@@ -344,14 +344,9 @@ else
                     ? new DateTime(FiltroAnio, FiltroMes, 1, 0, 0, 0, DateTimeKind.Utc)
                     : new DateTime(FiltroAnio, DateTime.Now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-                // Cargar planes disponibles en paralelo con los datos
-                var tareaPlanes = SnapshotRepo.GetPlanesSaludAsync(TenantId, periodDate);
-                var tareaSnaps = SnapshotRepo.GetByPeriodoAsync(
+                PlanesSalud = await SnapshotRepo.GetPlanesSaludAsync(TenantId, periodDate);
+                Snapshots = await SnapshotRepo.GetByPeriodoAsync(
                     TenantId, periodDate, BusquedaTexto, planSalud: FiltroPlanSalud);
-
-                await Task.WhenAll(tareaPlanes, tareaSnaps);
-                PlanesSalud = await tareaPlanes;
-                Snapshots   = await tareaSnaps;
             }
         }
         catch (Exception ex)

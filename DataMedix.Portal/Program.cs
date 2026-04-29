@@ -107,10 +107,6 @@ else
 // UseHttpsRedirection es seguro aquí porque UseForwardedHeaders ya corrigió el scheme
 app.UseHttpsRedirection();
 
-// UseStaticFiles sirve archivos físicos de wwwroot/ (incluyendo _framework/ tras publish).
-// MapStaticAssets (más abajo) complementa con el manifest de static web assets de .NET 10.
-app.UseStaticFiles();
-
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
