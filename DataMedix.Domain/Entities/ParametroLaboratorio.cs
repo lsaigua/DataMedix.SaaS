@@ -1,25 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Text;
-
+// Entidad removida del modelo. Reemplazada por ParametroClinico + AliasParametro.
 namespace DataMedix.Domain.Entities
 {
-    [Table("parametrolaboratorio")]
+    [Obsolete("Use ParametroClinico instead")]
     public class ParametroLaboratorio
     {
         public Guid IdParametroLaboratorio { get; set; }
-
-        public Guid IdEmpresa { get; private set; }
-
-        public string Codigo { get; set; } = null!;
-        public string Nombre { get; set; } = null!;
-        public string UnidadMedida { get; set; } = null!;
-        public string TipoDato { get; set; } = null!;
-        public double ValorMinimo { get; set; }
-        public double ValorMaximo { get; set; } 
+        public Guid IdEmpresa { get; set; }
+        public string Codigo { get; set; } = string.Empty;
+        public string Nombre { get; set; } = string.Empty;
+        public string UnidadMedida { get; set; } = string.Empty;
+        public string TipoDato { get; set; } = string.Empty;
+        public double? ValorMinimo { get; set; }
+        public double? ValorMaximo { get; set; }
         public bool Activo { get; set; } = true;
-
         public DateTime FechaCreacion { get; set; }
     }
 }

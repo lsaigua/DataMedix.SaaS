@@ -1,0 +1,307 @@
+@page "/pacientes"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+
+@inject IPacienteRepository PacienteRepo
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Pacientes | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Pacientes</h1>
+        <p class="dm-page-subtitle">@TotalPacientes paciente(s) registrados</p>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="dm-filters-bar">
+    <div class="dm-search-box">
+        <span class="dm-search-icon">🔍</span>
+        <input type="text" class="dm-search-input" placeholder="Buscar por nombre o cédula..."
+               @bind="BusquedaTexto" @bind:event="oninput" @onkeyup="BuscarDebounced" />
+        @if (!string.IsNullOrEmpty(BusquedaTexto))
+        {
+            <button class="dm-clear-btn" @onclick="LimpiarBusqueda">✕</button>
+        }
+    </div>
+</div>
+
+<!-- Tabla de pacientes -->
+@if (Cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando pacientes...</p>
+    </div>
+}
+else if (!ListaPacientes.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">👥</div>
+        <h3 class="dm-empty-title">
+            @(string.IsNullOrEmpty(BusquedaTexto)
+                ? "No hay pacientes registrados"
+                : "No se encontraron pacientes")
+        </h3>
+        <p class="dm-empty-desc">
+            @(string.IsNullOrEmpty(BusquedaTexto)
+                ? "Los pacientes se crean automáticamente al importar resultados de laboratorio."
+                : $"No hay pacientes que coincidan con \"{BusquedaTexto}\".")
+        </p>
+        @if (string.IsNullOrEmpty(BusquedaTexto))
+        {
+            <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar Resultados</a>
+        }
+    </div>
+}
+else
+{
+    <div class="dm-card dm-card-table">
+        <div class="dm-table-responsive">
+            <table class="dm-table">
+                <thead>
+                    <tr>
+                        <th>Identificación</th>
+                        <th>Paciente</th>
+                        <th>Plan Salud</th>
+                        <th>Tipo Atención</th>
+                        <th>Ingreso Diálisis</th>
+                        <th>Tiempo Diálisis</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in ListaPacientes)
+                    {
+                        <tr>
+                            <td>
+                                <span class="dm-ident">@p.Identificacion</span>
+                            </td>
+                            <td>
+                                <div class="dm-paciente-cell">
+                                    <div class="dm-avatar">@InicialPaciente(p)</div>
+                                    <div>
+                                        <div class="dm-nombre">@p.NombreCompleto</div>
+                                        @if (!string.IsNullOrEmpty(p.MedicoResponsable))
+                                        {
+                                            <div class="dm-medico">Dr. @p.MedicoResponsable</div>
+                                        }
+                                    </div>
+                                </div>
+                            </td>
+                            <td>@(p.PlanSalud ?? "—")</td>
+                            <td>@(p.TipoAtencion ?? "—")</td>
+                            <td>@(p.FechaIngreso?.ToString("dd/MM/yyyy") ?? "—")</td>
+                            <td>
+                                @if (p.MesesEnDialisis.HasValue)
+                                {
+                                    <span class="dm-tiempo-dialisis">
+                                        @FormatarMeses(p.MesesEnDialisis.Value)
+                                    </span>
+                                }
+                                else { <span>—</span> }
+                            </td>
+                            <td>
+                                <span class="dm-badge @(p.Activo ? "dm-badge-activo" : "dm-badge-inactivo")">
+                                    @(p.Activo ? "Activo" : "Inactivo")
+                                </span>
+                            </td>
+                            <td>
+                                <div class="dm-acciones">
+                                    <a href="/historial-clinico/@p.Id"
+                                       class="dm-btn-icon" title="Ver historial clínico">📈</a>
+                                    <a href="/prescripciones/@p.Id"
+                                       class="dm-btn-icon" title="Ver prescripciones">💊</a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginación -->
+        @if (TotalPaginas > 1)
+        {
+            <div class="dm-pagination">
+                <button class="dm-pag-btn" @onclick="PaginaAnterior" disabled="@(PaginaActual <= 1)">←</button>
+                <span class="dm-pag-info">Página @PaginaActual de @TotalPaginas</span>
+                <button class="dm-pag-btn" @onclick="PaginaSiguiente" disabled="@(PaginaActual >= TotalPaginas)">→</button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+
+    .dm-filters-bar { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; }
+
+    .dm-search-box { display: flex; align-items: center; gap: 0.5rem; background: white;
+                     border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.5rem 0.875rem;
+                     flex: 1; min-width: 280px; max-width: 400px; transition: border-color 0.2s; }
+    .dm-search-box:focus-within { border-color: #0ea5e9; }
+    .dm-search-icon { color: #94a3b8; }
+    .dm-search-input { border: none; outline: none; flex: 1; font-size: 0.9rem; color: #1e293b;
+                       background: transparent; }
+    .dm-clear-btn { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0;
+                    font-size: 0.9rem; line-height: 1; }
+    .dm-clear-btn:hover { color: #374151; }
+
+    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+    .dm-card-table { padding: 0; }
+
+    .dm-table-responsive { overflow-x: auto; }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
+                   padding: 0.875rem 1rem; border-bottom: 2px solid #e2e8f0;
+                   white-space: nowrap; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dm-table td { padding: 0.875rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-table tbody tr:last-child td { border-bottom: none; }
+
+    .dm-ident { font-family: monospace; font-size: 0.85rem; color: #374151; font-weight: 600; }
+
+    .dm-paciente-cell { display: flex; align-items: center; gap: 0.75rem; }
+    .dm-avatar { width: 36px; height: 36px; background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+                 border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                 color: white; font-weight: 700; font-size: 0.9rem; flex-shrink: 0; }
+    .dm-nombre { font-weight: 600; color: #1e293b; }
+    .dm-medico { font-size: 0.75rem; color: #94a3b8; }
+
+    .dm-tiempo-dialisis { background: #eff6ff; color: #1d4ed8; padding: 0.2rem 0.6rem;
+                          border-radius: 99px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+
+    .dm-badge { padding: 0.25rem 0.75rem; border-radius: 99px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+    .dm-badge-activo { background: #d1fae5; color: #065f46; }
+    .dm-badge-inactivo { background: #fee2e2; color: #991b1b; }
+
+    .dm-acciones { display: flex; gap: 0.5rem; align-items: center; }
+    .dm-btn-icon { font-size: 1.1rem; padding: 0.25rem 0.4rem; border-radius: 6px; text-decoration: none;
+                   transition: background 0.15s; }
+    .dm-btn-icon:hover { background: #f1f5f9; }
+
+    .dm-pagination { display: flex; align-items: center; justify-content: center; gap: 1rem;
+                     padding: 1rem; border-top: 1px solid #f1f5f9; }
+    .dm-pag-btn { background: white; border: 1.5px solid #e2e8f0; border-radius: 8px;
+                  padding: 0.375rem 0.875rem; cursor: pointer; font-weight: 700; font-size: 0.9rem; }
+    .dm-pag-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .dm-pag-btn:not(:disabled):hover { border-color: #0ea5e9; color: #0ea5e9; }
+    .dm-pag-info { color: #64748b; font-size: 0.875rem; }
+
+    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .dm-empty-desc { margin-bottom: 1.5rem; }
+
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; border: none; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; color: white; }
+</style>
+
+@code {
+    private List<Paciente> ListaPacientes = new();
+    private bool Cargando = true;
+    private string BusquedaTexto = string.Empty;
+    private int TotalPacientes = 0;
+    private int PaginaActual = 1;
+    private int TotalPaginas = 1;
+    private const int TamanoPagina = 25;
+    private Guid TenantId;
+    private System.Threading.CancellationTokenSource? _debounce;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+
+        await CargarPacientesAsync();
+    }
+
+    private async Task CargarPacientesAsync()
+    {
+        Cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            TotalPacientes = await PacienteRepo.CountAsync(TenantId, BusquedaTexto);
+            TotalPaginas = (int)Math.Ceiling((double)TotalPacientes / TamanoPagina);
+
+            if (PaginaActual > TotalPaginas && TotalPaginas > 0) PaginaActual = 1;
+
+            ListaPacientes = await PacienteRepo.GetAllAsync(TenantId, BusquedaTexto, PaginaActual, TamanoPagina);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando pacientes: {ex.Message}");
+            ListaPacientes = new();
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private async Task BuscarDebounced()
+    {
+        _debounce?.Cancel();
+        _debounce = new System.Threading.CancellationTokenSource();
+        var token = _debounce.Token;
+
+        await Task.Delay(400, token).ContinueWith(async t =>
+        {
+            if (t.IsCompletedSuccessfully)
+            {
+                PaginaActual = 1;
+                await InvokeAsync(CargarPacientesAsync);
+            }
+        });
+    }
+
+    private async Task LimpiarBusqueda()
+    {
+        BusquedaTexto = string.Empty;
+        PaginaActual = 1;
+        await CargarPacientesAsync();
+    }
+
+    private async Task PaginaAnterior()
+    {
+        if (PaginaActual > 1) { PaginaActual--; await CargarPacientesAsync(); }
+    }
+
+    private async Task PaginaSiguiente()
+    {
+        if (PaginaActual < TotalPaginas) { PaginaActual++; await CargarPacientesAsync(); }
+    }
+
+    private static string InicialPaciente(Paciente p)
+    {
+        var letra = !string.IsNullOrEmpty(p.PrimerNombre) ? p.PrimerNombre[0].ToString() : "?";
+        return letra.ToUpper();
+    }
+
+    private static string FormatarMeses(int meses)
+    {
+        if (meses < 12) return $"{meses} mes(es)";
+        var anios = meses / 12;
+        var resto = meses % 12;
+        return resto > 0 ? $"{anios} año(s) {resto} mes(es)" : $"{anios} año(s)";
+    }
+}

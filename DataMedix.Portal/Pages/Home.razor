@@ -1,8 +1,8 @@
-﻿@page "/"
+@page "/"
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
+@inject NavigationManager Nav
 
-<div class="dm-container">
-    <h2 class="dm-title">Dashboard</h2>
-    <p class="dm-subtitle">Bienvenido a DataMedix. El sistema está autenticado y operativo.</p>
-</div>
+@code {
+    protected override void OnInitialized() => Nav.NavigateTo("/dashboard", replace: true);
+}

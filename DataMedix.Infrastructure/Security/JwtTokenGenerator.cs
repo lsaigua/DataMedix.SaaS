@@ -1,11 +1,10 @@
-﻿using DataMedix.Application.Interfaces;
+using DataMedix.Application.Interfaces;
 using DataMedix.Domain.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-
 
 namespace DataMedix.Infrastructure.Security
 {
@@ -22,13 +21,14 @@ namespace DataMedix.Infrastructure.Security
         {
             var claims = new[]
             {
-            new Claim(ClaimTypes.NameIdentifier, user.IdUsuario.ToString()),
-            new Claim("empresa_id", user.IdUsuario.ToString()),
-            new Claim(ClaimTypes.Email, user.Email)
-        };
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim("tenant_id", user.TenantId?.ToString() ?? Guid.Empty.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Name, user.NombreCompleto)
+            };
 
             var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+                Encoding.UTF8.GetBytes(_config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured")));
 
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 

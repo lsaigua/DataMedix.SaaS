@@ -40,6 +40,13 @@ coverage/
 .env.*
 
 # =========================
+# .NET secrets (nunca al repo)
+# =========================
+appsettings.Development.json
+appsettings.Production.json
+appsettings.Staging.json
+
+# =========================
 # OS
 # =========================
 .DS_Store

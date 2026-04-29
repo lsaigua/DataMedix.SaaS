@@ -1,65 +1,49 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Text;
-
 namespace DataMedix.Domain.Entities
 {
-    [Table("resultadolaboratorio")]
     public class ResultadoLaboratorio
     {
-        public Guid IdResultadoLaboratorio { get; private set; }
-        public Guid IdEmpresa { get; private set; }
-        public Guid IdOrdenClinica { get; private set; }
-        public Guid IdParametroLaboratorio { get; private set; }
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public Guid TenantId { get; set; }
+        public Guid PacienteId { get; set; }
+        public Guid LoteId { get; set; }
+        public Guid? ParametroClinicoId { get; set; }
 
-        public string Examen { get; private set; }
-        public string Resultado { get; private set; }
-        public string ResultadoMedico { get; private set; }
-        public string ObservacionTecnica { get; private set; }
-        public string UsuarioValida { get; private set; }
-        public double? ValorNumerico { get; private set; }
+        // Periodo normalizado (siempre primer día del mes)
+        public DateTime PeriodDate { get; set; }
+        public int PeriodoAnio { get; set; }
+        public int PeriodoMes { get; set; }
 
-        public bool Flapatologico { get; private set; }
-        public string UnidadMedida { get; private set; }
-        public double? ValorMinimo { get; private set; }
-        public double? ValorMaximo { get; private set; }
-        public string EstadoResultado { get; private set; }
-        public DateTime FechaCreacion { get; private set; }
+        // Datos clínicos del Excel
+        public string? PlanSalud { get; set; }
+        public string? TipoAtencion { get; set; }
+        public DateTime? FechaOrden { get; set; }
+        public string? ExamenRaw { get; set; }
+        public string? ParametroRaw { get; set; }
+        public string ResultadoTexto { get; set; } = null!;
+        public decimal? ValorNumerico { get; set; }
+        public string? UnidadMedida { get; set; }
+        public decimal? ValorMinReferencia { get; set; }
+        public decimal? ValorMaxReferencia { get; set; }
+        public bool EsPatologico { get; set; } = false;
 
-        private ResultadoLaboratorio() { }
+        public bool Activo { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public Guid? CreatedBy { get; set; }
 
-        public ResultadoLaboratorio(
-            Guid idEmpresa,
-            Guid idOrden,
-            Guid idParametro,
-            string examen,
-            string resultadoTexto,
-            double? valorNumerico,
-            double? min,
-            double? max)
+        public Paciente Paciente { get; set; } = null!;
+        public LoteImportacion Lote { get; set; } = null!;
+        public ParametroClinico? ParametroClinico { get; set; }
+
+        public static DateTime NormalizarPeriod(DateTime fecha) =>
+            new DateTime(fecha.Year, fecha.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        public void CalcularPatologia()
         {
-            IdResultadoLaboratorio = Guid.NewGuid();
-            IdEmpresa = idEmpresa;
-            IdOrdenClinica = idOrden;
-            IdParametroLaboratorio = idParametro;
-            Examen = examen;
-            Resultado = resultadoTexto;
-            ValorNumerico = valorNumerico;
-            ValorMinimo = min;
-            ValorMaximo = max;
+            if (!ValorNumerico.HasValue) { EsPatologico = false; return; }
+            if (!ValorMinReferencia.HasValue || !ValorMaxReferencia.HasValue) { EsPatologico = false; return; }
 
-            Flapatologico = CalcularPatologia();
-        }
-
-        private bool CalcularPatologia()
-        {
-            if (!ValorNumerico.HasValue) return false;
-            if (!ValorMinimo.HasValue || !ValorMaximo.HasValue) return false;
-
-            return ValorNumerico < ValorMinimo ||
-                   ValorNumerico > ValorMaximo;
+            EsPatologico = ValorNumerico.Value < ValorMinReferencia.Value ||
+                           ValorNumerico.Value > ValorMaxReferencia.Value;
         }
     }
 }

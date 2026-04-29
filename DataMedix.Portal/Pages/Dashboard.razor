@@ -1,0 +1,212 @@
+@page "/dashboard"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+
+@inject AuthenticationStateProvider AuthState
+@inject IPacienteRepository PacienteRepo
+@inject ISnapshotMensualRepository SnapshotRepo
+@inject IPrescripcionRepository PrescripcionRepo
+@inject ILoteImportacionRepository LoteRepo
+
+<PageTitle>Dashboard | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Dashboard</h1>
+        <p class="dm-page-subtitle">Resumen clínico del período @PeriodoTexto</p>
+    </div>
+    <div class="dm-page-actions">
+        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">
+            <span>↑</span> Nueva Carga
+        </a>
+    </div>
+</div>
+
+@if (Cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando información del dashboard...</p>
+    </div>
+}
+else
+{
+    <!-- KPIs Principales -->
+    <div class="dm-kpi-grid">
+        <div class="dm-kpi-card dm-kpi-blue">
+            <div class="dm-kpi-icon">👥</div>
+            <div class="dm-kpi-content">
+                <div class="dm-kpi-value">@TotalPacientes</div>
+                <div class="dm-kpi-label">Pacientes Activos</div>
+            </div>
+        </div>
+        <div class="dm-kpi-card dm-kpi-green">
+            <div class="dm-kpi-icon">📋</div>
+            <div class="dm-kpi-content">
+                <div class="dm-kpi-value">@PacientesPeriodo</div>
+                <div class="dm-kpi-label">Con Resultados Mes</div>
+            </div>
+        </div>
+        <div class="dm-kpi-card dm-kpi-orange">
+            <div class="dm-kpi-icon">💊</div>
+            <div class="dm-kpi-content">
+                <div class="dm-kpi-value">@PrescripcionesPendientes</div>
+                <div class="dm-kpi-label">Prescripciones Pendientes</div>
+            </div>
+        </div>
+        <div class="dm-kpi-card dm-kpi-purple">
+            <div class="dm-kpi-icon">📁</div>
+            <div class="dm-kpi-content">
+                <div class="dm-kpi-value">@LotesDelMes</div>
+                <div class="dm-kpi-label">Cargas del Mes</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertas clínicas del período -->
+    @if (PrescripcionesPendientes > 0)
+    {
+        <div class="dm-alert dm-alert-warning">
+            <strong>⚠️ Atención médica requerida:</strong>
+            Hay <strong>@PrescripcionesPendientes</strong> prescripción(es) pendiente(s) de revisión
+            para el período @PeriodoTexto.
+            <a href="/prescripciones" class="dm-alert-link">Revisar ahora →</a>
+        </div>
+    }
+
+    <!-- Accesos rápidos -->
+    <div class="dm-section-title">Accesos Rápidos</div>
+    <div class="dm-quick-access-grid">
+        <a href="/laboratorio/importar" class="dm-quick-card">
+            <span class="dm-quick-icon">📤</span>
+            <span class="dm-quick-label">Cargar Resultados</span>
+            <span class="dm-quick-desc">Importar archivo Excel del laboratorio</span>
+        </a>
+        <a href="/pacientes" class="dm-quick-card">
+            <span class="dm-quick-icon">👤</span>
+            <span class="dm-quick-label">Pacientes</span>
+            <span class="dm-quick-desc">Gestionar y buscar pacientes</span>
+        </a>
+        <a href="/historial-clinico" class="dm-quick-card">
+            <span class="dm-quick-icon">📈</span>
+            <span class="dm-quick-label">Historial Clínico</span>
+            <span class="dm-quick-desc">Ver resultados mensuales</span>
+        </a>
+        <a href="/prescripciones" class="dm-quick-card">
+            <span class="dm-quick-icon">💉</span>
+            <span class="dm-quick-label">Prescripciones</span>
+            <span class="dm-quick-desc">EPO y Hierro IV sugeridos</span>
+        </a>
+        <a href="/cargas" class="dm-quick-card">
+            <span class="dm-quick-icon">📦</span>
+            <span class="dm-quick-label">Lotes de Carga</span>
+            <span class="dm-quick-desc">Historial de importaciones</span>
+        </a>
+        <a href="/rangos-prescriba" class="dm-quick-card">
+            <span class="dm-quick-icon">⚙️</span>
+            <span class="dm-quick-label">Rangos a Prescribir</span>
+            <span class="dm-quick-desc">Configurar rangos clínicos</span>
+        </a>
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+    .dm-page-actions { display: flex; gap: 0.75rem; align-items: center; }
+    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600;
+               font-size: 0.875rem; text-decoration: none; display: inline-flex;
+               align-items: center; gap: 0.5rem; cursor: pointer; border: none; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; color: white; }
+
+    .dm-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                   gap: 1.25rem; margin-bottom: 2rem; }
+    .dm-kpi-card { background: white; border-radius: 12px; padding: 1.5rem;
+                   display: flex; align-items: center; gap: 1rem;
+                   box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid; }
+    .dm-kpi-blue { border-color: #0ea5e9; }
+    .dm-kpi-green { border-color: #10b981; }
+    .dm-kpi-orange { border-color: #f59e0b; }
+    .dm-kpi-purple { border-color: #8b5cf6; }
+    .dm-kpi-icon { font-size: 2rem; }
+    .dm-kpi-value { font-size: 2rem; font-weight: 800; color: #1e293b; line-height: 1; }
+    .dm-kpi-label { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; font-weight: 500; }
+
+    .dm-alert { padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 2rem;
+                border-left: 4px solid; font-size: 0.9rem; }
+    .dm-alert-warning { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+    .dm-alert-link { color: #b45309; font-weight: 600; text-decoration: underline; margin-left: 0.5rem; }
+
+    .dm-section-title { font-size: 1rem; font-weight: 700; color: #374151;
+                        margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .dm-quick-access-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                            gap: 1rem; }
+    .dm-quick-card { background: white; border: 1.5px solid #e2e8f0; border-radius: 12px;
+                     padding: 1.25rem; text-decoration: none; display: flex; flex-direction: column;
+                     gap: 0.5rem; transition: all 0.2s ease; cursor: pointer; }
+    .dm-quick-card:hover { border-color: #0ea5e9; box-shadow: 0 4px 12px rgba(14,165,233,0.15);
+                           transform: translateY(-2px); }
+    .dm-quick-icon { font-size: 1.75rem; }
+    .dm-quick-label { font-size: 0.9rem; font-weight: 700; color: #1e293b; }
+    .dm-quick-desc { font-size: 0.75rem; color: #94a3b8; }
+
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center;
+                            padding: 3rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0;
+                  border-top-color: #0ea5e9; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    private bool Cargando = true;
+    private int TotalPacientes = 0;
+    private int PacientesPeriodo = 0;
+    private int PrescripcionesPendientes = 0;
+    private int LotesDelMes = 0;
+    private string PeriodoTexto = string.Empty;
+    private Guid TenantId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var now = DateTime.UtcNow;
+        PeriodoTexto = now.ToString("MMMM yyyy");
+
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+
+        if (TenantId != Guid.Empty)
+            await CargarKpisAsync(now);
+
+        Cargando = false;
+    }
+
+    private async Task CargarKpisAsync(DateTime now)
+    {
+        var periodDate = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        try
+        {
+            // Ejecutar consultas independientes en paralelo
+            var tPacientes = PacienteRepo.CountAsync(TenantId);
+            var tSnapshots = SnapshotRepo.GetByPeriodoAsync(TenantId, periodDate);
+            var tPrescripciones = PrescripcionRepo.GetPendientesAsync(TenantId, periodDate);
+            var tLotes = LoteRepo.GetByTenantAsync(TenantId, 1, 200);
+
+            await Task.WhenAll(tPacientes, tSnapshots, tPrescripciones, tLotes);
+
+            TotalPacientes = tPacientes.Result;
+            PacientesPeriodo = tSnapshots.Result.Count;
+            PrescripcionesPendientes = tPrescripciones.Result.Count;
+            LotesDelMes = tLotes.Result
+                .Count(l => l.PeriodDate.Year == now.Year && l.PeriodDate.Month == now.Month);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando KPIs: {ex.Message}");
+        }
+    }
+}

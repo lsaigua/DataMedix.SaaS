@@ -1,12 +1,6 @@
-﻿using DataMedix.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Text;
-
+// Interfaz removida - reemplazada por IParametroClinicoRepository
 namespace DataMedix.Application.Interfaces
 {
-    public interface IParametroRepository
-    {
-        Task<ParametroLaboratorio?> GetByNombreAsync(Guid empresaId, string nombre);
-    }
+    [Obsolete("Use IParametroClinicoRepository instead")]
+    public interface IParametroRepository { }
 }

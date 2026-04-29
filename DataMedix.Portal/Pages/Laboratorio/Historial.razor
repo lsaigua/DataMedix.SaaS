@@ -1,8 +1,537 @@
-﻿@page "/laboratorio/historial"
+@page "/laboratorio/historial"
 @attribute [Authorize]
+@implements IDisposable
 @using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
 
-<div class="dm-container">
-    <h2 class="dm-title">Historial de Cargas</h2>
-    <p class="dm-subtitle">Módulo en construcción. Próximamente verá aquí el historial de importaciones.</p>
+@inject IResultadoLaboratorioRepository ResultadoRepo
+@inject IParametroClinicoRepository ParametroRepo
+@inject ILoteImportacionRepository LoteRepo
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Historial de Resultados | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Historial de Resultados</h1>
+        <p class="dm-page-subtitle">Resultados crudos por lote de importación — paginación servidor</p>
+    </div>
+    <div class="dm-page-actions">
+        <button class="dm-btn dm-btn-outline" @onclick="CargarAsync" disabled="@Cargando">🔄 Actualizar</button>
+        <button class="dm-btn dm-btn-excel" @onclick="ExportarExcel"
+                disabled="@(Cargando || Total == 0)"
+                title="Exportar el filtro actual a Excel (máx. 10.000 filas)">
+            📥 Exportar Excel
+        </button>
+    </div>
 </div>
+
+<!-- Barra de filtros -->
+<div class="dm-card dm-card-filters">
+    <div class="dm-filters-grid">
+        <div class="dm-filter-field">
+            <label>Paciente</label>
+            <div class="dm-search-box">
+                <span>🔍</span>
+                <input type="text" class="dm-search-input" placeholder="Nombre o cédula..."
+                       @bind="BusquedaPaciente" @bind:event="oninput" @onkeyup="BuscarDebounced" />
+            </div>
+        </div>
+
+        <div class="dm-filter-field">
+            <label>Parámetro</label>
+            <select class="dm-select"
+                    value="@(Filtro.ParametroClinicoId?.ToString() ?? "")"
+                    @onchange="OnParametroChange">
+                <option value="">Todos</option>
+                @foreach (var p in Parametros)
+                {
+                    <option value="@p.Id">@p.Nombre (@p.Codigo)</option>
+                }
+            </select>
+        </div>
+
+        <div class="dm-filter-field">
+            <label>Período desde</label>
+            <div class="dm-date-range">
+                <select class="dm-select dm-select-mes"
+                        value="@(Filtro.MesDe?.ToString() ?? "")"
+                        @onchange="OnMesDesdeChange">
+                    <option value="">Mes</option>
+                    @for (int m = 1; m <= 12; m++) { var mes = m; <option value="@mes">@(new DateTime(2000,mes,1).ToString("MMM"))</option> }
+                </select>
+                <select class="dm-select dm-select-anio"
+                        value="@(Filtro.AnioDe?.ToString() ?? "")"
+                        @onchange="OnAnioDesdeChange">
+                    <option value="">Año</option>
+                    @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var anio = a; <option value="@anio">@anio</option> }
+                </select>
+            </div>
+        </div>
+
+        <div class="dm-filter-field">
+            <label>Período hasta</label>
+            <div class="dm-date-range">
+                <select class="dm-select dm-select-mes"
+                        value="@(Filtro.MesHasta?.ToString() ?? "")"
+                        @onchange="OnMesHastaChange">
+                    <option value="">Mes</option>
+                    @for (int m = 1; m <= 12; m++) { var mes = m; <option value="@mes">@(new DateTime(2000,mes,1).ToString("MMM"))</option> }
+                </select>
+                <select class="dm-select dm-select-anio"
+                        value="@(Filtro.AnioHasta?.ToString() ?? "")"
+                        @onchange="OnAnioHastaChange">
+                    <option value="">Año</option>
+                    @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var anio = a; <option value="@anio">@anio</option> }
+                </select>
+            </div>
+        </div>
+
+        <div class="dm-filter-field">
+            <label>Lote de importación</label>
+            <select class="dm-select"
+                    value="@(Filtro.LoteId?.ToString() ?? "")"
+                    @onchange="OnLoteChange">
+                <option value="">Todos los lotes</option>
+                @foreach (var l in Lotes)
+                {
+                    <option value="@l.Id">
+                        @(new DateTime(l.PeriodoAnio, l.PeriodoMes, 1).ToString("MMM yyyy")) — @TruncNombre(l.NombreArchivoOriginal, 28)
+                    </option>
+                }
+            </select>
+        </div>
+
+        @if (Filtro.HayFiltrosActivos)
+        {
+            <div class="dm-filter-field dm-filter-clear">
+                <label>&nbsp;</label>
+                <button class="dm-btn dm-btn-outline dm-btn-sm" @onclick="LimpiarFiltros">✕ Limpiar</button>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Resumen resultados -->
+<div class="dm-results-meta">
+    @if (!Cargando)
+    {
+        <span class="dm-results-count">
+            <strong>@Total</strong> resultado(s)
+            @if (Filtro.HayFiltrosActivos) { <span class="dm-filtered-tag">filtrado</span> }
+        </span>
+        @if (Total > 0)
+        {
+            <span class="dm-pagination-info">Página @Filtro.Pagina de @TotalPaginas</span>
+        }
+    }
+</div>
+
+@if (ErrorMensaje != null)
+{
+    <div class="dm-error-banner">
+        <span>⚠</span> Error al cargar datos: @ErrorMensaje
+    </div>
+}
+
+<!-- Tabla -->
+@if (Cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando resultados...</p>
+    </div>
+}
+else if (!Resultados.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">🔬</div>
+        <h3 class="dm-empty-title">
+            @(Filtro.HayFiltrosActivos ? "Sin resultados para este filtro" : "Sin resultados importados")
+        </h3>
+        <p class="dm-empty-desc">
+            @(Filtro.HayFiltrosActivos
+                ? "Ajusta los filtros para ver resultados."
+                : "Importa un archivo de laboratorio para ver resultados aquí.")
+        </p>
+        @if (!Filtro.HayFiltrosActivos)
+        {
+            <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar resultados</a>
+        }
+    </div>
+}
+else
+{
+    <div class="dm-card dm-card-table">
+        <div class="dm-table-responsive">
+            <table class="dm-table">
+                <thead>
+                    <tr>
+                        <th>Identificación</th>
+                        <th>Paciente</th>
+                        <th>Parámetro</th>
+                        <th class="dm-th-right">Valor</th>
+                        <th>Unidad</th>
+                        <th>Referencia</th>
+                        <th class="dm-th-center">Patológico</th>
+                        <th>Período</th>
+                        <th>Lote</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Resultados)
+                    {
+                        <tr class="@(r.EsPatologico ? "dm-row-pato" : "")">
+                            <td><code class="dm-ident">@r.Paciente.Identificacion</code></td>
+                            <td>
+                                <span class="dm-paciente-nombre">@r.Paciente.NombreCompleto</span>
+                            </td>
+                            <td>
+                                <div class="dm-param-cell">
+                                    <span class="dm-param-nombre">
+                                        @(r.ParametroClinico?.Nombre ?? r.ParametroRaw ?? "—")
+                                    </span>
+                                    @if (r.ParametroClinico?.Codigo != null)
+                                    {
+                                        <span class="dm-param-codigo">@r.ParametroClinico.Codigo</span>
+                                    }
+                                </div>
+                            </td>
+                            <td class="dm-td-right">
+                                <span class="dm-valor @(r.EsPatologico ? "dm-valor-pato" : "dm-valor-ok")">
+                                    @(r.ValorNumerico.HasValue
+                                        ? r.ValorNumerico.Value.ToString("G6")
+                                        : r.ResultadoTexto)
+                                </span>
+                            </td>
+                            <td class="dm-unidad">@(r.UnidadMedida ?? "—")</td>
+                            <td class="dm-referencia">
+                                @if (r.ValorMinReferencia.HasValue || r.ValorMaxReferencia.HasValue)
+                                {
+                                    <span>@(r.ValorMinReferencia?.ToString("G5") ?? "—") – @(r.ValorMaxReferencia?.ToString("G5") ?? "—")</span>
+                                }
+                                else { <span class="dm-sin-ref">sin ref.</span> }
+                            </td>
+                            <td class="dm-td-center">
+                                @if (r.EsPatologico)
+                                {
+                                    <span class="dm-badge dm-badge-pato">⚠ Sí</span>
+                                }
+                                else
+                                {
+                                    <span class="dm-badge dm-badge-normal">✓ No</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="dm-periodo-badge">@r.PeriodDate.ToString("MMM yyyy")</span>
+                            </td>
+                            <td>
+                                <span class="dm-lote-nombre" title="@r.Lote?.NombreArchivoOriginal">
+                                    @TruncNombre(r.Lote?.NombreArchivoOriginal ?? "—", 25)
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginación -->
+        <div class="dm-pagination">
+            <button class="dm-btn dm-btn-outline dm-btn-sm"
+                    @onclick="PaginaAnterior" disabled="@(Filtro.Pagina <= 1 || Cargando)">
+                ← Anterior
+            </button>
+
+            <span class="dm-pagination-pages">
+                @{ var desde = Math.Max(1, Filtro.Pagina - 2); var hasta = Math.Min(TotalPaginas, Filtro.Pagina + 2); }
+                @if (desde > 1) { <span class="dm-pag-ellipsis">…</span> }
+                @for (int pg = desde; pg <= hasta; pg++)
+                {
+                    var p = pg;
+                    <button class="dm-btn dm-btn-sm @(p == Filtro.Pagina ? "dm-btn-pag-active" : "dm-btn-outline")"
+                            @onclick="() => IrAPagina(p)">@p</button>
+                }
+                @if (hasta < TotalPaginas) { <span class="dm-pag-ellipsis">…</span> }
+            </span>
+
+            <button class="dm-btn dm-btn-outline dm-btn-sm"
+                    @onclick="PaginaSiguiente" disabled="@(Filtro.Pagina >= TotalPaginas || Cargando)">
+                Siguiente →
+            </button>
+        </div>
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.875rem; }
+    .dm-page-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+    .dm-btn { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
+              cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap; }
+    .dm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .dm-btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; border-radius: 6px; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; color: white; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover:not(:disabled) { background: #f8fafc; }
+    .dm-btn-excel { background: #16a34a; color: white; }
+    .dm-btn-excel:hover:not(:disabled) { background: #15803d; }
+
+    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 1rem; }
+    .dm-card-filters { padding: 1.25rem; }
+    .dm-card-table { }
+
+    .dm-filters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; align-items: end; }
+    .dm-filter-field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .dm-filter-field label { font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dm-filter-clear { justify-content: flex-end; }
+
+    .dm-search-box { display: flex; align-items: center; gap: 0.5rem; background: white;
+                     border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0 0.75rem; }
+    .dm-search-input { border: none; outline: none; font-size: 0.875rem; color: #374151;
+                       padding: 0.5rem 0; width: 100%; background: transparent; }
+    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; width: 100%; }
+    .dm-date-range { display: flex; gap: 0.4rem; }
+    .dm-select-mes { flex: 0 0 80px; }
+    .dm-select-anio { flex: 1; }
+
+    .dm-results-meta { display: flex; justify-content: space-between; align-items: center;
+                       margin-bottom: 0.75rem; padding: 0 0.25rem; }
+    .dm-results-count { font-size: 0.875rem; color: #374151; }
+    .dm-filtered-tag { background: #dbeafe; color: #1d4ed8; font-size: 0.7rem; font-weight: 700;
+                       padding: 0.15rem 0.45rem; border-radius: 10px; margin-left: 0.5rem; }
+    .dm-pagination-info { font-size: 0.8rem; color: #64748b; }
+
+    .dm-table-responsive { overflow-x: auto; }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
+                   padding: 0.875rem 1rem; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+                   font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dm-table td { padding: 0.625rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-table tbody tr:last-child td { border-bottom: none; }
+    .dm-th-right { text-align: right; }
+    .dm-td-right { text-align: right; }
+    .dm-th-center { text-align: center; }
+    .dm-td-center { text-align: center; }
+
+    .dm-row-pato { background: #fff5f5 !important; }
+    .dm-row-pato:hover { background: #fee2e2 !important; }
+
+    .dm-ident { font-family: monospace; font-size: 0.8rem; background: #f1f5f9;
+                padding: 0.15rem 0.4rem; border-radius: 4px; color: #475569; }
+    .dm-paciente-nombre { font-weight: 600; color: #1e293b; font-size: 0.85rem; }
+
+    .dm-param-cell { display: flex; flex-direction: column; gap: 0.1rem; }
+    .dm-param-nombre { font-weight: 600; font-size: 0.85rem; color: #1e293b; }
+    .dm-param-codigo { font-size: 0.7rem; color: #64748b; font-family: monospace; }
+
+    .dm-valor { font-weight: 700; font-size: 0.9rem; }
+    .dm-valor-pato { color: #dc2626; }
+    .dm-valor-ok { color: #374151; }
+
+    .dm-unidad { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
+    .dm-referencia { font-size: 0.78rem; color: #64748b; white-space: nowrap; }
+    .dm-sin-ref { color: #cbd5e1; font-style: italic; }
+
+    .dm-badge { padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+    .dm-badge-pato { background: #fee2e2; color: #991b1b; }
+    .dm-badge-normal { background: #dcfce7; color: #166534; }
+
+    .dm-periodo-badge { background: #f1f5f9; color: #475569; padding: 0.2rem 0.55rem;
+                        border-radius: 6px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+    .dm-lote-nombre { font-size: 0.78rem; color: #64748b; }
+
+    .dm-pagination { display: flex; justify-content: space-between; align-items: center;
+                     padding: 0.875rem 1rem; border-top: 1px solid #f1f5f9; background: #f8fafc; gap: 0.5rem; }
+    .dm-pagination-pages { display: flex; gap: 0.25rem; align-items: center; }
+    .dm-btn-pag-active { background: #0ea5e9 !important; color: white !important; border-color: #0ea5e9 !important; }
+    .dm-pag-ellipsis { color: #94a3b8; font-size: 0.85rem; padding: 0 0.25rem; }
+
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 4rem 2rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-empty-title { font-size: 1.2rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .dm-empty-desc { font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+    .dm-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
+                       padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
+                       align-items: center; font-size: 0.875rem; font-weight: 500; }
+</style>
+
+@code {
+    private List<ResultadoLaboratorio> Resultados = new();
+    private List<ParametroClinico> Parametros = new();
+    private List<LoteImportacion> Lotes = new();
+    private ResultadoFiltro Filtro = new();
+    private string BusquedaPaciente = string.Empty;
+    private int Total = 0;
+    private string? ErrorMensaje;
+    private int TotalPaginas => Total == 0 ? 1 : (int)Math.Ceiling(Total / (double)Filtro.Tamano);
+    private bool Cargando = true;
+    private Guid TenantId;
+    private System.Timers.Timer? _debounceTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+
+        try
+        {
+            Parametros = await ParametroRepo.GetAllAsync();
+            Lotes = await LoteRepo.GetByTenantAsync(TenantId, 1, 100);
+            (Resultados, Total) = await ResultadoRepo.GetPagedAsync(TenantId, Filtro);
+        }
+        catch (Exception ex)
+        {
+            ErrorMensaje = ex.Message;
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private async Task CargarAsync()
+    {
+        Cargando = true;
+        ErrorMensaje = null;
+        StateHasChanged();
+        try
+        {
+            (Resultados, Total) = await ResultadoRepo.GetPagedAsync(TenantId, Filtro);
+        }
+        catch (Exception ex)
+        {
+            ErrorMensaje = ex.Message;
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private void BuscarDebounced(KeyboardEventArgs _)
+    {
+        Filtro.BusquedaPaciente = BusquedaPaciente;
+        Filtro.Pagina = 1;
+        _debounceTimer?.Dispose();
+        _debounceTimer = new System.Timers.Timer(350);
+        _debounceTimer.Elapsed += async (_, _) =>
+        {
+            _debounceTimer?.Dispose();
+            await InvokeAsync(CargarAsync);
+        };
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Start();
+    }
+
+    private async Task PaginaAnterior()
+    {
+        if (Filtro.Pagina <= 1) return;
+        Filtro.Pagina--;
+        await CargarAsync();
+    }
+
+    private async Task PaginaSiguiente()
+    {
+        if (Filtro.Pagina >= TotalPaginas) return;
+        Filtro.Pagina++;
+        await CargarAsync();
+    }
+
+    private async Task IrAPagina(int pagina)
+    {
+        Filtro.Pagina = pagina;
+        await CargarAsync();
+    }
+
+    private async Task OnParametroChange(ChangeEventArgs e)
+    {
+        Filtro.ParametroClinicoId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        Filtro.Pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnMesDesdeChange(ChangeEventArgs e)
+    {
+        Filtro.MesDe = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
+        Filtro.Pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnAnioDesdeChange(ChangeEventArgs e)
+    {
+        Filtro.AnioDe = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
+        Filtro.Pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnMesHastaChange(ChangeEventArgs e)
+    {
+        Filtro.MesHasta = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
+        Filtro.Pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnAnioHastaChange(ChangeEventArgs e)
+    {
+        Filtro.AnioHasta = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
+        Filtro.Pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnLoteChange(ChangeEventArgs e)
+    {
+        Filtro.LoteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        Filtro.Pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task LimpiarFiltros()
+    {
+        Filtro = new ResultadoFiltro();
+        BusquedaPaciente = string.Empty;
+        await CargarAsync();
+    }
+
+    private void ExportarExcel()
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(Filtro.BusquedaPaciente))
+            qs.Add($"busquedaPaciente={Uri.EscapeDataString(Filtro.BusquedaPaciente)}");
+        if (Filtro.ParametroClinicoId.HasValue)
+            qs.Add($"parametroClinicoId={Filtro.ParametroClinicoId}");
+        if (Filtro.AnioDe.HasValue)   qs.Add($"anioDe={Filtro.AnioDe}");
+        if (Filtro.MesDe.HasValue)    qs.Add($"mesDe={Filtro.MesDe}");
+        if (Filtro.AnioHasta.HasValue) qs.Add($"anioHasta={Filtro.AnioHasta}");
+        if (Filtro.MesHasta.HasValue)  qs.Add($"mesHasta={Filtro.MesHasta}");
+        if (Filtro.LoteId.HasValue)   qs.Add($"loteId={Filtro.LoteId}");
+
+        var url = "/api/reportes/resultados-excel" + (qs.Any() ? "?" + string.Join("&", qs) : "");
+        Nav.NavigateTo(url, forceLoad: true);
+    }
+
+    private static string TruncNombre(string? s, int max)
+    {
+        if (string.IsNullOrEmpty(s)) return "—";
+        return s.Length > max ? s[..max] + "…" : s;
+    }
+
+    public void Dispose() => _debounceTimer?.Dispose();
+}

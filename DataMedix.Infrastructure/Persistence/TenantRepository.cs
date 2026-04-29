@@ -1,9 +1,6 @@
-﻿using DataMedix.Application.Interfaces;
+using DataMedix.Application.Interfaces;
 using DataMedix.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace DataMedix.Infrastructure.Persistence
 {
@@ -16,10 +13,8 @@ namespace DataMedix.Infrastructure.Persistence
             _context = context;
         }
 
-        public async Task<Tenant?> GetBySubdomainAsync(string subdomain)
-        {
-            return await _context.Tenants
-                .FirstOrDefaultAsync(t => t.subdomain == subdomain && t.isactive);
-        }
+        public async Task<Tenant?> GetBySubdomainAsync(string subdomain) =>
+            await _context.Tenants
+                .FirstOrDefaultAsync(t => t.Subdomain == subdomain && t.Activo);
     }
 }

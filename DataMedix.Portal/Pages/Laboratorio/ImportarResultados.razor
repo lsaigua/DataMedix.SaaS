@@ -1,66 +1,511 @@
-﻿@page "/laboratorio/importar"
+@page "/laboratorio/importar"
 @attribute [Authorize]
-
+@implements IDisposable
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
-@using DataMedix.Application.UseCases.Laboratorio
+@using DataMedix.Application.Services
+@using DataMedix.Application.DTOs
+@using System.Security.Claims
 
-@inject ProcesarArchivoLaboratorioUseCase UseCase
-@inject DataMedix.Portal.Services.GlobalLoadingService GlobalLoadingService
-@inject DataMedix.Portal.Services.GlobalToastService GlobalToastService
+@inject ImportacionService ImportacionSvc
+@inject GlobalLoadingService GlobalLoadingService
+@inject GlobalToastService GlobalToastService
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
 
-<div class="dm-container">
-    <h1 class="dm-title">Carga Masiva de Resultados Clínicos</h1>
-    <p class="dm-subtitle">
-        Cargue archivos Excel (.xlsx) enviados por laboratorios para procesar resultados clínicos de manera masiva.
-    </p>
+<PageTitle>Carga Masiva | DataMedix</PageTitle>
 
-    <div class="dm-upload-card">
-        <label class="dm-label">Seleccionar archivo Excel</label>
-        <InputFile OnChange="HandleFile" class="dm-file-input" />
-        <small class="dm-help">Tamaño máximo permitido: 50 MB</small>
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Carga Masiva de Resultados</h1>
+        <p class="dm-page-subtitle">Importe archivos Excel con resultados de laboratorio clínico</p>
     </div>
 </div>
 
-@code {
-    private async Task HandleFile(InputFileChangeEventArgs e)
+<!-- PASO 1: Selección de archivo -->
+@if (Paso == 1)
+{
+    <div class="dm-card dm-upload-area @(ArrastreSobre ? "dm-drag-over" : "")"
+         @ondragover:preventDefault="true"
+         @ondragover="@(() => ArrastreSobre = true)"
+         @ondragleave="@(() => ArrastreSobre = false)">
+
+        <div class="dm-upload-icon">📊</div>
+        <h3 class="dm-upload-title">Seleccione o arrastre el archivo Excel</h3>
+        <p class="dm-upload-desc">Formato aceptado: <strong>.xlsx</strong> — Máximo <strong>50 MB</strong></p>
+
+        <InputFile OnChange="HandleFileSeleccionado" class="dm-file-input-hidden" id="fileInput"
+                   accept=".xlsx" />
+        <label for="fileInput" class="dm-btn dm-btn-primary">
+            📂 Seleccionar Archivo
+        </label>
+
+        @if (!string.IsNullOrEmpty(NombreArchivo))
+        {
+            <div class="dm-file-selected">
+                <span class="dm-file-icon">📄</span>
+                <span class="dm-file-name">@NombreArchivo</span>
+                <span class="dm-file-size">(@TamanoArchivo)</span>
+            </div>
+            <button class="dm-btn dm-btn-outline" @onclick="PrevisualizarArchivo" disabled="@Procesando">
+                @if (Procesando)
+                { <span class="dm-spinner-sm"></span> }
+                👁 Previsualizar
+            </button>
+        }
+    </div>
+
+    <div class="dm-info-box">
+        <h4>📋 Formato esperado del archivo</h4>
+        <div class="dm-columns-grid">
+            <div class="dm-col-item"><span class="dm-col-num">1</span> Fecha Orden</div>
+            <div class="dm-col-item"><span class="dm-col-num">2</span> Plan Salud</div>
+            <div class="dm-col-item"><span class="dm-col-num">3</span> Tipo Atención</div>
+            <div class="dm-col-item"><span class="dm-col-num">4</span> Identificación</div>
+            <div class="dm-col-item"><span class="dm-col-num">5</span> Paciente</div>
+            <div class="dm-col-item"><span class="dm-col-num">6</span> Examen</div>
+            <div class="dm-col-item"><span class="dm-col-num">7</span> Parámetro</div>
+            <div class="dm-col-item"><span class="dm-col-num">8</span> Resultado</div>
+            <div class="dm-col-item"><span class="dm-col-num">9</span> Unidad Medida</div>
+        </div>
+    </div>
+}
+
+<!-- PASO 2: Previsualización -->
+@if (Paso == 2 && Preview != null)
+{
+    <div class="dm-preview-header">
+        <div class="dm-preview-stats">
+            <div class="dm-stat dm-stat-total">
+                <span class="dm-stat-value">@Preview.TotalFilas</span>
+                <span class="dm-stat-label">Total Filas</span>
+            </div>
+            <div class="dm-stat dm-stat-ok">
+                <span class="dm-stat-value">@Preview.FilasValidas</span>
+                <span class="dm-stat-label">Válidas</span>
+            </div>
+            <div class="dm-stat dm-stat-err">
+                <span class="dm-stat-value">@Preview.FilasConError</span>
+                <span class="dm-stat-label">Con Error</span>
+            </div>
+        </div>
+
+        <div class="dm-progress-bar">
+            <div class="dm-progress-fill"
+                 style="width: @(Preview.TotalFilas > 0 ? (Preview.FilasValidas * 100 / Preview.TotalFilas) : 0)%">
+            </div>
+        </div>
+        <div class="dm-progress-text">
+            @(Preview.TotalFilas > 0
+                ? $"{Preview.FilasValidas * 100 / Preview.TotalFilas}% de filas válidas"
+                : "0% válidas")
+        </div>
+    </div>
+
+    <!-- Tabla de previsualización -->
+    <div class="dm-card">
+        <div class="dm-card-header">
+            <h3 class="dm-card-title">Vista previa de datos (primeras 100 filas)</h3>
+        </div>
+        <div class="dm-table-responsive">
+            <table class="dm-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Fecha</th>
+                        <th>Identificación</th>
+                        <th>Paciente</th>
+                        <th>Parámetro</th>
+                        <th>Resultado</th>
+                        <th>Unidad</th>
+                        <th>Plan Salud</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var fila in Preview.Filas)
+                    {
+                        <tr class="@(FilaTieneError(fila.LineNumber) ? "dm-row-error" : "")">
+                            <td class="dm-td-num">@fila.LineNumber</td>
+                            <td>@(fila.FechaOrden?.ToString("dd/MM/yyyy") ?? "—")</td>
+                            <td>@(fila.Identificacion ?? "—")</td>
+                            <td>@(fila.NombrePaciente ?? "—")</td>
+                            <td>@(fila.Parametro ?? "—")</td>
+                            <td class="dm-td-resultado">@(fila.ResultadoTexto ?? "—")</td>
+                            <td>@(fila.UnidadMedida ?? "—")</td>
+                            <td>@(fila.PlanSalud ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Tabla de errores -->
+    @if (Preview.Errores.Any())
     {
-        var file = e.File;
+        <div class="dm-card dm-card-errors">
+            <div class="dm-card-header">
+                <h3 class="dm-card-title dm-title-error">⚠️ Errores de validación (@Preview.Errores.Count)</h3>
+                <button class="dm-btn-sm dm-btn-outline" @onclick="DescargarErrores">
+                    ⬇ Descargar errores
+                </button>
+            </div>
+            <div class="dm-table-responsive">
+                <table class="dm-table">
+                    <thead>
+                        <tr>
+                            <th>Fila</th>
+                            <th>Campo</th>
+                            <th>Tipo</th>
+                            <th>Mensaje</th>
+                            <th>Valor Recibido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var err in Preview.Errores.Take(100))
+                        {
+                            <tr class="dm-row-error-detail">
+                                <td class="dm-td-num">@err.NumeroFila</td>
+                                <td><span class="dm-badge dm-badge-campo">@err.Campo</span></td>
+                                <td><span class="dm-badge dm-badge-tipo">@err.TipoError</span></td>
+                                <td>@err.Mensaje</td>
+                                <td class="dm-td-valor">@(err.ValorRecibido ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
 
-        if (file is null)
+    <!-- Acciones -->
+    <div class="dm-actions-bar">
+        <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
+            ← Cambiar archivo
+        </button>
+
+        @if (Preview.PuedeConfirmar)
         {
-            GlobalToastService.ShowWarning("Debe seleccionar un archivo.");
-            return;
+            <button class="dm-btn dm-btn-success" @onclick="ConfirmarProcesamiento"
+                    disabled="@Procesando">
+                @if (Procesando)
+                { <span class="dm-spinner-sm"></span> }
+                ✅ Confirmar y Procesar @Preview.FilasValidas fila(s)
+            </button>
+        }
+        else
+        {
+            <div class="dm-alert dm-alert-error-sm">
+                El archivo no tiene filas válidas para procesar. Corrija los errores e intente de nuevo.
+            </div>
+        }
+    </div>
+}
+
+<!-- PASO 3: Resultado del procesamiento -->
+@if (Paso == 3 && Resultado != null)
+{
+    <div class="dm-card dm-card-resultado @(Resultado.Exitoso ? "dm-card-ok" : "dm-card-error")">
+        <div class="dm-resultado-icon">
+            @(Resultado.Exitoso ? "✅" : "❌")
+        </div>
+        <h2 class="dm-resultado-titulo">
+            @(Resultado.Exitoso ? "¡Carga Procesada Exitosamente!" : "Error en el Procesamiento")
+        </h2>
+
+        @if (Resultado.Exitoso)
+        {
+            <div class="dm-resultado-stats">
+                <div class="dm-r-stat">
+                    <span class="dm-r-val">@Resultado.TotalFilas</span>
+                    <span class="dm-r-lbl">Total Procesadas</span>
+                </div>
+                <div class="dm-r-stat dm-r-ok">
+                    <span class="dm-r-val">@Resultado.FilasValidas</span>
+                    <span class="dm-r-lbl">Registradas</span>
+                </div>
+                <div class="dm-r-stat dm-r-err">
+                    <span class="dm-r-val">@Resultado.FilasError</span>
+                    <span class="dm-r-lbl">Con Error</span>
+                </div>
+                <div class="dm-r-stat">
+                    <span class="dm-r-val">@Resultado.PorcentajeExito%</span>
+                    <span class="dm-r-lbl">Éxito</span>
+                </div>
+            </div>
+            <p class="dm-resultado-info">
+                Los snapshots mensuales y prescripciones sugeridas han sido generados automáticamente.
+            </p>
+        }
+        else
+        {
+            <p class="dm-resultado-error">@Resultado.MensajeError</p>
         }
 
-        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-        {
-            GlobalToastService.ShowError("Formato inválido. Solo se permite archivos .xlsx");
-            return;
-        }
+        <div class="dm-resultado-acciones">
+            <a href="/historial-clinico" class="dm-btn dm-btn-primary">
+                📈 Ver Historial Clínico
+            </a>
+            <a href="/prescripciones" class="dm-btn dm-btn-outline">
+                💊 Ver Prescripciones
+            </a>
+            <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
+                📤 Nueva Carga
+            </button>
+        </div>
+    </div>
+}
 
-        if (file.Size > 50_000_000)
-        {
-            GlobalToastService.ShowError("Archivo demasiado grande. Máximo permitido: 50 MB.");
-            return;
-        }
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
 
+    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+               padding: 1.5rem; margin-bottom: 1.5rem; }
+    .dm-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .dm-card-title { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-card-errors { border-left: 4px solid #f59e0b; }
+    .dm-card-resultado { text-align: center; padding: 3rem; }
+    .dm-card-ok { border-top: 4px solid #10b981; }
+    .dm-card-error { border-top: 4px solid #ef4444; }
+    .dm-title-error { color: #b45309; }
+
+    /* Upload */
+    .dm-upload-area { text-align: center; padding: 3rem; border: 2px dashed #e2e8f0;
+                      transition: all 0.2s; cursor: default; }
+    .dm-drag-over { border-color: #0ea5e9; background: #f0f9ff; }
+    .dm-upload-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-upload-title { font-size: 1.25rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
+    .dm-upload-desc { color: #64748b; margin-bottom: 1.5rem; }
+    .dm-file-input-hidden { display: none; }
+    .dm-file-selected { margin: 1rem 0; padding: 0.75rem 1rem; background: #f8fafc;
+                        border-radius: 8px; display: inline-flex; align-items: center; gap: 0.5rem; }
+    .dm-file-icon { font-size: 1.25rem; }
+    .dm-file-name { font-weight: 600; color: #1e293b; }
+    .dm-file-size { color: #94a3b8; font-size: 0.85rem; }
+
+    /* Info box */
+    .dm-info-box { background: #f8fafc; border-radius: 12px; padding: 1.25rem 1.5rem;
+                   border: 1px solid #e2e8f0; margin-top: 1.5rem; }
+    .dm-info-box h4 { font-size: 0.9rem; color: #374151; margin: 0 0 1rem; font-weight: 700; }
+    .dm-columns-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; }
+    .dm-col-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #4b5563; }
+    .dm-col-num { background: #0ea5e9; color: white; border-radius: 50%; width: 20px; height: 20px;
+                  display: inline-flex; align-items: center; justify-content: center;
+                  font-size: 0.7rem; font-weight: 700; flex-shrink: 0; }
+
+    /* Preview header */
+    .dm-preview-header { margin-bottom: 1.5rem; }
+    .dm-preview-stats { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .dm-stat { background: white; border-radius: 10px; padding: 1rem 1.5rem; text-align: center;
+               box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
+    .dm-stat-ok { border-left: 3px solid #10b981; }
+    .dm-stat-err { border-left: 3px solid #f59e0b; }
+    .dm-stat-total { border-left: 3px solid #0ea5e9; }
+    .dm-stat-value { font-size: 1.75rem; font-weight: 800; color: #1e293b; }
+    .dm-stat-label { font-size: 0.75rem; color: #64748b; font-weight: 500; }
+    .dm-progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .dm-progress-fill { height: 100%; background: linear-gradient(to right, #0ea5e9, #10b981);
+                        border-radius: 4px; transition: width 0.4s ease; }
+    .dm-progress-text { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; text-align: right; }
+
+    /* Tabla */
+    .dm-table-responsive { overflow-x: auto; }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
+                   padding: 0.75rem 1rem; border-bottom: 2px solid #e2e8f0;
+                   white-space: nowrap; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dm-table td { padding: 0.625rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-td-num { color: #94a3b8; font-size: 0.8rem; }
+    .dm-td-resultado { font-weight: 600; color: #1e293b; }
+    .dm-td-valor { font-family: monospace; font-size: 0.8rem; color: #ef4444; }
+    .dm-row-error { background: #fffbeb !important; }
+    .dm-row-error-detail { background: #fff7ed; }
+    .dm-badge { padding: 0.2rem 0.6rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; }
+    .dm-badge-campo { background: #dbeafe; color: #1d4ed8; }
+    .dm-badge-tipo { background: #fef3c7; color: #92400e; }
+
+    /* Botones */
+    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem;
+              cursor: pointer; border: none; transition: all 0.15s; }
+    .dm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover:not(:disabled) { background: #0284c7; color: white; }
+    .dm-btn-success { background: #10b981; color: white; }
+    .dm-btn-success:hover:not(:disabled) { background: #059669; color: white; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover:not(:disabled) { border-color: #0ea5e9; color: #0ea5e9; }
+    .dm-btn-sm { padding: 0.375rem 0.875rem; font-size: 0.8rem; border-radius: 6px;
+                 background: white; color: #374151; border: 1.5px solid #e2e8f0;
+                 cursor: pointer; font-weight: 600; }
+
+    .dm-actions-bar { display: flex; justify-content: space-between; align-items: center;
+                      padding: 1rem 0; gap: 1rem; flex-wrap: wrap; }
+
+    .dm-spinner-sm { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4);
+                     border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .dm-alert-error-sm { background: #fef2f2; color: #991b1b; padding: 0.75rem 1rem;
+                         border-radius: 8px; font-size: 0.875rem; border-left: 3px solid #ef4444; }
+
+    /* Resultado */
+    .dm-resultado-icon { font-size: 4rem; margin-bottom: 1rem; }
+    .dm-resultado-titulo { font-size: 1.5rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; }
+    .dm-resultado-stats { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1.5rem;
+                           flex-wrap: wrap; }
+    .dm-r-stat { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+    .dm-r-val { font-size: 2rem; font-weight: 800; color: #1e293b; }
+    .dm-r-lbl { font-size: 0.8rem; color: #64748b; font-weight: 500; }
+    .dm-r-ok .dm-r-val { color: #10b981; }
+    .dm-r-err .dm-r-val { color: #f59e0b; }
+    .dm-resultado-info { color: #64748b; margin-bottom: 2rem; }
+    .dm-resultado-error { color: #ef4444; margin-bottom: 2rem; font-weight: 600; }
+    .dm-resultado-acciones { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+</style>
+
+@code {
+    private int Paso = 1;
+    private bool Procesando = false;
+    private bool ArrastreSobre = false;
+    private string NombreArchivo = string.Empty;
+    private string TamanoArchivo = string.Empty;
+    private IBrowserFile? ArchivoSeleccionado;
+    private MemoryStream? _archivoMs;   // archivo cacheado en memoria tras selección
+    private PreVisualizacionDto? Preview;
+    private ImportacionResultadoDto? Resultado;
+
+    private Guid TenantId;
+    private Guid UsuarioId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        var userStr = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        UsuarioId = Guid.TryParse(userStr, out var u) ? u : Guid.Empty;
+    }
+
+    private async Task HandleFileSeleccionado(InputFileChangeEventArgs e)
+    {
+        ArchivoSeleccionado = e.File;
+        NombreArchivo = e.File.Name;
+        TamanoArchivo = FormatearTamano(e.File.Size);
+        Preview = null;
+        Resultado = null;
+
+        // Copiar a MemoryStream AQUÍ, mientras el browser file reference aún es válido
+        // y antes de cualquier StateHasChanged() que destruiría _blazorFilesById.
+        _archivoMs?.Dispose();
+        _archivoMs = null;
         try
         {
-            GlobalLoadingService.Show("Procesando archivo clínico...");
-
-            using var stream = file.OpenReadStream(maxAllowedSize: 50_000_000);
-            await UseCase.EjecutarDesdeArchivoAsync(stream);
-
-            GlobalToastService.ShowSuccess("Carga completada exitosamente.");
+            using var browserStream = e.File.OpenReadStream(maxAllowedSize: 50_000_000);
+            _archivoMs = new MemoryStream();
+            await browserStream.CopyToAsync(_archivoMs);
         }
         catch (Exception ex)
         {
-            GlobalToastService.ShowError($"Ocurrió un error al procesar el archivo: {ex.Message}");
+            GlobalToastService.ShowError($"Error leyendo el archivo: {ex.Message}");
+            ArchivoSeleccionado = null;
+            NombreArchivo = string.Empty;
+        }
+    }
+
+    private async Task PrevisualizarArchivo()
+    {
+        if (_archivoMs == null) return;
+
+        if (!NombreArchivo.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            GlobalToastService.ShowError("Solo se permiten archivos .xlsx");
+            return;
+        }
+
+        Procesando = true;
+        StateHasChanged();
+
+        try
+        {
+            _archivoMs.Position = 0;
+            Preview = await ImportacionSvc.PrevisualizarAsync(_archivoMs, TenantId);
+            Paso = 2;
+        }
+        catch (Exception ex)
+        {
+            GlobalToastService.ShowError($"Error al previsualizar: {ex.Message}");
         }
         finally
         {
+            Procesando = false;
+        }
+    }
+
+    private async Task ConfirmarProcesamiento()
+    {
+        if (_archivoMs == null) return;
+
+        Procesando = true;
+        GlobalLoadingService.Show("Procesando archivo clínico...");
+        StateHasChanged();
+
+        try
+        {
+            _archivoMs.Position = 0;
+            Resultado = await ImportacionSvc.ProcesarAsync(
+                _archivoMs, NombreArchivo, TenantId, UsuarioId);
+
+            if (Resultado.Exitoso)
+                GlobalToastService.ShowSuccess($"✅ {Resultado.FilasValidas} resultado(s) importados correctamente.");
+            else
+                GlobalToastService.ShowError(Resultado.MensajeError ?? "Error al procesar.");
+
+            Paso = 3;
+        }
+        catch (Exception ex)
+        {
+            GlobalToastService.ShowError($"Error inesperado: {ex.Message}");
+        }
+        finally
+        {
+            Procesando = false;
             GlobalLoadingService.Hide();
         }
     }
+
+    private void ReiniciarPaso()
+    {
+        Paso = 1;
+        NombreArchivo = string.Empty;
+        TamanoArchivo = string.Empty;
+        ArchivoSeleccionado = null;
+        _archivoMs?.Dispose();
+        _archivoMs = null;
+        Preview = null;
+        Resultado = null;
+        ArrastreSobre = false;
+    }
+
+    private bool FilaTieneError(int numeroFila) =>
+        Preview?.Errores.Any(e => e.NumeroFila == numeroFila) ?? false;
+
+    private void DescargarErrores()
+    {
+        // TODO: implementar descarga CSV de errores
+        GlobalToastService.ShowWarning("Descarga de errores: próximamente disponible.");
+    }
+
+    private static string FormatearTamano(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1_048_576) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1_048_576.0:F1} MB";
+    }
+
+    public void Dispose() => _archivoMs?.Dispose();
 }

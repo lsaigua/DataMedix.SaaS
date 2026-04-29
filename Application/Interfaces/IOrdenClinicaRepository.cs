@@ -1,14 +1,7 @@
-﻿using DataMedix.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Text;
-
+// Interfaz removida - reemplazada por ILoteImportacionRepository y IResultadoLaboratorioRepository
+// Mantenida como stub para compatibilidad de compilación
 namespace DataMedix.Application.Interfaces
 {
-    public interface IOrdenClinicaRepository
-    {
-        Task<OrdenClinica?> GetByPacienteYFechaAsync(Guid pacienteId, DateTime fecha);
-        Task AddAsync(OrdenClinica orden);
-    }
- 
+    [Obsolete("Use ILoteImportacionRepository instead")]
+    public interface IOrdenClinicaRepository { }
 }

@@ -1,0 +1,546 @@
+@page "/prescripciones"
+@page "/prescripciones/{PacienteId:guid}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+
+@inject IPrescripcionRepository PrescripcionRepo
+@inject ISnapshotMensualRepository SnapshotRepo
+@inject IPacienteRepository PacienteRepo
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Prescripciones | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Prescripciones Clínicas</h1>
+        @if (PacienteSeleccionado != null)
+        {
+            <p class="dm-page-subtitle">
+                <a href="/pacientes" class="dm-link-back">← Pacientes</a>
+                &nbsp;/&nbsp;@PacienteSeleccionado.NombreCompleto
+                <span class="dm-ident-badge">@PacienteSeleccionado.Identificacion</span>
+            </p>
+        }
+        else
+        {
+            <p class="dm-page-subtitle">EPO y Hierro IV sugeridos por el motor clínico</p>
+        }
+    </div>
+    <div class="dm-page-actions">
+        <button class="dm-btn dm-btn-outline" @onclick="CargarAsync" disabled="@Cargando">
+            🔄 Actualizar
+        </button>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="dm-filters-bar">
+    @if (!PacienteId.HasValue)
+    {
+        <div class="dm-search-box">
+            <span>🔍</span>
+            <input type="text" placeholder="Buscar paciente..." class="dm-search-input"
+                   @bind="BusquedaTexto" @bind:event="oninput" @onkeyup="BuscarDebounced" />
+        </div>
+    }
+
+    <div class="dm-filter-group">
+        <label>Mes</label>
+        <select @bind="FiltroMes" @bind:after="CargarAsync" class="dm-select">
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM"))</option>
+            }
+        </select>
+    </div>
+
+    <div class="dm-filter-group">
+        <label>Año</label>
+        <select @bind="FiltroAnio" @bind:after="CargarAsync" class="dm-select">
+            @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 2; a--)
+            {
+                <option value="@a">@a</option>
+            }
+        </select>
+    </div>
+
+    <div class="dm-filter-group">
+        <label>Estado</label>
+        <select @bind="FiltroEstado" @bind:after="CargarAsync" class="dm-select">
+            <option value="">Todos</option>
+            <option value="PENDIENTE">Pendiente</option>
+            <option value="REVISADO">Revisado</option>
+            <option value="APROBADO">Aprobado</option>
+            <option value="RECHAZADO">Rechazado</option>
+        </select>
+    </div>
+</div>
+
+<!-- Stats row -->
+<div class="dm-stats-row">
+    <div class="dm-stat-chip dm-stat-pending">
+        <span class="dm-stat-num">@ListaPrescripciones.Count(p => p.Estado == "PENDIENTE")</span>
+        <span class="dm-stat-lbl">Pendientes</span>
+    </div>
+    <div class="dm-stat-chip dm-stat-ok">
+        <span class="dm-stat-num">@ListaPrescripciones.Count(p => p.Estado == "APROBADO")</span>
+        <span class="dm-stat-lbl">Aprobadas</span>
+    </div>
+    <div class="dm-stat-chip dm-stat-info">
+        <span class="dm-stat-num">@ListaPrescripciones.Count(p => p.Estado == "REVISADO")</span>
+        <span class="dm-stat-lbl">Revisadas</span>
+    </div>
+    <div class="dm-stat-chip dm-stat-error">
+        <span class="dm-stat-num">@ListaPrescripciones.Count(p => p.Estado == "RECHAZADO")</span>
+        <span class="dm-stat-lbl">Rechazadas</span>
+    </div>
+</div>
+
+@if (ErrorMensaje != null)
+{
+    <div class="dm-error-banner">
+        <span>⚠</span> Error al cargar prescripciones: @ErrorMensaje
+    </div>
+}
+
+@if (Cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando prescripciones...</p>
+    </div>
+}
+else if (!PrescripcionesFiltradas.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">💊</div>
+        <h3 class="dm-empty-title">Sin prescripciones para el período</h3>
+        <p class="dm-empty-desc">Importe resultados de laboratorio para generar prescripciones automáticas.</p>
+        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar Resultados</a>
+    </div>
+}
+else
+{
+    <div class="dm-cards-grid">
+        @foreach (var presc in PrescripcionesFiltradas)
+        {
+            var snap = Snapshots.FirstOrDefault(s => s.PacienteId == presc.PacienteId && s.PeriodDate == presc.PeriodDate);
+            <div class="dm-presc-card @(presc.Estado == "PENDIENTE" ? "dm-card-pending" : "")">
+                <div class="dm-presc-card-header">
+                    <div class="dm-paciente-cell">
+                        <div class="dm-avatar">@(presc.Paciente?.PrimerNombre?.FirstOrDefault() ?? '?')</div>
+                        <div>
+                            <div class="dm-nombre">@(presc.Paciente?.NombreCompleto ?? "Paciente")</div>
+                            <div class="dm-ident-small">@(presc.Paciente?.Identificacion ?? "—")</div>
+                        </div>
+                    </div>
+                    <div class="dm-presc-meta">
+                        <span class="dm-periodo-badge">@presc.PeriodDate.ToString("MMM yyyy")</span>
+                        <span class="dm-estado-badge @EstadoClase(presc.Estado)">@presc.Estado</span>
+                    </div>
+                </div>
+
+                <!-- Datos del snapshot -->
+                @if (snap != null)
+                {
+                    <div class="dm-snap-row">
+                        <div class="dm-snap-param">
+                            <span class="dm-snap-label">HB</span>
+                            <span class="@ValorClaseHb(snap.HbValor)">
+                                @(snap.HbValor.HasValue ? $"{snap.HbValor:F1} g/dL" : "—")
+                            </span>
+                        </div>
+                        <div class="dm-snap-param">
+                            <span class="dm-snap-label">Ferritina</span>
+                            <span class="@ValorClaseFerr(snap.FerritinaValor)">
+                                @(snap.FerritinaValor.HasValue ? $"{snap.FerritinaValor:F0} ng/mL" : "—")
+                            </span>
+                        </div>
+                        <div class="dm-snap-param">
+                            <span class="dm-snap-label">ISAT</span>
+                            <span class="@ValorClaseIsat(snap.SaturacionValor)">
+                                @(snap.SaturacionValor.HasValue ? $"{snap.SaturacionValor:F1}%" : "—")
+                            </span>
+                        </div>
+                        <div class="dm-snap-param">
+                            <span class="dm-snap-label">Hierro</span>
+                            <span class="dm-valor-neutro">
+                                @(snap.HierroValor.HasValue ? $"{snap.HierroValor:F0} ug/dL" : "—")
+                            </span>
+                        </div>
+                    </div>
+                }
+
+                <!-- Sugerencias del motor -->
+                <div class="dm-suggestions">
+                    <!-- EPO -->
+                    <div class="dm-sug-block dm-sug-epo">
+                        <div class="dm-sug-header">
+                            <span class="dm-sug-icon">💉</span>
+                            <span class="dm-sug-title">EPO</span>
+                            @if (!string.IsNullOrEmpty(presc.EpoAccion))
+                            {
+                                <span class="dm-accion-badge @AccionClase(presc.EpoAccion)">@presc.EpoAccion</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(presc.EpoDosisSugerida))
+                        {
+                            <div class="dm-sug-dosis">📋 @presc.EpoDosisSugerida</div>
+                        }
+                        @if (!string.IsNullOrEmpty(presc.EpoObservacion))
+                        {
+                            <div class="dm-sug-obs">@presc.EpoObservacion</div>
+                        }
+                        @if (string.IsNullOrEmpty(presc.EpoAccion) && string.IsNullOrEmpty(presc.EpoObservacion))
+                        {
+                            <div class="dm-sin-dato">Sin datos suficientes</div>
+                        }
+                    </div>
+
+                    <!-- Hierro IV -->
+                    <div class="dm-sug-block dm-sug-hierro">
+                        <div class="dm-sug-header">
+                            <span class="dm-sug-icon">🔬</span>
+                            <span class="dm-sug-title">Hierro IV</span>
+                            @if (!string.IsNullOrEmpty(presc.HierroAccion))
+                            {
+                                <span class="dm-accion-badge @AccionClase(presc.HierroAccion)">@presc.HierroAccion</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(presc.HierroDosisSugerida))
+                        {
+                            <div class="dm-sug-dosis">📋 @presc.HierroDosisSugerida</div>
+                        }
+                        @if (!string.IsNullOrEmpty(presc.HierroObservacion))
+                        {
+                            <div class="dm-sug-obs">@presc.HierroObservacion</div>
+                        }
+                        @if (string.IsNullOrEmpty(presc.HierroAccion) && string.IsNullOrEmpty(presc.HierroObservacion))
+                        {
+                            <div class="dm-sin-dato">Sin datos suficientes</div>
+                        }
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(presc.ObservacionesGenerales))
+                {
+                    <div class="dm-obs-generales">
+                        <span class="dm-obs-icon">📝</span> @presc.ObservacionesGenerales
+                    </div>
+                }
+
+                <!-- Acciones de revisión -->
+                @if (presc.Estado == EstadoPrescripcion.Pendiente)
+                {
+                    <div class="dm-presc-actions">
+                        <button class="dm-btn dm-btn-sm dm-btn-success"
+                                @onclick="() => AprobarAsync(presc)">
+                            ✓ Aprobar
+                        </button>
+                        <button class="dm-btn dm-btn-sm dm-btn-warning"
+                                @onclick="() => MarcarRevisadoAsync(presc)">
+                            👁 Marcar revisado
+                        </button>
+                        <button class="dm-btn dm-btn-sm dm-btn-danger-outline"
+                                @onclick="() => RechazarAsync(presc)">
+                            ✗ Rechazar
+                        </button>
+                        <a href="/historial-clinico/@presc.PacienteId" class="dm-btn dm-btn-sm dm-btn-outline">
+                            📈 Historial
+                        </a>
+                    </div>
+                }
+                else
+                {
+                    <div class="dm-presc-actions">
+                        <a href="/historial-clinico/@presc.PacienteId" class="dm-btn dm-btn-sm dm-btn-outline">
+                            📈 Ver historial
+                        </a>
+                        @if (presc.RevisadoAt.HasValue)
+                        {
+                            <span class="dm-revisado-info">
+                                Revisado @presc.RevisadoAt.Value.ToString("dd/MM/yyyy HH:mm")
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .dm-link-back { color: #0ea5e9; text-decoration: none; font-weight: 600; }
+    .dm-link-back:hover { text-decoration: underline; }
+    .dm-ident-badge { background: #eff6ff; color: #1d4ed8; padding: 0.15rem 0.5rem;
+                      border-radius: 4px; font-family: monospace; font-size: 0.85rem; font-weight: 600; }
+
+    .dm-filters-bar { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: flex-end; }
+    .dm-search-box { display: flex; align-items: center; gap: 0.5rem; background: white;
+                     border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.5rem 0.875rem;
+                     flex: 1; min-width: 240px; }
+    .dm-search-box:focus-within { border-color: #0ea5e9; }
+    .dm-search-input { border: none; outline: none; flex: 1; font-size: 0.9rem; background: transparent; }
+    .dm-filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .dm-filter-group label { font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; }
+    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.875rem;
+                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; }
+    .dm-select:focus { border-color: #0ea5e9; }
+
+    .dm-stats-row { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .dm-stat-chip { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
+                    border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+    .dm-stat-num { font-size: 1.1rem; font-weight: 800; }
+    .dm-stat-pending { background: #fef3c7; color: #92400e; }
+    .dm-stat-ok { background: #dcfce7; color: #166534; }
+    .dm-stat-info { background: #eff6ff; color: #1d4ed8; }
+    .dm-stat-error { background: #fee2e2; color: #991b1b; }
+
+    .dm-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 1.25rem; }
+
+    .dm-presc-card { background: white; border-radius: 12px; border: 1.5px solid #e2e8f0;
+                     box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden;
+                     display: flex; flex-direction: column; }
+    .dm-card-pending { border-left: 4px solid #f59e0b; }
+
+    .dm-presc-card-header { display: flex; justify-content: space-between; align-items: flex-start;
+                             padding: 1rem 1.25rem; border-bottom: 1px solid #f1f5f9; }
+    .dm-paciente-cell { display: flex; align-items: center; gap: 0.75rem; }
+    .dm-avatar { width: 36px; height: 36px; background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+                 border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                 color: white; font-weight: 700; font-size: 0.875rem; flex-shrink: 0; }
+    .dm-nombre { font-weight: 700; color: #1e293b; font-size: 0.9rem; }
+    .dm-ident-small { font-size: 0.75rem; color: #94a3b8; font-family: monospace; }
+    .dm-presc-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
+    .dm-periodo-badge { background: #f1f5f9; color: #475569; padding: 0.2rem 0.6rem;
+                        border-radius: 6px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+    .dm-estado-badge { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+    .dm-estado-pendiente { background: #fef3c7; color: #92400e; }
+    .dm-estado-revisado { background: #eff6ff; color: #1d4ed8; }
+    .dm-estado-aprobado { background: #dcfce7; color: #166534; }
+    .dm-estado-rechazado { background: #fee2e2; color: #991b1b; }
+
+    .dm-snap-row { display: flex; gap: 0.5rem; padding: 0.75rem 1.25rem; background: #f8fafc;
+                   border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; }
+    .dm-snap-param { display: flex; flex-direction: column; align-items: center; min-width: 80px;
+                     flex: 1; padding: 0.35rem 0.5rem; background: white; border-radius: 8px;
+                     border: 1px solid #e2e8f0; }
+    .dm-snap-label { font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+                     letter-spacing: 0.05em; margin-bottom: 0.2rem; }
+    .dm-valor-hb-ok { color: #059669; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-hb-bajo { color: #dc2626; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-hb-alto { color: #d97706; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-ferr-ok { color: #059669; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-ferr-bajo { color: #dc2626; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-ferr-alto { color: #d97706; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-isat-ok { color: #059669; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-isat-bajo { color: #dc2626; font-weight: 800; font-size: 0.9rem; }
+    .dm-valor-neutro { color: #374151; font-weight: 700; font-size: 0.9rem; }
+
+    .dm-suggestions { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .dm-sug-block { padding: 0.875rem 1.25rem; border-bottom: 1px solid #f1f5f9; }
+    .dm-sug-epo { border-right: 1px solid #f1f5f9; }
+    .dm-sug-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+    .dm-sug-icon { font-size: 1rem; }
+    .dm-sug-title { font-weight: 700; font-size: 0.8rem; color: #374151; text-transform: uppercase;
+                    letter-spacing: 0.03em; }
+    .dm-sug-dosis { font-size: 0.825rem; color: #1e293b; font-weight: 600; margin-bottom: 0.25rem; }
+    .dm-sug-obs { font-size: 0.78rem; color: #64748b; line-height: 1.4; }
+    .dm-sin-dato { font-size: 0.78rem; color: #cbd5e1; }
+
+    .dm-accion-badge { padding: 0.15rem 0.5rem; border-radius: 20px; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; }
+    .dm-accion-aumentar { background: #fee2e2; color: #dc2626; }
+    .dm-accion-mantener { background: #dcfce7; color: #166534; }
+    .dm-accion-reducir { background: #fef3c7; color: #d97706; }
+    .dm-accion-suspender { background: #f1f5f9; color: #64748b; }
+
+    .dm-obs-generales { padding: 0.625rem 1.25rem; font-size: 0.78rem; color: #64748b;
+                         background: #fffbeb; border-bottom: 1px solid #fef3c7; line-height: 1.45; }
+
+    .dm-presc-actions { display: flex; gap: 0.5rem; padding: 0.875rem 1.25rem; flex-wrap: wrap; align-items: center; }
+    .dm-revisado-info { font-size: 0.75rem; color: #94a3b8; margin-left: auto; }
+
+    .dm-btn { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
+              cursor: pointer; border: none; transition: all 0.15s; }
+    .dm-btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; border-radius: 6px; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; color: white; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .dm-btn-success { background: #059669; color: white; }
+    .dm-btn-success:hover { background: #047857; }
+    .dm-btn-warning { background: #d97706; color: white; }
+    .dm-btn-warning:hover { background: #b45309; }
+    .dm-btn-danger-outline { background: white; color: #dc2626; border: 1.5px solid #fca5a5; }
+    .dm-btn-danger-outline:hover { background: #fee2e2; }
+
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .dm-empty-desc { margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+    .dm-page-actions { display: flex; gap: 0.75rem; }
+
+    .dm-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
+                       padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
+                       align-items: center; font-size: 0.875rem; font-weight: 500; }
+</style>
+
+@code {
+    [Parameter] public Guid? PacienteId { get; set; }
+
+    private List<PrescripcionSugerida> ListaPrescripciones = new();
+    private List<SnapshotMensual> Snapshots = new();
+    private Paciente? PacienteSeleccionado;
+    private bool Cargando = true;
+    private string BusquedaTexto = string.Empty;
+    private int FiltroMes = DateTime.Now.Month;
+    private int FiltroAnio = DateTime.Now.Year;
+    private string FiltroEstado = string.Empty;
+    private Guid TenantId;
+    private string? ErrorMensaje;
+    private System.Threading.CancellationTokenSource? _debounce;
+
+    private IEnumerable<PrescripcionSugerida> PrescripcionesFiltradas =>
+        ListaPrescripciones.Where(p =>
+            (string.IsNullOrEmpty(FiltroEstado) || p.Estado == FiltroEstado) &&
+            (string.IsNullOrEmpty(BusquedaTexto) ||
+             (p.Paciente?.NombreCompleto?.Contains(BusquedaTexto, StringComparison.OrdinalIgnoreCase) ?? false) ||
+             (p.Paciente?.Identificacion?.Contains(BusquedaTexto, StringComparison.OrdinalIgnoreCase) ?? false)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+
+        if (PacienteId.HasValue)
+            PacienteSeleccionado = await PacienteRepo.GetByIdAsync(TenantId, PacienteId.Value);
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        Cargando = true;
+        ErrorMensaje = null;
+        StateHasChanged();
+
+        try
+        {
+            var periodDate = new DateTime(FiltroAnio, FiltroMes, 1, 0, 0, 0, DateTimeKind.Utc);
+
+            if (PacienteId.HasValue)
+            {
+                var presc = await PrescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(TenantId, PacienteId.Value, periodDate);
+                ListaPrescripciones = presc != null ? new List<PrescripcionSugerida> { presc } : new List<PrescripcionSugerida>();
+
+                var snap = await SnapshotRepo.GetByPacienteYPeriodoAsync(TenantId, PacienteId.Value, periodDate);
+                Snapshots = snap != null ? new List<SnapshotMensual> { snap } : new List<SnapshotMensual>();
+            }
+            else
+            {
+                // GetByPeriodoAsync devuelve todos los estados; filtramos localmente por estado y búsqueda
+                ListaPrescripciones = await PrescripcionRepo.GetByPeriodoAsync(TenantId, periodDate);
+                Snapshots = await SnapshotRepo.GetByPeriodoAsync(TenantId, periodDate);
+            }
+        }
+        catch (Exception ex)
+        {
+            ListaPrescripciones = new();
+            ErrorMensaje = ex.Message;
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private async Task AprobarAsync(PrescripcionSugerida presc)
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        presc.Estado = EstadoPrescripcion.Aprobado;
+        presc.RevisadoAt = DateTime.UtcNow;
+        if (Guid.TryParse(userId, out var uid)) presc.RevisadoPor = uid;
+        await PrescripcionRepo.UpsertSugeridaAsync(presc);
+        StateHasChanged();
+    }
+
+    private async Task MarcarRevisadoAsync(PrescripcionSugerida presc)
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        presc.Estado = EstadoPrescripcion.Revisado;
+        presc.RevisadoAt = DateTime.UtcNow;
+        if (Guid.TryParse(userId, out var uid)) presc.RevisadoPor = uid;
+        await PrescripcionRepo.UpsertSugeridaAsync(presc);
+        StateHasChanged();
+    }
+
+    private async Task RechazarAsync(PrescripcionSugerida presc)
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        presc.Estado = EstadoPrescripcion.Rechazado;
+        presc.RevisadoAt = DateTime.UtcNow;
+        if (Guid.TryParse(userId, out var uid)) presc.RevisadoPor = uid;
+        await PrescripcionRepo.UpsertSugeridaAsync(presc);
+        StateHasChanged();
+    }
+
+    private async Task BuscarDebounced()
+    {
+        _debounce?.Cancel();
+        _debounce = new System.Threading.CancellationTokenSource();
+        var token = _debounce.Token;
+        await Task.Delay(400, token).ContinueWith(async t =>
+        {
+            if (t.IsCompletedSuccessfully)
+                await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private static string EstadoClase(string estado) => estado switch
+    {
+        "PENDIENTE" => "dm-estado-pendiente",
+        "REVISADO" => "dm-estado-revisado",
+        "APROBADO" => "dm-estado-aprobado",
+        "RECHAZADO" => "dm-estado-rechazado",
+        _ => ""
+    };
+
+    private static string AccionClase(string accion) => accion switch
+    {
+        "AUMENTAR" => "dm-accion-aumentar",
+        "MANTENER" => "dm-accion-mantener",
+        "REDUCIR" => "dm-accion-reducir",
+        "SUSPENDER" => "dm-accion-suspender",
+        _ => ""
+    };
+
+    private static string ValorClaseHb(decimal? v) =>
+        !v.HasValue ? "dm-valor-neutro" :
+        v < 10 ? "dm-valor-hb-bajo" : v > 13 ? "dm-valor-hb-alto" : "dm-valor-hb-ok";
+
+    private static string ValorClaseFerr(decimal? v) =>
+        !v.HasValue ? "dm-valor-neutro" :
+        v < 200 ? "dm-valor-ferr-bajo" : v > 500 ? "dm-valor-ferr-alto" : "dm-valor-ferr-ok";
+
+    private static string ValorClaseIsat(decimal? v) =>
+        !v.HasValue ? "dm-valor-neutro" :
+        v < 20 ? "dm-valor-isat-bajo" : "dm-valor-isat-ok";
+}

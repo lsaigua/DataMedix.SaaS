@@ -1,0 +1,569 @@
+@page "/rangos-prescriba"
+@attribute [Authorize(Roles = "SUPERADMIN,ADMIN,MEDICO")]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+
+@inject IRangoPreescribaRepository RangoRepo
+@inject IParametroClinicoRepository ParametroRepo
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Rangos a Prescribir | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Rangos a Prescribir</h1>
+        <p class="dm-page-subtitle">Reglas clínicas que guían el motor de prescripción de EPO y Hierro IV</p>
+    </div>
+    <div class="dm-page-actions">
+        <button class="dm-btn dm-btn-primary" @onclick="AbrirNuevoRango" disabled="@(!ParametrosClinicos.Any())">
+            + Nuevo Rango
+        </button>
+    </div>
+</div>
+
+<!-- Info clínica -->
+<div class="dm-info-banner">
+    <span class="dm-info-icon">ℹ️</span>
+    <div>
+        <strong>Motor de decisión clínica.</strong>
+        El sistema evalúa cada rango en orden ascendente y aplica el primero que coincida con el valor del parámetro.
+        Los rangos globales (sin tenant) son los predeterminados; los rangos del tenant los sobrescriben.
+    </div>
+</div>
+
+@if (Cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando rangos...</p>
+    </div>
+}
+else if (!RangosPorParametro.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">⚙️</div>
+        <h3 class="dm-empty-title">Sin rangos configurados</h3>
+        <p class="dm-empty-desc">Los rangos predeterminados se cargan con el script SQL de seed data.</p>
+    </div>
+}
+else
+{
+    @foreach (var grupo in RangosPorParametro)
+    {
+        <div class="dm-param-section">
+            <div class="dm-param-header">
+                <div class="dm-param-info">
+                    <span class="dm-param-codigo @ColorCodigo(grupo.Key)">@grupo.Key</span>
+                    <span class="dm-param-nombre">@(ParametrosClinicos.FirstOrDefault(p => p.Codigo == grupo.Key)?.Nombre ?? grupo.Key)</span>
+                    <span class="dm-param-count">@grupo.Value.Count rango(s)</span>
+                </div>
+                <button class="dm-btn dm-btn-sm dm-btn-outline"
+                        @onclick="() => AbrirNuevoRangoParaParametro(grupo.Key)">
+                    + Agregar rango
+                </button>
+            </div>
+
+            <div class="dm-table-responsive dm-card">
+                <table class="dm-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Nombre / Descripción</th>
+                            <th class="dm-th-center">Valor Mínimo</th>
+                            <th class="dm-th-center">Valor Máximo</th>
+                            <th>Acción</th>
+                            <th>Medicamento</th>
+                            <th>Dosis Sugerida</th>
+                            <th class="dm-th-center">Ajuste %</th>
+                            <th>Alcance</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rango in grupo.Value.OrderBy(r => r.Orden))
+                        {
+                            <tr class="@(!rango.Activo ? "dm-row-inactivo" : "")">
+                                <td class="dm-td-orden">@rango.Orden</td>
+                                <td>
+                                    <div class="dm-rango-nombre">@rango.Nombre</div>
+                                    @if (!string.IsNullOrEmpty(rango.Descripcion))
+                                    {
+                                        <div class="dm-rango-desc">@rango.Descripcion</div>
+                                    }
+                                </td>
+                                <td class="dm-td-center">
+                                    @if (rango.ValorMinimo.HasValue)
+                                    {
+                                        <span class="dm-valor-badge">≥ @rango.ValorMinimo.Value.ToString("G6")</span>
+                                    }
+                                    else { <span class="dm-sin-limite">Sin mín.</span> }
+                                </td>
+                                <td class="dm-td-center">
+                                    @if (rango.ValorMaximo.HasValue)
+                                    {
+                                        <span class="dm-valor-badge">&lt; @rango.ValorMaximo.Value.ToString("G6")</span>
+                                    }
+                                    else { <span class="dm-sin-limite">Sin máx.</span> }
+                                </td>
+                                <td>
+                                    <span class="dm-accion-badge @AccionClase(rango.Accion)">@rango.Accion</span>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(rango.Medicamento))
+                                    {
+                                        <span class="dm-med-badge">@rango.Medicamento</span>
+                                    }
+                                    else { <span class="dm-sin-dato">—</span> }
+                                </td>
+                                <td class="dm-td-dosis">
+                                    @if (!string.IsNullOrEmpty(rango.DosisSugerida))
+                                    {
+                                        <span title="@rango.DosisSugerida">
+                                            @Truncate(rango.DosisSugerida, 40)
+                                        </span>
+                                    }
+                                    else { <span class="dm-sin-dato">—</span> }
+                                </td>
+                                <td class="dm-td-center">
+                                    @if (rango.AjustePorcentaje.HasValue)
+                                    {
+                                        <span class="@(rango.AjustePorcentaje > 0 ? "dm-pct-pos" : rango.AjustePorcentaje < 0 ? "dm-pct-neg" : "dm-pct-cero")">
+                                            @(rango.AjustePorcentaje > 0 ? "+" : "")@rango.AjustePorcentaje.Value.ToString("F0")%
+                                        </span>
+                                    }
+                                    else { <span class="dm-sin-dato">—</span> }
+                                </td>
+                                <td>
+                                    @if (rango.TenantId.HasValue)
+                                    {
+                                        <span class="dm-scope-badge dm-scope-tenant">Este tenant</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="dm-scope-badge dm-scope-global">Global</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="@(rango.Activo ? "dm-activo" : "dm-inactivo")">
+                                        @(rango.Activo ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="dm-acciones">
+                                        <button class="dm-btn-icon" @onclick="() => EditarRango(rango)"
+                                                title="Editar">✏️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            @if (!string.IsNullOrEmpty(rango.Observacion))
+                            {
+                                <tr class="dm-row-obs">
+                                    <td colspan="11">
+                                        <span class="dm-obs-inline">📝 @rango.Observacion</span>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+<!-- Modal: Crear / Editar rango -->
+@if (MostrarModal)
+{
+    <div class="dm-modal-overlay" @onclick="CerrarModal">
+        <div class="dm-modal" @onclick:stopPropagation>
+            <div class="dm-modal-header">
+                <h2>@(RangoEditando.Id == Guid.Empty ? "Nuevo Rango" : "Editar Rango")</h2>
+                <button class="dm-modal-close" @onclick="CerrarModal">✕</button>
+            </div>
+            <div class="dm-modal-body">
+                <div class="dm-form-grid">
+                    <div class="dm-form-group dm-form-full">
+                        <label>Parámetro clínico *</label>
+                        <select @bind="RangoEditando.ParametroClinicoId" class="dm-select" disabled="@(RangoEditando.Id != Guid.Empty)">
+                            <option value="">— Seleccione —</option>
+                            @foreach (var p in ParametrosClinicos)
+                            {
+                                <option value="@p.Id">@p.Codigo — @p.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="dm-form-group dm-form-full">
+                        <label>Nombre del rango *</label>
+                        <input type="text" @bind="RangoEditando.Nombre" class="dm-input"
+                               placeholder="Ej: HB < 9 g/dL → Aumentar EPO 25%" />
+                    </div>
+                    <div class="dm-form-group dm-form-full">
+                        <label>Descripción</label>
+                        <input type="text" @bind="RangoEditando.Descripcion" class="dm-input"
+                               placeholder="Detalle clínico adicional" />
+                    </div>
+
+                    <div class="dm-form-group">
+                        <label>Valor mínimo (≥)</label>
+                        <input type="number" step="0.01" @bind="ValorMinimoStr" class="dm-input"
+                               placeholder="Sin límite inferior" />
+                    </div>
+                    <div class="dm-form-group">
+                        <label>Valor máximo (&lt;)</label>
+                        <input type="number" step="0.01" @bind="ValorMaximoStr" class="dm-input"
+                               placeholder="Sin límite superior" />
+                    </div>
+
+                    <div class="dm-form-group">
+                        <label>Acción *</label>
+                        <select @bind="RangoEditando.Accion" class="dm-select">
+                            <option value="">— Seleccione —</option>
+                            <option value="AUMENTAR">AUMENTAR</option>
+                            <option value="MANTENER">MANTENER</option>
+                            <option value="REDUCIR">REDUCIR</option>
+                            <option value="SUSPENDER">SUSPENDER</option>
+                        </select>
+                    </div>
+                    <div class="dm-form-group">
+                        <label>Medicamento</label>
+                        <select @bind="RangoEditando.Medicamento" class="dm-select">
+                            <option value="">— Todos —</option>
+                            <option value="EPO">EPO</option>
+                            <option value="HIERRO_IV">HIERRO IV</option>
+                            <option value="AMBOS">AMBOS</option>
+                        </select>
+                    </div>
+
+                    <div class="dm-form-group dm-form-full">
+                        <label>Dosis sugerida</label>
+                        <input type="text" @bind="RangoEditando.DosisSugerida" class="dm-input"
+                               placeholder="Ej: Mantener dosis actual. Revaluar en 4 semanas." />
+                    </div>
+
+                    <div class="dm-form-group">
+                        <label>Ajuste porcentaje (%)</label>
+                        <input type="number" step="1" @bind="AjusteStr" class="dm-input"
+                               placeholder="Ej: +25 o -10" />
+                    </div>
+                    <div class="dm-form-group">
+                        <label>Orden (prioridad)</label>
+                        <input type="number" min="1" max="999" @bind="RangoEditando.Orden" class="dm-input" />
+                    </div>
+
+                    <div class="dm-form-group dm-form-full">
+                        <label>Observación clínica</label>
+                        <textarea @bind="RangoEditando.Observacion" class="dm-textarea" rows="2"
+                                  placeholder="Nota clínica que se mostrará en la prescripción sugerida"></textarea>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(ErrorModal))
+                    {
+                        <div class="dm-form-full dm-alert-error">@ErrorModal</div>
+                    }
+                </div>
+            </div>
+            <div class="dm-modal-footer">
+                <button class="dm-btn dm-btn-outline" @onclick="CerrarModal">Cancelar</button>
+                <button class="dm-btn dm-btn-primary" @onclick="GuardarRangoAsync" disabled="@Guardando">
+                    @(Guardando ? "Guardando..." : "Guardar rango")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+
+    .dm-info-banner { display: flex; gap: 0.75rem; background: #eff6ff; border: 1px solid #bfdbfe;
+                      border-radius: 10px; padding: 0.875rem 1.25rem; margin-bottom: 1.5rem;
+                      font-size: 0.875rem; color: #1e40af; line-height: 1.5; }
+    .dm-info-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.05rem; }
+
+    .dm-param-section { margin-bottom: 1.75rem; }
+    .dm-param-header { display: flex; justify-content: space-between; align-items: center;
+                       margin-bottom: 0.75rem; }
+    .dm-param-info { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .dm-param-codigo { padding: 0.25rem 0.75rem; border-radius: 6px; font-weight: 800;
+                       font-size: 0.875rem; font-family: monospace; }
+    .dm-codigo-hb { background: #fce7f3; color: #be185d; }
+    .dm-codigo-fe { background: #fef3c7; color: #92400e; }
+    .dm-codigo-ferr { background: #ecfdf5; color: #065f46; }
+    .dm-codigo-isat { background: #eff6ff; color: #1d4ed8; }
+    .dm-codigo-default { background: #f1f5f9; color: #475569; }
+    .dm-param-nombre { font-size: 1rem; font-weight: 600; color: #1e293b; }
+    .dm-param-count { font-size: 0.8rem; color: #94a3b8; background: #f1f5f9;
+                      padding: 0.15rem 0.5rem; border-radius: 20px; }
+
+    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden; }
+    .dm-table-responsive { overflow-x: auto; }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
+                   padding: 0.75rem 0.875rem; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+                   font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dm-table td { padding: 0.7rem 0.875rem; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+    .dm-table tbody tr:last-child td { border-bottom: none; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-th-center { text-align: center; }
+    .dm-td-center { text-align: center; }
+    .dm-td-orden { color: #94a3b8; font-weight: 700; font-family: monospace; }
+    .dm-td-dosis { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dm-row-inactivo { opacity: 0.5; }
+    .dm-row-obs td { padding: 0 0.875rem 0.5rem 0.875rem !important; border-bottom: none !important; }
+    .dm-obs-inline { font-size: 0.78rem; color: #64748b; }
+
+    .dm-rango-nombre { font-weight: 600; color: #1e293b; }
+    .dm-rango-desc { font-size: 0.78rem; color: #64748b; margin-top: 0.15rem; }
+
+    .dm-valor-badge { background: #f1f5f9; color: #374151; padding: 0.2rem 0.5rem;
+                      border-radius: 6px; font-size: 0.8rem; font-weight: 700; font-family: monospace; }
+    .dm-sin-limite { color: #cbd5e1; font-size: 0.8rem; }
+    .dm-sin-dato { color: #cbd5e1; font-size: 0.82rem; }
+
+    .dm-accion-badge { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.72rem; font-weight: 800; }
+    .dm-accion-aumentar { background: #fee2e2; color: #dc2626; }
+    .dm-accion-mantener { background: #dcfce7; color: #166534; }
+    .dm-accion-reducir { background: #fef3c7; color: #d97706; }
+    .dm-accion-suspender { background: #f1f5f9; color: #64748b; }
+    .dm-accion-default { background: #f1f5f9; color: #64748b; }
+
+    .dm-med-badge { background: #ede9fe; color: #6d28d9; padding: 0.15rem 0.5rem;
+                    border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+
+    .dm-pct-pos { color: #059669; font-weight: 700; }
+    .dm-pct-neg { color: #dc2626; font-weight: 700; }
+    .dm-pct-cero { color: #64748b; font-weight: 700; }
+
+    .dm-scope-badge { padding: 0.15rem 0.5rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+    .dm-scope-global { background: #f1f5f9; color: #475569; }
+    .dm-scope-tenant { background: #eff6ff; color: #1d4ed8; }
+
+    .dm-activo { color: #059669; font-weight: 600; font-size: 0.82rem; }
+    .dm-inactivo { color: #94a3b8; font-size: 0.82rem; }
+
+    .dm-acciones { display: flex; gap: 0.35rem; }
+    .dm-btn-icon { font-size: 0.9rem; padding: 0.2rem 0.35rem; border-radius: 6px;
+                   border: none; background: transparent; cursor: pointer; transition: background 0.15s; }
+    .dm-btn-icon:hover { background: #f1f5f9; }
+
+    .dm-btn { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
+              cursor: pointer; border: none; transition: all 0.15s; }
+    .dm-btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; border-radius: 6px; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover:not(:disabled) { background: #0284c7; }
+    .dm-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover:not(:disabled) { background: #f8fafc; }
+    .dm-btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .dm-page-actions { display: flex; gap: 0.75rem; }
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .dm-empty-desc { font-size: 0.9rem; }
+
+    /* Modal */
+    .dm-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000;
+                         display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .dm-modal { background: white; border-radius: 16px; width: 100%; max-width: 700px; max-height: 90vh;
+                display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .dm-modal-header { display: flex; justify-content: space-between; align-items: center;
+                       padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+    .dm-modal-header h2 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-modal-close { background: none; border: none; font-size: 1.25rem; cursor: pointer;
+                      color: #94a3b8; padding: 0.25rem; border-radius: 4px; }
+    .dm-modal-close:hover { background: #f1f5f9; color: #374151; }
+    .dm-modal-body { flex: 1; overflow-y: auto; padding: 1.5rem; }
+    .dm-modal-footer { display: flex; justify-content: flex-end; gap: 0.75rem;
+                       padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; }
+
+    /* Form */
+    .dm-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .dm-form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+    .dm-form-full { grid-column: 1 / -1; }
+    .dm-form-group label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+    .dm-input { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                font-size: 0.875rem; color: #374151; outline: none; width: 100%; box-sizing: border-box; }
+    .dm-input:focus { border-color: #0ea5e9; }
+    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; width: 100%; }
+    .dm-select:focus { border-color: #0ea5e9; }
+    .dm-textarea { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                   font-size: 0.875rem; color: #374151; outline: none; width: 100%; resize: vertical;
+                   box-sizing: border-box; font-family: inherit; }
+    .dm-textarea:focus { border-color: #0ea5e9; }
+    .dm-alert-error { background: #fee2e2; color: #991b1b; padding: 0.75rem 1rem;
+                      border-radius: 8px; font-size: 0.875rem; }
+</style>
+
+@code {
+    private Dictionary<string, List<RangoPrescriba>> RangosPorParametro = new();
+    private List<ParametroClinico> ParametrosClinicos = new();
+    private bool Cargando = true;
+    private bool MostrarModal = false;
+    private bool Guardando = false;
+    private string ErrorModal = string.Empty;
+    private RangoPrescriba RangoEditando = new();
+    private Guid TenantId;
+
+    // Binding helpers para nullable decimals
+    private string ValorMinimoStr
+    {
+        get => RangoEditando.ValorMinimo?.ToString("G6") ?? string.Empty;
+        set => RangoEditando.ValorMinimo = decimal.TryParse(value, out var v) ? v : null;
+    }
+    private string ValorMaximoStr
+    {
+        get => RangoEditando.ValorMaximo?.ToString("G6") ?? string.Empty;
+        set => RangoEditando.ValorMaximo = decimal.TryParse(value, out var v) ? v : null;
+    }
+    private string AjusteStr
+    {
+        get => RangoEditando.AjustePorcentaje?.ToString("F0") ?? string.Empty;
+        set => RangoEditando.AjustePorcentaje = decimal.TryParse(value, out var v) ? v : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        Cargando = true;
+        StateHasChanged();
+        try
+        {
+            ParametrosClinicos = await ParametroRepo.GetAllAsync();
+            var rangos = await RangoRepo.GetAllAsync(TenantId);
+            RangosPorParametro = rangos
+                .GroupBy(r => r.ParametroClinico?.Codigo ?? "?")
+                .ToDictionary(g => g.Key, g => g.ToList());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando rangos: {ex.Message}");
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private void AbrirNuevoRango()
+    {
+        RangoEditando = new RangoPrescriba { TenantId = TenantId, Orden = 50, Activo = true };
+        ErrorModal = string.Empty;
+        MostrarModal = true;
+    }
+
+    private void AbrirNuevoRangoParaParametro(string codigoParametro)
+    {
+        var param = ParametrosClinicos.FirstOrDefault(p => p.Codigo == codigoParametro);
+        RangoEditando = new RangoPrescriba
+        {
+            TenantId = TenantId,
+            ParametroClinicoId = param?.Id ?? Guid.Empty,
+            Orden = 50,
+            Activo = true
+        };
+        ErrorModal = string.Empty;
+        MostrarModal = true;
+    }
+
+    private void EditarRango(RangoPrescriba rango)
+    {
+        // Clonar para no modificar la lista directamente
+        RangoEditando = new RangoPrescriba
+        {
+            Id = rango.Id,
+            TenantId = rango.TenantId,
+            ParametroClinicoId = rango.ParametroClinicoId,
+            Nombre = rango.Nombre,
+            Descripcion = rango.Descripcion,
+            ValorMinimo = rango.ValorMinimo,
+            ValorMaximo = rango.ValorMaximo,
+            Accion = rango.Accion,
+            Medicamento = rango.Medicamento,
+            DosisSugerida = rango.DosisSugerida,
+            AjustePorcentaje = rango.AjustePorcentaje,
+            Observacion = rango.Observacion,
+            Orden = rango.Orden,
+            VigenteDesdé = rango.VigenteDesdé,
+            VigenteHasta = rango.VigenteHasta,
+            Activo = rango.Activo
+        };
+        ErrorModal = string.Empty;
+        MostrarModal = true;
+    }
+
+    private async Task GuardarRangoAsync()
+    {
+        ErrorModal = string.Empty;
+
+        if (RangoEditando.ParametroClinicoId == Guid.Empty)
+        { ErrorModal = "Seleccione un parámetro clínico."; return; }
+
+        if (string.IsNullOrWhiteSpace(RangoEditando.Nombre))
+        { ErrorModal = "El nombre del rango es requerido."; return; }
+
+        if (string.IsNullOrWhiteSpace(RangoEditando.Accion))
+        { ErrorModal = "Seleccione una acción."; return; }
+
+        Guardando = true;
+        try
+        {
+            await RangoRepo.UpsertAsync(RangoEditando);
+            MostrarModal = false;
+            await CargarAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorModal = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            Guardando = false;
+        }
+    }
+
+    private void CerrarModal()
+    {
+        MostrarModal = false;
+        ErrorModal = string.Empty;
+    }
+
+    private static string ColorCodigo(string codigo) => codigo switch
+    {
+        "HB" => "dm-codigo-hb",
+        "FE" => "dm-codigo-fe",
+        "FERR" => "dm-codigo-ferr",
+        "ISAT" => "dm-codigo-isat",
+        _ => "dm-codigo-default"
+    };
+
+    private static string AccionClase(string accion) => accion switch
+    {
+        "AUMENTAR" => "dm-accion-aumentar",
+        "MANTENER" => "dm-accion-mantener",
+        "REDUCIR" => "dm-accion-reducir",
+        "SUSPENDER" => "dm-accion-suspender",
+        _ => "dm-accion-default"
+    };
+
+    private static string Truncate(string s, int max) =>
+        s.Length > max ? s[..max] + "…" : s;
+}

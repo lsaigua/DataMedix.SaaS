@@ -1,32 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Text;
-
+// Entidad removida del modelo. Reemplazada por LoteImportacion + ResultadoLaboratorio.
+// Mantenida como stub para evitar errores de compilación en código legacy.
 namespace DataMedix.Domain.Entities
 {
-    [Table("ordenclinica")]
+    [Obsolete("Use LoteImportacion instead")]
     public class OrdenClinica
     {
         public Guid IdOrdenClinica { get; set; }
-
-        public Guid IdEmpresa { get; private set; }
-        public Guid IdPaciente { get; private set; }
-        public string NumeroOrden { get; set; } = null!;
-        public DateTime FechaOrden { get; set; } 
-
-        public string Estado { get; set; } = null!;
-        public string? Prioridad { get; set; }   // NULLABLE
-
-         public DateTime FechaCreacion { get; set; }
-        private OrdenClinica() { }
-
-        public OrdenClinica(Guid empresaId, Guid pacienteId, DateTime fecha)
-        {
-            IdOrdenClinica = Guid.NewGuid();
-            IdEmpresa = empresaId;
-            IdPaciente = pacienteId;
-            FechaOrden = fecha;
-        }
+        public Guid IdEmpresa { get; set; }
+        public Guid IdPaciente { get; set; }
+        public DateTime FechaOrden { get; set; }
+        public string Estado { get; set; } = string.Empty;
     }
 }

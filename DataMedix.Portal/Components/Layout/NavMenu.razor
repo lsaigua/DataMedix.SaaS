@@ -1,41 +1,278 @@
-﻿<div class="dm-nav-root">
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+
+<CascadingAuthenticationState>
+<div class="dm-nav-root">
     <div class="dm-nav-header">
-        <div class="dm-nav-logo">MD</div>
+        <img src="images/datamedix-logo.png" alt="DataMedix" class="dm-nav-logo-img"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+        <div class="dm-nav-logo-fallback">DM</div>
         <div class="dm-nav-brand">
-            <span class="dm-nav-brand-title">MedixData</span>
-            <span class="dm-nav-brand-subtitle">Clinical SaaS</span>
+            <span class="dm-nav-brand-title">DataMedix</span>
+            <span class="dm-nav-brand-subtitle">Plataforma Clínica SaaS</span>
         </div>
     </div>
 
     <nav class="dm-nav-menu">
+        <!-- GENERAL -->
         <div class="dm-nav-section-title">GENERAL</div>
 
-        <NavLink href="/" Match="NavLinkMatch.All" class="dm-nav-link">
+        <NavLink href="/dashboard" class="dm-nav-link" Match="NavLinkMatch.All">
+            <span class="dm-nav-icon">🏠</span>
             <span>Dashboard</span>
         </NavLink>
 
+        <!-- LABORATORIO -->
         <div class="dm-nav-section-title">LABORATORIO</div>
 
         <NavLink href="/laboratorio/importar" class="dm-nav-link">
-            <span>Importar Resultados</span>
+            <span class="dm-nav-icon">📤</span>
+            <span>Cargar Resultados</span>
+        </NavLink>
+
+        <NavLink href="/historial-clinico" class="dm-nav-link">
+            <span class="dm-nav-icon">📈</span>
+            <span>Historial Clínico</span>
         </NavLink>
 
         <NavLink href="/laboratorio/historial" class="dm-nav-link">
-            <span>Historial de Cargas</span>
+            <span class="dm-nav-icon">🔬</span>
+            <span>Resultados Crudos</span>
         </NavLink>
 
-        <div class="dm-nav-section-title">GESTIÓN</div>
+        <!-- CLÍNICO -->
+        <div class="dm-nav-section-title">CLÍNICO</div>
 
-        <NavLink href="/reportes" class="dm-nav-link">
-            <span>Reportes</span>
+        <NavLink href="/pacientes" class="dm-nav-link">
+            <span class="dm-nav-icon">👥</span>
+            <span>Pacientes</span>
         </NavLink>
 
-        <NavLink href="/configuracion" class="dm-nav-link">
-            <span>Configuración</span>
+        <NavLink href="/prescripciones" class="dm-nav-link">
+            <span class="dm-nav-icon">💊</span>
+            <span>Prescripciones</span>
         </NavLink>
+
+        <NavLink href="/rangos-prescriba" class="dm-nav-link">
+            <span class="dm-nav-icon">⚙️</span>
+            <span>Rangos a Prescribir</span>
+        </NavLink>
+
+        <!-- ADMINISTRACIÓN -->
+        <AuthorizeView Roles="SUPERADMIN,ADMIN">
+            <Authorized>
+                <div class="dm-nav-section-title">ADMINISTRACIÓN</div>
+
+                <NavLink href="/cargas" class="dm-nav-link">
+                    <span class="dm-nav-icon">📦</span>
+                    <span>Lotes de Carga</span>
+                </NavLink>
+
+                <NavLink href="/reportes" class="dm-nav-link">
+                    <span class="dm-nav-icon">📊</span>
+                    <span>Reportes</span>
+                </NavLink>
+
+                <NavLink href="/usuarios" class="dm-nav-link">
+                    <span class="dm-nav-icon">👤</span>
+                    <span>Usuarios</span>
+                </NavLink>
+
+                <NavLink href="/configuracion" class="dm-nav-link">
+                    <span class="dm-nav-icon">🔧</span>
+                    <span>Configuración</span>
+                </NavLink>
+
+                <NavLink href="/auditoria" class="dm-nav-link">
+                    <span class="dm-nav-icon">📋</span>
+                    <span>Auditoría</span>
+                </NavLink>
+            </Authorized>
+        </AuthorizeView>
     </nav>
 
     <div class="dm-nav-footer">
-        <a href="/auth/logout" class="dm-nav-logout">Cerrar sesión</a>
+        <AuthorizeView>
+            <Authorized>
+                <div class="dm-nav-user">
+                    <div class="dm-nav-user-avatar">
+                        @(context.User.FindFirst("nombre_completo")?.Value?.FirstOrDefault().ToString().ToUpper() ?? "?")
+                    </div>
+                    <div class="dm-nav-user-info">
+                        <span class="dm-nav-user-name">
+                            @(context.User.FindFirst("nombre_completo")?.Value ?? context.User.FindFirst(ClaimTypes.Name)?.Value ?? "Usuario")
+                        </span>
+                        <span class="dm-nav-user-role">
+                            @(context.User.FindFirst(ClaimTypes.Role)?.Value ?? "—")
+                        </span>
+                    </div>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+        <a href="/auth/logout" class="dm-nav-logout">
+            <span>🚪</span> Cerrar sesión
+        </a>
     </div>
 </div>
+</CascadingAuthenticationState>
+
+<style>
+    .dm-nav-root {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: #0f172a;
+        color: #e2e8f0;
+        overflow: hidden;
+    }
+
+    .dm-nav-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.25rem 1.25rem 1rem;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .dm-nav-logo-img {
+        width: 36px;
+        height: 36px;
+        object-fit: contain;
+        border-radius: 8px;
+    }
+
+    .dm-nav-logo-fallback {
+        display: none;
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+        border-radius: 8px;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 0.9rem;
+        color: white;
+        flex-shrink: 0;
+    }
+
+    .dm-nav-brand { display: flex; flex-direction: column; }
+    .dm-nav-brand-title { font-weight: 800; font-size: 0.95rem; color: white; }
+    .dm-nav-brand-subtitle { font-size: 0.68rem; color: #64748b; }
+
+    .dm-nav-menu {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 0.75rem;
+        scrollbar-width: thin;
+        scrollbar-color: #334155 transparent;
+    }
+
+    .dm-nav-section-title {
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #475569;
+        letter-spacing: 0.08em;
+        padding: 1rem 0.75rem 0.35rem;
+        text-transform: uppercase;
+    }
+
+    .dm-nav-link {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.6rem 0.75rem;
+        border-radius: 8px;
+        color: #94a3b8;
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        margin-bottom: 0.15rem;
+    }
+
+    .dm-nav-link:hover {
+        background: rgba(255,255,255,0.06);
+        color: #e2e8f0;
+    }
+
+    .dm-nav-link.active {
+        background: rgba(14, 165, 233, 0.15);
+        color: #38bdf8;
+        font-weight: 600;
+    }
+
+    .dm-nav-icon {
+        font-size: 1rem;
+        width: 20px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+
+    .dm-nav-footer {
+        padding: 0.875rem 1rem;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .dm-nav-user {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+    }
+
+    .dm-nav-user-avatar {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.8rem;
+        color: white;
+        flex-shrink: 0;
+    }
+
+    .dm-nav-user-info {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .dm-nav-user-name {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #e2e8f0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .dm-nav-user-role {
+        font-size: 0.65rem;
+        color: #64748b;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+
+    .dm-nav-logout {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #64748b;
+        text-decoration: none;
+        font-size: 0.8rem;
+        font-weight: 500;
+        padding: 0.375rem 0.75rem;
+        border-radius: 8px;
+        transition: all 0.15s;
+    }
+
+    .dm-nav-logout:hover {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+    }
+</style>

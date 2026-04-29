@@ -1,0 +1,623 @@
+@page "/cargas"
+@attribute [Authorize(Roles = "SUPERADMIN,ADMIN,OPERADOR")]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+
+@inject ILoteImportacionRepository LoteRepo
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Lotes de Carga | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Lotes de Importación</h1>
+        <p class="dm-page-subtitle">Historial de archivos Excel procesados por el sistema</p>
+    </div>
+    <div class="dm-page-actions">
+        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Nueva Carga</a>
+    </div>
+</div>
+
+<!-- Stats summary -->
+<div class="dm-stats-row">
+    <div class="dm-stat-card">
+        <div class="dm-stat-num dm-stat-num-blue">@Lotes.Count</div>
+        <div class="dm-stat-label">Total lotes</div>
+    </div>
+    <div class="dm-stat-card">
+        <div class="dm-stat-num dm-stat-num-green">@Lotes.Count(l => l.Estado == EstadoLote.Completado)</div>
+        <div class="dm-stat-label">Completados</div>
+    </div>
+    <div class="dm-stat-card">
+        <div class="dm-stat-num dm-stat-num-yellow">@Lotes.Count(l => l.Estado == EstadoLote.Procesando || l.Estado == EstadoLote.Pendiente)</div>
+        <div class="dm-stat-label">En proceso</div>
+    </div>
+    <div class="dm-stat-card">
+        <div class="dm-stat-num dm-stat-num-red">@Lotes.Count(l => l.Estado == EstadoLote.Error)</div>
+        <div class="dm-stat-label">Con error</div>
+    </div>
+    <div class="dm-stat-card">
+        <div class="dm-stat-num dm-stat-num-blue">@Lotes.Sum(l => l.FilasValidas)</div>
+        <div class="dm-stat-label">Registros importados</div>
+    </div>
+</div>
+
+<!-- Filtro de estado -->
+<div class="dm-filters-bar">
+    <div class="dm-filter-group">
+        <label>Estado</label>
+        <select @bind="FiltroEstado" class="dm-select">
+            <option value="">Todos</option>
+            <option value="COMPLETADO">Completado</option>
+            <option value="PROCESANDO">Procesando</option>
+            <option value="PENDIENTE">Pendiente</option>
+            <option value="ERROR">Con error</option>
+            <option value="CANCELADO">Cancelado</option>
+        </select>
+    </div>
+</div>
+
+@if (Cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando lotes...</p>
+    </div>
+}
+else if (!LotesFiltrados.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">📦</div>
+        <h3 class="dm-empty-title">Sin lotes de importación</h3>
+        <p class="dm-empty-desc">Aún no se han procesado archivos en este tenant.</p>
+        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar primer archivo</a>
+    </div>
+}
+else
+{
+    <div class="dm-card">
+        <div class="dm-table-responsive">
+            <table class="dm-table">
+                <thead>
+                    <tr>
+                        <th>Archivo</th>
+                        <th>Período</th>
+                        <th>Estado</th>
+                        <th class="dm-th-center">Total filas</th>
+                        <th class="dm-th-center">Válidas</th>
+                        <th class="dm-th-center">Errores</th>
+                        <th class="dm-th-center">Duplicadas</th>
+                        <th>Procesado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var lote in LotesFiltrados)
+                    {
+                        <tr>
+                            <td>
+                                <div class="dm-archivo-cell">
+                                    <div class="dm-archivo-icon">📊</div>
+                                    <div>
+                                        <div class="dm-archivo-nombre">@TruncateNombre(lote.NombreArchivoOriginal, 40)</div>
+                                        <div class="dm-archivo-id">@lote.Id.ToString()[..8]...</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="dm-periodo-badge">
+                                    @(new DateTime(lote.PeriodoAnio, lote.PeriodoMes, 1).ToString("MMMM yyyy"))
+                                </span>
+                            </td>
+                            <td>
+                                <span class="dm-estado-badge @EstadoClase(lote.Estado)">
+                                    @EstadoIcon(lote.Estado) @lote.Estado
+                                </span>
+                            </td>
+                            <td class="dm-td-center dm-num-total">@lote.TotalFilas</td>
+                            <td class="dm-td-center">
+                                <span class="@(lote.FilasValidas > 0 ? "dm-num-ok" : "dm-num-zero")">
+                                    @lote.FilasValidas
+                                </span>
+                            </td>
+                            <td class="dm-td-center">
+                                <span class="@(lote.FilasError > 0 ? "dm-num-error" : "dm-num-zero")">
+                                    @lote.FilasError
+                                </span>
+                            </td>
+                            <td class="dm-td-center">
+                                <span class="@(lote.FilasDuplicadas > 0 ? "dm-num-warn" : "dm-num-zero")">
+                                    @lote.FilasDuplicadas
+                                </span>
+                            </td>
+                            <td>
+                                <div class="dm-fecha-cell">
+                                    @if (lote.FechaInicioProceso.HasValue)
+                                    {
+                                        <span class="dm-fecha">@lote.FechaInicioProceso.Value.ToString("dd/MM/yyyy")</span>
+                                        <span class="dm-hora">@lote.FechaInicioProceso.Value.ToString("HH:mm")</span>
+                                        @if (lote.FechaFinProceso.HasValue)
+                                        {
+                                            var dur = lote.FechaFinProceso.Value - lote.FechaInicioProceso.Value;
+                                            <span class="dm-duracion">@FormatDuracion(dur)</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="dm-sin-dato">—</span>
+                                    }
+                                </div>
+                            </td>
+                            <td>
+                                <div class="dm-acciones">
+                                    @if (lote.FilasError > 0)
+                                    {
+                                        <button class="dm-btn-icon dm-btn-icon-err"
+                                                @onclick="() => VerErrores(lote)"
+                                                title="Ver errores">
+                                            ⚠️ @lote.FilasError
+                                        </button>
+                                    }
+                                    <a href="/historial-clinico" class="dm-btn-icon" title="Ver resultados del período">
+                                        📈
+                                    </a>
+                                    <a href="/prescripciones" class="dm-btn-icon" title="Ver prescripciones del período">
+                                        💊
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        @if (!string.IsNullOrEmpty(lote.MensajeError))
+                        {
+                            <tr class="dm-error-row">
+                                <td colspan="9">
+                                    <div class="dm-error-msg">
+                                        <span class="dm-error-icon">❌</span>
+                                        @lote.MensajeError
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dm-table-footer">
+            <span class="dm-footer-info">
+                Mostrando @LotesFiltrados.Count() de @Lotes.Count lotes
+            </span>
+            @if (HayMas)
+            {
+                <button class="dm-btn dm-btn-outline dm-btn-sm" @onclick="CargarMasAsync">
+                    Cargar más
+                </button>
+            }
+        </div>
+    </div>
+}
+
+<!-- Modal errores -->
+@if (ModalErroresVisible && LoteConErrores != null)
+{
+    <div class="dm-modal-overlay" @onclick="CerrarModal">
+        <div class="dm-modal dm-modal-lg" @onclick:stopPropagation>
+            <div class="dm-modal-header">
+                <div>
+                    <h2>Errores de importación</h2>
+                    <p class="dm-modal-subtitle">
+                        @TruncateNombre(LoteConErrores.NombreArchivoOriginal, 50)
+                        — @ErroresLote.Count error(es),
+                        @ErroresLote.Count(e => e.EsIgnorado) ignorado(s)
+                    </p>
+                </div>
+                <button class="dm-modal-close" @onclick="CerrarModal">✕</button>
+            </div>
+
+            <div class="dm-modal-body">
+                @if (CargandoErrores)
+                {
+                    <div class="dm-loading-container" style="padding:2rem">
+                        <div class="dm-spinner"></div>
+                        <p>Cargando errores...</p>
+                    </div>
+                }
+                else if (!ErroresLote.Any())
+                {
+                    <div class="dm-empty-state" style="padding:2rem">
+                        <div class="dm-empty-icon">✅</div>
+                        <p>No se encontraron errores para este lote.</p>
+                    </div>
+                }
+                else
+                {
+                    <table class="dm-table dm-table-compact">
+                        <thead>
+                            <tr>
+                                <th style="width:40px">#</th>
+                                <th style="width:60px">Fila</th>
+                                <th style="width:160px">Tipo</th>
+                                <th style="width:120px">Campo</th>
+                                <th style="width:130px">Valor recibido</th>
+                                <th>Motivo</th>
+                                <th style="width:90px">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (err, idx) in ErroresLote.Select((e, i) => (e, i + 1)))
+                            {
+                                <tr class="@(err.EsIgnorado ? "dm-row-ignorada" : "")">
+                                    <td class="dm-num-zero">@idx</td>
+                                    <td class="dm-td-center">@(err.NumeroFila?.ToString() ?? "—")</td>
+                                    <td><span class="dm-tipo-error-badge @TipoErrorClase(err.TipoError)">@err.TipoError</span></td>
+                                    <td><code>@(err.Campo ?? "—")</code></td>
+                                    <td><code class="dm-val-raw" title="@err.ValorRecibido">@(err.ValorRecibido ?? "—")</code></td>
+                                    <td class="dm-error-msg-cell">@err.Mensaje</td>
+                                    <td>
+                                        @if (err.EsIgnorado)
+                                        {
+                                            <span class="dm-ignorado-badge">✓ Ignorado</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="dm-btn-sm-action dm-btn-ignore"
+                                                    @onclick="() => IgnorarErrorAsync(err)"
+                                                    disabled="@CargandoAccion"
+                                                    title="Marcar esta fila como revisada e ignorar el error">
+                                                Ignorar
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="dm-modal-footer">
+                <div class="dm-modal-footer-info">
+                    @{
+                        var pendientes = ErroresLote.Count(e => !e.EsIgnorado);
+                    }
+                    @if (pendientes == 0 && ErroresLote.Any())
+                    {
+                        <span class="dm-footer-ok">✓ Todos los errores han sido revisados</span>
+                    }
+                    else if (pendientes > 0)
+                    {
+                        <span class="dm-footer-warn">@pendientes error(es) sin revisar</span>
+                    }
+                </div>
+                <div class="dm-modal-footer-actions">
+                    @if (LoteConErrores.Estado != EstadoLote.Cancelado)
+                    {
+                        <button class="dm-btn dm-btn-danger dm-btn-sm"
+                                @onclick="AbortarLoteAsync"
+                                disabled="@CargandoAccion"
+                                title="Cancela el lote e invalida todos sus datos">
+                            @(CargandoAccion ? "⏳ Procesando..." : "⊘ Abortar lote")
+                        </button>
+                    }
+                    <button class="dm-btn dm-btn-outline dm-btn-sm" @onclick="CerrarModal">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+
+    .dm-stats-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .dm-stat-card { background: white; border-radius: 10px; border: 1px solid #e2e8f0;
+                    padding: 1rem 1.5rem; min-width: 130px; flex: 1; text-align: center; }
+    .dm-stat-num { font-size: 2rem; font-weight: 800; line-height: 1; }
+    .dm-stat-num-blue { color: #0ea5e9; }
+    .dm-stat-num-green { color: #059669; }
+    .dm-stat-num-yellow { color: #d97706; }
+    .dm-stat-num-red { color: #dc2626; }
+    .dm-stat-label { font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 0.25rem; text-transform: uppercase; }
+
+    .dm-filters-bar { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: flex-end; }
+    .dm-filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .dm-filter-group label { font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; }
+    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.875rem;
+                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; }
+
+    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+    .dm-table-responsive { overflow-x: auto; }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
+                   padding: 0.875rem 1rem; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+                   font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dm-table td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-table tbody tr:last-child td { border-bottom: none; }
+    .dm-table-compact td, .dm-table-compact th { padding: 0.5rem 0.75rem; font-size: 0.825rem; }
+    .dm-th-center { text-align: center; }
+    .dm-td-center { text-align: center; font-weight: 700; }
+
+    .dm-archivo-cell { display: flex; align-items: center; gap: 0.75rem; }
+    .dm-archivo-icon { font-size: 1.5rem; flex-shrink: 0; }
+    .dm-archivo-nombre { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
+    .dm-archivo-id { font-size: 0.72rem; color: #94a3b8; font-family: monospace; }
+
+    .dm-periodo-badge { background: #f1f5f9; color: #475569; padding: 0.25rem 0.6rem;
+                        border-radius: 6px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+
+    .dm-estado-badge { padding: 0.25rem 0.625rem; border-radius: 20px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+    .dm-estado-completado { background: #dcfce7; color: #166534; }
+    .dm-estado-procesando { background: #eff6ff; color: #1d4ed8; }
+    .dm-estado-pendiente { background: #fef3c7; color: #92400e; }
+    .dm-estado-error { background: #fee2e2; color: #991b1b; }
+    .dm-estado-cancelado { background: #f1f5f9; color: #475569; }
+
+    .dm-num-ok { color: #059669; font-weight: 700; }
+    .dm-num-error { color: #dc2626; font-weight: 700; }
+    .dm-num-warn { color: #d97706; font-weight: 700; }
+    .dm-num-zero { color: #cbd5e1; }
+    .dm-num-total { color: #374151; font-weight: 600; }
+    .dm-sin-dato { color: #cbd5e1; font-size: 0.85rem; }
+
+    .dm-fecha-cell { display: flex; flex-direction: column; gap: 0.15rem; }
+    .dm-fecha { font-weight: 600; color: #374151; font-size: 0.85rem; }
+    .dm-hora { font-size: 0.75rem; color: #64748b; }
+    .dm-duracion { font-size: 0.7rem; color: #94a3b8; background: #f1f5f9; border-radius: 4px;
+                   padding: 0.1rem 0.35rem; display: inline-block; }
+
+    .dm-acciones { display: flex; gap: 0.5rem; align-items: center; }
+    .dm-btn-icon { font-size: 0.875rem; padding: 0.25rem 0.5rem; border-radius: 6px;
+                   text-decoration: none; transition: background 0.15s; cursor: pointer;
+                   border: none; background: transparent; color: inherit; display: inline-flex; align-items: center; gap: 0.25rem; }
+    .dm-btn-icon:hover { background: #f1f5f9; }
+    .dm-btn-icon-err { color: #d97706; font-weight: 600; font-size: 0.8rem; }
+
+    .dm-error-row td { padding: 0 !important; }
+    .dm-error-msg { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem 1rem 0.75rem 3.5rem;
+                    font-size: 0.8rem; color: #991b1b; background: #fff5f5; border-left: 3px solid #fca5a5; }
+    .dm-error-icon { flex-shrink: 0; }
+
+    .dm-table-footer { display: flex; justify-content: space-between; align-items: center;
+                       padding: 0.75rem 1rem; border-top: 1px solid #f1f5f9; background: #f8fafc; }
+    .dm-footer-info { font-size: 0.8rem; color: #64748b; }
+
+    .dm-btn { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
+              cursor: pointer; border: none; transition: all 0.15s; }
+    .dm-btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; border-radius: 6px; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; color: white; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover { background: #f8fafc; }
+
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .dm-empty-desc { margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+    .dm-page-actions { display: flex; gap: 0.75rem; }
+
+    /* Modal */
+    .dm-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000;
+                         display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .dm-modal { background: white; border-radius: 16px; width: 100%; max-width: 900px; max-height: 80vh;
+                display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .dm-modal-header { display: flex; justify-content: space-between; align-items: center;
+                       padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+    .dm-modal-header h2 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-modal-close { background: none; border: none; font-size: 1.25rem; cursor: pointer;
+                      color: #94a3b8; line-height: 1; padding: 0.25rem; border-radius: 4px; }
+    .dm-modal-close:hover { background: #f1f5f9; color: #374151; }
+    .dm-modal-body { flex: 1; overflow-y: auto; padding: 1rem; }
+
+    .dm-tipo-error-badge { padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+    .dm-tipo-validacion { background: #fef3c7; color: #92400e; }
+    .dm-tipo-duplicado { background: #eff6ff; color: #1d4ed8; }
+    .dm-tipo-parse { background: #fee2e2; color: #991b1b; }
+    .dm-tipo-parametro { background: #f0fdf4; color: #166534; }
+    .dm-tipo-default { background: #f1f5f9; color: #475569; }
+    .dm-val-raw { font-size: 0.75rem; background: #f8fafc; padding: 0.1rem 0.3rem; border-radius: 3px;
+                  color: #64748b; max-width: 120px; display: inline-block; overflow: hidden;
+                  text-overflow: ellipsis; white-space: nowrap; }
+    .dm-error-msg-cell { font-size: 0.8rem; color: #374151; }
+
+    /* Modal mejorado F1-02 */
+    .dm-modal-lg { max-width: 1100px; }
+    .dm-modal-subtitle { font-size: 0.8rem; color: #64748b; margin: 0.2rem 0 0; }
+    .dm-modal-footer { display: flex; justify-content: space-between; align-items: center;
+                       padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc;
+                       border-radius: 0 0 16px 16px; gap: 1rem; flex-wrap: wrap; }
+    .dm-modal-footer-info { font-size: 0.85rem; }
+    .dm-modal-footer-actions { display: flex; gap: 0.5rem; }
+    .dm-footer-ok { color: #059669; font-weight: 600; }
+    .dm-footer-warn { color: #d97706; font-weight: 600; }
+
+    .dm-row-ignorada { opacity: 0.45; background: #f8fafc !important; }
+    .dm-row-ignorada td { text-decoration: line-through; color: #94a3b8 !important; }
+
+    .dm-ignorado-badge { font-size: 0.72rem; color: #059669; font-weight: 700; }
+
+    .dm-btn-sm-action { font-size: 0.72rem; padding: 0.2rem 0.55rem; border-radius: 5px;
+                        cursor: pointer; border: 1.5px solid; font-weight: 600;
+                        transition: all 0.15s; white-space: nowrap; }
+    .dm-btn-sm-action:disabled { opacity: 0.5; cursor: not-allowed; }
+    .dm-btn-ignore { border-color: #d97706; color: #d97706; background: transparent; }
+    .dm-btn-ignore:hover:not(:disabled) { background: #fef3c7; }
+
+    .dm-btn-danger { background: #dc2626; color: white; border: none; }
+    .dm-btn-danger:hover:not(:disabled) { background: #b91c1c; }
+</style>
+
+@code {
+    private List<LoteImportacion> Lotes = new();
+    private List<ImportacionError> ErroresLote = new();
+    private LoteImportacion? LoteConErrores;
+    private bool Cargando = true;
+    private bool HayMas = false;
+    private bool ModalErroresVisible = false;
+    private bool CargandoErrores = false;
+    private bool CargandoAccion = false;
+    private int PaginaActual = 1;
+    private const int TamanoPagina = 30;
+    private string FiltroEstado = string.Empty;
+    private Guid TenantId;
+
+    private IEnumerable<LoteImportacion> LotesFiltrados =>
+        string.IsNullOrEmpty(FiltroEstado)
+            ? Lotes
+            : Lotes.Where(l => l.Estado == FiltroEstado);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        Cargando = true;
+        StateHasChanged();
+        try
+        {
+            PaginaActual = 1;
+            var resultado = await LoteRepo.GetByTenantAsync(TenantId, PaginaActual, TamanoPagina);
+            Lotes = resultado;
+            HayMas = resultado.Count == TamanoPagina;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando lotes: {ex.Message}");
+            Lotes = new();
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private async Task CargarMasAsync()
+    {
+        PaginaActual++;
+        var mas = await LoteRepo.GetByTenantAsync(TenantId, PaginaActual, TamanoPagina);
+        Lotes.AddRange(mas);
+        HayMas = mas.Count == TamanoPagina;
+    }
+
+    private async Task VerErrores(LoteImportacion lote)
+    {
+        LoteConErrores = lote;
+        ModalErroresVisible = true;
+        CargandoErrores = true;
+        StateHasChanged();
+        try
+        {
+            ErroresLote = await LoteRepo.GetErroresByLoteAsync(lote.Id);
+        }
+        finally
+        {
+            CargandoErrores = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CerrarModal()
+    {
+        ModalErroresVisible = false;
+        LoteConErrores = null;
+        ErroresLote.Clear();
+    }
+
+    private async Task IgnorarErrorAsync(ImportacionError err)
+    {
+        CargandoAccion = true;
+        try
+        {
+            await LoteRepo.IgnorarErrorAsync(err.Id);
+            err.EsIgnorado = true; // actualizar UI sin recargar
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al ignorar fila: {ex.Message}");
+        }
+        finally
+        {
+            CargandoAccion = false;
+        }
+    }
+
+    private async Task AbortarLoteAsync()
+    {
+        if (LoteConErrores == null) return;
+        CargandoAccion = true;
+        try
+        {
+            await LoteRepo.CancelarLoteAsync(LoteConErrores);
+            // reflejar en la lista local sin recargar todo
+            var enLista = Lotes.FirstOrDefault(l => l.Id == LoteConErrores.Id);
+            if (enLista != null) enLista.Estado = EstadoLote.Cancelado;
+            CerrarModal();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al abortar lote: {ex.Message}");
+        }
+        finally
+        {
+            CargandoAccion = false;
+        }
+    }
+
+    private static string EstadoClase(string estado) => estado switch
+    {
+        "COMPLETADO" => "dm-estado-completado",
+        "PROCESANDO" => "dm-estado-procesando",
+        "PENDIENTE" => "dm-estado-pendiente",
+        "ERROR" => "dm-estado-error",
+        "CANCELADO" => "dm-estado-cancelado",
+        _ => ""
+    };
+
+    private static string EstadoIcon(string estado) => estado switch
+    {
+        "COMPLETADO" => "✓",
+        "PROCESANDO" => "⏳",
+        "PENDIENTE" => "⏸",
+        "ERROR" => "✗",
+        "CANCELADO" => "⊘",
+        _ => "○"
+    };
+
+    private static string TipoErrorClase(string? tipo) => tipo switch
+    {
+        "VALIDACION" => "dm-tipo-validacion",
+        "DUPLICADO" => "dm-tipo-duplicado",
+        "PARSE" => "dm-tipo-parse",
+        "PARAMETRO_NO_ENCONTRADO" => "dm-tipo-parametro",
+        _ => "dm-tipo-default"
+    };
+
+    private static string FormatDuracion(TimeSpan dur)
+    {
+        if (dur.TotalSeconds < 60) return $"{dur.TotalSeconds:F0}s";
+        if (dur.TotalMinutes < 60) return $"{dur.TotalMinutes:F1}min";
+        return $"{dur.TotalHours:F1}h";
+    }
+
+    private static string TruncateNombre(string nombre, int max) =>
+        nombre.Length > max ? nombre[..max] + "…" : nombre;
+}

@@ -18,7 +18,7 @@ public class IdentityGatewayClient : IIdentityGatewayClient
     public async Task<bool> LoginAsync(string email, string password, Tenant tenant)
     {
         _httpClient.DefaultRequestHeaders.Remove("X-Tenant-Id");
-        _httpClient.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.id.ToString());
+        _httpClient.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString());
         string nonce = Guid.NewGuid().ToString(); // Genera un nonce único para cada solicitud
 
         var response = await _httpClient.PostAsJsonAsync("/api/auth/login/identify", new

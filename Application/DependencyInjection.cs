@@ -1,10 +1,8 @@
-﻿using DataMedix.Application.Interfaces;
+using DataMedix.Application.Interfaces;
+using DataMedix.Application.Services;
 using DataMedix.Application.UseCases.Auth;
 using DataMedix.Application.UseCases.Laboratorio;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace DataMedix.Application
 {
@@ -12,6 +10,9 @@ namespace DataMedix.Application
     {
         public static IServiceCollection AddApplication(this IServiceCollection services)
         {
+            services.AddScoped<IAuthService, LoginUseCase>();
+            services.AddScoped<ImportacionService>();
+            services.AddScoped<PrescripcionService>();
             services.AddScoped<ProcesarArchivoLaboratorioUseCase>();
 
             return services;

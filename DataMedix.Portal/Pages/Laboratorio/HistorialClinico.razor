@@ -1,0 +1,388 @@
+@page "/historial-clinico"
+@page "/historial-clinico/{PacienteId:guid}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+
+@inject ISnapshotMensualRepository SnapshotRepo
+@inject IPacienteRepository PacienteRepo
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Historial Clínico | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Historial Clínico Mensual</h1>
+        @if (PacienteSeleccionado != null)
+        {
+            <p class="dm-page-subtitle">
+                @PacienteSeleccionado.NombreCompleto —
+                <span class="dm-ident-badge">@PacienteSeleccionado.Identificacion</span>
+            </p>
+        }
+        else
+        {
+            <p class="dm-page-subtitle">Resultados clínicos agrupados por mes/año</p>
+        }
+    </div>
+    <div class="dm-page-actions">
+        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Nueva Carga</a>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="dm-filters-bar">
+    <div class="dm-search-box">
+        <span>🔍</span>
+        <input type="text" placeholder="Buscar paciente por nombre o cédula..."
+               @bind="BusquedaTexto" @bind:event="oninput" @onkeyup="BuscarDebounced"
+               class="dm-search-input" />
+    </div>
+
+    <div class="dm-filter-group">
+        <label>Mes</label>
+        <select @bind="FiltroMes" @bind:after="CargarSnapshotsAsync" class="dm-select">
+            <option value="0">Todos</option>
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM"))</option>
+            }
+        </select>
+    </div>
+
+    <div class="dm-filter-group">
+        <label>Año</label>
+        <select @bind="FiltroAnio" @bind:after="CargarSnapshotsAsync" class="dm-select">
+            @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--)
+            {
+                <option value="@a">@a</option>
+            }
+        </select>
+    </div>
+
+    <div class="dm-filter-group">
+        <label>Plan Salud</label>
+        <select @bind="FiltroPlanSalud" @bind:after="CargarSnapshotsAsync" class="dm-select">
+            <option value="">Todos</option>
+            @foreach (var plan in PlanesSalud)
+            {
+                <option value="@plan">@plan</option>
+            }
+        </select>
+    </div>
+
+    @if (!string.IsNullOrEmpty(FiltroPlanSalud))
+    {
+        <button class="dm-btn-clear" @onclick="LimpiarFiltros" title="Limpiar filtros">
+            ✕ Limpiar filtros
+        </button>
+    }
+</div>
+
+@if (Cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando historial clínico...</p>
+    </div>
+}
+else if (!Snapshots.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">📈</div>
+        <h3 class="dm-empty-title">Sin resultados para el período</h3>
+        <p class="dm-empty-desc">No hay datos clínicos para el filtro seleccionado.</p>
+        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar Resultados</a>
+    </div>
+}
+else
+{
+    <div class="dm-card">
+        <div class="dm-table-responsive">
+            <table class="dm-table">
+                <thead>
+                    <tr>
+                        <th>Paciente</th>
+                        <th>Período</th>
+                        <th class="dm-th-param">
+                            <span class="dm-param-badge dm-param-hb">HB (g/dL)</span>
+                        </th>
+                        <th class="dm-th-param">
+                            <span class="dm-param-badge dm-param-fe">Hierro (ug/dL)</span>
+                        </th>
+                        <th class="dm-th-param">
+                            <span class="dm-param-badge dm-param-ferr">Ferritina (ng/mL)</span>
+                        </th>
+                        <th class="dm-th-param">
+                            <span class="dm-param-badge dm-param-isat">ISAT (%)</span>
+                        </th>
+                        <th>Plan Salud</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var snap in Snapshots)
+                    {
+                        <tr class="@(snap.EsDatosPeriodoAnterior ? "dm-row-anterior" : "")">
+                            <td>
+                                <div class="dm-paciente-cell">
+                                    <div class="dm-avatar">@snap.Paciente?.PrimerNombre?.FirstOrDefault()</div>
+                                    <div>
+                                        <div class="dm-nombre">@snap.Paciente?.NombreCompleto</div>
+                                        <div class="dm-ident-small">@snap.Paciente?.Identificacion</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="dm-periodo">
+                                    <span class="dm-mes">@snap.PeriodDate.ToString("MMM yyyy")</span>
+                                    @if (snap.EsDatosPeriodoAnterior)
+                                    {
+                                        <span class="dm-badge-prev" title="Usando datos del período anterior">↩</span>
+                                    }
+                                </div>
+                            </td>
+                            <td class="dm-td-param">
+                                @if (snap.HbValor.HasValue)
+                                {
+                                    <span class="@ClaseValor(snap.HbValor.Value, 10m, 12m)">
+                                        @snap.HbValor.Value.ToString("F1")
+                                    </span>
+                                }
+                                else { <span class="dm-sin-dato">—</span> }
+                            </td>
+                            <td class="dm-td-param">
+                                @if (snap.HierroValor.HasValue)
+                                {
+                                    <span class="@ClaseValor(snap.HierroValor.Value, 60m, 170m)">
+                                        @snap.HierroValor.Value.ToString("F0")
+                                    </span>
+                                }
+                                else { <span class="dm-sin-dato">—</span> }
+                            </td>
+                            <td class="dm-td-param">
+                                @if (snap.FerritinaValor.HasValue)
+                                {
+                                    <span class="@ClaseValor(snap.FerritinaValor.Value, 200m, 500m)">
+                                        @snap.FerritinaValor.Value.ToString("F0")
+                                    </span>
+                                }
+                                else { <span class="dm-sin-dato">—</span> }
+                            </td>
+                            <td class="dm-td-param">
+                                @if (snap.SaturacionValor.HasValue)
+                                {
+                                    <span class="@ClaseValor(snap.SaturacionValor.Value, 20m, 50m)">
+                                        @snap.SaturacionValor.Value.ToString("F1")%
+                                    </span>
+                                }
+                                else { <span class="dm-sin-dato">—</span> }
+                            </td>
+                            <td>@(snap.PlanSalud ?? "—")</td>
+                            <td>
+                                <div class="dm-acciones">
+                                    <a href="/prescripciones/@snap.PacienteId" class="dm-btn-icon"
+                                       title="Ver prescripción">💊</a>
+                                    <a href="/historial-clinico/@snap.PacienteId" class="dm-btn-icon"
+                                       title="Historial completo">📋</a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Leyenda -->
+        <div class="dm-legend">
+            <span class="dm-legend-item">
+                <span class="dm-valor-ok">■</span> En rango objetivo
+            </span>
+            <span class="dm-legend-item">
+                <span class="dm-valor-bajo">■</span> Por debajo del rango
+            </span>
+            <span class="dm-legend-item">
+                <span class="dm-valor-alto">■</span> Por encima del rango
+            </span>
+            <span class="dm-legend-item">
+                <span class="dm-badge-prev">↩</span> Datos del mes anterior
+            </span>
+        </div>
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+    .dm-ident-badge { background: #eff6ff; color: #1d4ed8; padding: 0.15rem 0.5rem;
+                      border-radius: 4px; font-family: monospace; font-size: 0.85rem; font-weight: 600; }
+
+    .dm-filters-bar { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: flex-end; }
+    .dm-search-box { display: flex; align-items: center; gap: 0.5rem; background: white;
+                     border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.5rem 0.875rem;
+                     flex: 1; min-width: 280px; }
+    .dm-search-box:focus-within { border-color: #0ea5e9; }
+    .dm-search-input { border: none; outline: none; flex: 1; font-size: 0.9rem; background: transparent; }
+    .dm-filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .dm-filter-group label { font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; }
+    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.875rem;
+                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; }
+    .dm-select:focus { border-color: #0ea5e9; }
+
+    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+    .dm-table-responsive { overflow-x: auto; }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
+                   padding: 0.875rem 1rem; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+                   font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dm-table td { padding: 0.875rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-table tbody tr:last-child td { border-bottom: none; }
+    .dm-th-param { text-align: center; }
+    .dm-td-param { text-align: center; font-weight: 700; }
+
+    .dm-param-badge { padding: 0.2rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+    .dm-param-hb { background: #fce7f3; color: #be185d; }
+    .dm-param-fe { background: #fef3c7; color: #92400e; }
+    .dm-param-ferr { background: #ecfdf5; color: #065f46; }
+    .dm-param-isat { background: #eff6ff; color: #1d4ed8; }
+
+    .dm-valor-ok { color: #059669; font-size: 0.9rem; font-weight: 700; }
+    .dm-valor-bajo { color: #dc2626; font-size: 0.9rem; font-weight: 700; }
+    .dm-valor-alto { color: #d97706; font-size: 0.9rem; font-weight: 700; }
+    .dm-sin-dato { color: #cbd5e1; font-size: 0.85rem; }
+
+    .dm-paciente-cell { display: flex; align-items: center; gap: 0.75rem; }
+    .dm-avatar { width: 34px; height: 34px; background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+                 border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                 color: white; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
+    .dm-nombre { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
+    .dm-ident-small { font-size: 0.75rem; color: #94a3b8; font-family: monospace; }
+
+    .dm-periodo { display: flex; flex-direction: column; gap: 0.2rem; }
+    .dm-mes { font-weight: 600; color: #374151; white-space: nowrap; }
+    .dm-badge-prev { background: #fef3c7; color: #92400e; padding: 0.1rem 0.4rem;
+                     border-radius: 4px; font-size: 0.7rem; font-weight: 700; display: inline-block; }
+    .dm-row-anterior { background: #fffbeb !important; }
+
+    .dm-acciones { display: flex; gap: 0.4rem; }
+    .dm-btn-icon { font-size: 1rem; padding: 0.2rem 0.35rem; border-radius: 6px;
+                   text-decoration: none; transition: background 0.15s; }
+    .dm-btn-icon:hover { background: #f1f5f9; }
+
+    .dm-legend { display: flex; gap: 1.5rem; padding: 0.875rem 1rem; border-top: 1px solid #f1f5f9;
+                 font-size: 0.8rem; color: #64748b; flex-wrap: wrap; }
+    .dm-legend-item { display: flex; align-items: center; gap: 0.4rem; }
+
+    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .dm-empty-desc { margin-bottom: 1.5rem; }
+
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; border: none; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; color: white; }
+
+    .dm-page-actions { display: flex; gap: 0.75rem; }
+
+    .dm-btn-clear { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;
+                    border-radius: 8px; padding: 0.45rem 0.875rem; font-size: 0.8rem;
+                    font-weight: 600; cursor: pointer; transition: background 0.15s;
+                    white-space: nowrap; align-self: flex-end; }
+    .dm-btn-clear:hover { background: #fca5a5; }
+</style>
+
+@code {
+    [Parameter] public Guid? PacienteId { get; set; }
+
+    private List<SnapshotMensual> Snapshots = new();
+    private List<string> PlanesSalud = new();
+    private Paciente? PacienteSeleccionado;
+    private bool Cargando = true;
+    private string BusquedaTexto = string.Empty;
+    private int FiltroMes = DateTime.Now.Month;
+    private int FiltroAnio = DateTime.Now.Year;
+    private string FiltroPlanSalud = string.Empty;
+    private Guid TenantId;
+    private System.Threading.CancellationTokenSource? _debounce;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+
+        if (PacienteId.HasValue)
+            PacienteSeleccionado = await PacienteRepo.GetByIdAsync(TenantId, PacienteId.Value);
+
+        await CargarSnapshotsAsync();
+    }
+
+    private async Task CargarSnapshotsAsync()
+    {
+        Cargando = true;
+        StateHasChanged();
+
+        try
+        {
+            if (PacienteId.HasValue)
+            {
+                Snapshots = await SnapshotRepo.GetHistorialAsync(TenantId, PacienteId.Value, 24);
+            }
+            else
+            {
+                var periodDate = FiltroMes > 0
+                    ? new DateTime(FiltroAnio, FiltroMes, 1, 0, 0, 0, DateTimeKind.Utc)
+                    : new DateTime(FiltroAnio, DateTime.Now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+                // Cargar planes disponibles en paralelo con los datos
+                var tareaPlanes = SnapshotRepo.GetPlanesSaludAsync(TenantId, periodDate);
+                var tareaSnaps = SnapshotRepo.GetByPeriodoAsync(
+                    TenantId, periodDate, BusquedaTexto, planSalud: FiltroPlanSalud);
+
+                await Task.WhenAll(tareaPlanes, tareaSnaps);
+                PlanesSalud = await tareaPlanes;
+                Snapshots   = await tareaSnaps;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando snapshots: {ex.Message}");
+            Snapshots = new();
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private async Task BuscarDebounced()
+    {
+        _debounce?.Cancel();
+        _debounce = new System.Threading.CancellationTokenSource();
+        var token = _debounce.Token;
+        await Task.Delay(400, token).ContinueWith(async t =>
+        {
+            if (t.IsCompletedSuccessfully)
+                await InvokeAsync(CargarSnapshotsAsync);
+        });
+    }
+
+    private async Task LimpiarFiltros()
+    {
+        FiltroPlanSalud = string.Empty;
+        await CargarSnapshotsAsync();
+    }
+
+    private static string ClaseValor(decimal valor, decimal min, decimal max) =>
+        valor < min ? "dm-valor-bajo" : valor > max ? "dm-valor-alto" : "dm-valor-ok";
+}
