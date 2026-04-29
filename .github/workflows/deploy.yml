@@ -1,4 +1,4 @@
-name: CI
+name: CI / Deploy
 
 on:
   push:
@@ -6,10 +6,8 @@ on:
   pull_request:
     branches: [master]
 
-# Railway se auto-deploya directamente desde GitHub en cada push a master.
-# Este workflow solo verifica que el código compila correctamente.
-
 jobs:
+  # ── Verificar que compila ────────────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -26,3 +24,20 @@ jobs:
 
       - name: Build
         run: dotnet build DataMedix.Portal/DataMedix.Portal.csproj -c Release --no-restore
+
+  # ── Deploy a Railway (solo en push a master) ─────────────────────────────────
+  deploy:
+    name: Deploy → Railway
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy
+        run: railway up --detach --service ${{ secrets.RAILWAY_SERVICE_ID }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
