@@ -20,6 +20,14 @@ RUN dotnet publish DataMedix.Portal/DataMedix.Portal.csproj \
     -o /app/publish \
     --no-restore
 
+# Diagnóstico: verificar que los static web assets de Blazor quedaron en el publish
+RUN echo "=== wwwroot contents ===" && \
+    ls /app/publish/wwwroot/ 2>/dev/null || echo "[WARN] wwwroot missing" && \
+    echo "=== _framework ===" && \
+    ls /app/publish/wwwroot/_framework/ 2>/dev/null || echo "[WARN] _framework missing" && \
+    echo "=== Static web assets manifest ===" && \
+    ls /app/publish/*.staticwebassets.* 2>/dev/null || echo "[WARN] no staticwebassets manifest"
+
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app

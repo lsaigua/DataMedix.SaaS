@@ -24,6 +24,11 @@
     </div>
 </div>
 
+@if (!string.IsNullOrEmpty(ErrorMensaje))
+{
+    <div class="dm-error-banner">Error cargando KPIs: @ErrorMensaje</div>
+}
+
 @if (Cargando)
 {
     <div class="dm-loading-container">
@@ -159,6 +164,9 @@ else
     .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0;
                   border-top-color: #0ea5e9; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @@keyframes spin { to { transform: rotate(360deg); } }
+    .dm-error-banner { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+                       border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem;
+                       font-size: 0.875rem; }
 </style>
 
 @code {
@@ -185,28 +193,27 @@ else
         Cargando = false;
     }
 
+    private string? ErrorMensaje;
+
     private async Task CargarKpisAsync(DateTime now)
     {
         var periodDate = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        ErrorMensaje = null;
         try
         {
-            // Ejecutar consultas independientes en paralelo
-            var tPacientes = PacienteRepo.CountAsync(TenantId);
-            var tSnapshots = SnapshotRepo.GetByPeriodoAsync(TenantId, periodDate);
-            var tPrescripciones = PrescripcionRepo.GetPendientesAsync(TenantId, periodDate);
-            var tLotes = LoteRepo.GetByTenantAsync(TenantId, 1, 200);
+            // Secuencial — EF Core DbContext no soporta operaciones concurrentes
+            TotalPacientes = await PacienteRepo.CountAsync(TenantId);
+            var snapshots = await SnapshotRepo.GetByPeriodoAsync(TenantId, periodDate);
+            var prescripciones = await PrescripcionRepo.GetPendientesAsync(TenantId, periodDate);
+            var lotes = await LoteRepo.GetByTenantAsync(TenantId, 1, 200);
 
-            await Task.WhenAll(tPacientes, tSnapshots, tPrescripciones, tLotes);
-
-            TotalPacientes = tPacientes.Result;
-            PacientesPeriodo = tSnapshots.Result.Count;
-            PrescripcionesPendientes = tPrescripciones.Result.Count;
-            LotesDelMes = tLotes.Result
-                .Count(l => l.PeriodDate.Year == now.Year && l.PeriodDate.Month == now.Month);
+            PacientesPeriodo = snapshots.Count;
+            PrescripcionesPendientes = prescripciones.Count;
+            LotesDelMes = lotes.Count(l => l.PeriodDate.Year == now.Year && l.PeriodDate.Month == now.Month);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error cargando KPIs: {ex.Message}");
+            ErrorMensaje = ex.Message;
         }
     }
 }
