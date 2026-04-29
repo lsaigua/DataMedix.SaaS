@@ -106,12 +106,28 @@ else
 
 // UseHttpsRedirection es seguro aquí porque UseForwardedHeaders ya corrigió el scheme
 app.UseHttpsRedirection();
-app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
+// Log 404s con el path para facilitar diagnóstico en Railway Deploy Logs
+app.Use(async (context, next) =>
+{
+    await next();
+    if (context.Response.StatusCode == 404)
+    {
+        var log = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        log.LogWarning("404 {Method} {Path} | WebRoot={WebRoot}",
+            context.Request.Method,
+            context.Request.Path,
+            context.RequestServices.GetRequiredService<IWebHostEnvironment>().WebRootPath);
+    }
+});
+
+// MapStaticAssets reemplaza UseStaticFiles en .NET 9/10 para Blazor Web Apps.
+// Sirve wwwroot/ físico + _framework/blazor.web.js y demás static web assets del framework.
+app.MapStaticAssets();
 app.MapControllers();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
