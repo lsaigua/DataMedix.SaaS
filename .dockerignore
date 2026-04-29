@@ -1,0 +1,20 @@
+# Build artifacts del host — NO copiar al contenedor
+**/bin/
+**/obj/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Git
+.git/
+
+# Secrets
+**/appsettings.Development.json
+**/appsettings.Production.json
+**/appsettings.Staging.json
+
+# Docker mismo
+Dockerfile
+.dockerignore
