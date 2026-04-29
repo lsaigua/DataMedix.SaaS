@@ -15,260 +15,293 @@
 
 <PageTitle>Carga Masiva | DataMedix</PageTitle>
 
-<div class="dm-page-header">
-    <div>
-        <h1 class="dm-page-title">Carga Masiva de Resultados</h1>
-        <p class="dm-page-subtitle">Importe archivos Excel con resultados de laboratorio clínico</p>
-    </div>
-</div>
-
-<!-- PASO 1: Selección de archivo -->
-@if (Paso == 1)
+<!-- Overlay de loading (leyendo archivo o previsualizando) -->
+@if (LeyendoArchivo || Procesando)
 {
-    <div class="dm-card dm-upload-area @(ArrastreSobre ? "dm-drag-over" : "")"
-         @ondragover:preventDefault="true"
-         @ondragover="@(() => ArrastreSobre = true)"
-         @ondragleave="@(() => ArrastreSobre = false)">
-
-        <div class="dm-upload-icon">📊</div>
-        <h3 class="dm-upload-title">Seleccione o arrastre el archivo Excel</h3>
-        <p class="dm-upload-desc">Formato aceptado: <strong>.xlsx</strong> — Máximo <strong>50 MB</strong></p>
-
-        <InputFile OnChange="HandleFileSeleccionado" class="dm-file-input-hidden" id="fileInput"
-                   accept=".xlsx" />
-        <label for="fileInput" class="dm-btn dm-btn-primary">
-            📂 Seleccionar Archivo
-        </label>
-
-        @if (!string.IsNullOrEmpty(NombreArchivo))
-        {
-            <div class="dm-file-selected">
-                <span class="dm-file-icon">@(ArchivoSeleccionado != null ? "📄" : "⚠️")</span>
-                <span class="dm-file-name">@NombreArchivo</span>
-                <span class="dm-file-size">(@TamanoArchivo)</span>
-            </div>
-            @if (ArchivoSeleccionado != null)
-            {
-                <button class="dm-btn dm-btn-outline" @onclick="PrevisualizarArchivo" disabled="@Procesando">
-                    @if (Procesando) { <span class="dm-spinner-sm"></span> }
-                    👁 Previsualizar
-                </button>
-            }
-            else
-            {
-                <p style="color:#dc2626;font-size:0.85rem;margin-top:0.5rem">
-                    Error al leer el archivo. Intenta seleccionarlo nuevamente.
-                </p>
-            }
-        }
-    </div>
-
-    <div class="dm-info-box">
-        <h4>📋 Formato esperado del archivo</h4>
-        <div class="dm-columns-grid">
-            <div class="dm-col-item"><span class="dm-col-num">1</span> Fecha Orden</div>
-            <div class="dm-col-item"><span class="dm-col-num">2</span> Plan Salud</div>
-            <div class="dm-col-item"><span class="dm-col-num">3</span> Tipo Atención</div>
-            <div class="dm-col-item"><span class="dm-col-num">4</span> Identificación</div>
-            <div class="dm-col-item"><span class="dm-col-num">5</span> Paciente</div>
-            <div class="dm-col-item"><span class="dm-col-num">6</span> Examen</div>
-            <div class="dm-col-item"><span class="dm-col-num">7</span> Parámetro</div>
-            <div class="dm-col-item"><span class="dm-col-num">8</span> Resultado</div>
-            <div class="dm-col-item"><span class="dm-col-num">9</span> Unidad Medida</div>
+    <div class="dm-overlay-root">
+        <div class="loader-card">
+            <div class="spinner-large"></div>
+            <p>@(LeyendoArchivo ? "Leyendo archivo…" : "Analizando datos clínicos…")</p>
         </div>
     </div>
 }
 
-<!-- PASO 2: Previsualización -->
-@if (Paso == 2 && Preview != null)
-{
-    <div class="dm-preview-header">
-        <div class="dm-preview-stats">
-            <div class="dm-stat dm-stat-total">
-                <span class="dm-stat-value">@Preview.TotalFilas</span>
-                <span class="dm-stat-label">Total Filas</span>
-            </div>
-            <div class="dm-stat dm-stat-ok">
-                <span class="dm-stat-value">@Preview.FilasValidas</span>
-                <span class="dm-stat-label">Válidas</span>
-            </div>
-            <div class="dm-stat dm-stat-err">
-                <span class="dm-stat-value">@Preview.FilasConError</span>
-                <span class="dm-stat-label">Con Error</span>
-            </div>
-        </div>
+<!-- Contenido centrado -->
+<div class="dm-importar-page">
 
-        <div class="dm-progress-bar">
-            <div class="dm-progress-fill"
-                 style="width: @(Preview.TotalFilas > 0 ? (Preview.FilasValidas * 100 / Preview.TotalFilas) : 0)%">
-            </div>
-        </div>
-        <div class="dm-progress-text">
-            @(Preview.TotalFilas > 0
-                ? $"{Preview.FilasValidas * 100 / Preview.TotalFilas}% de filas válidas"
-                : "0% válidas")
+    <div class="dm-page-header">
+        <div>
+            <h1 class="dm-page-title">Carga Masiva de Resultados</h1>
+            <p class="dm-page-subtitle">Importe archivos Excel con resultados de laboratorio clínico</p>
         </div>
     </div>
 
-    <!-- Tabla de previsualización -->
-    <div class="dm-card">
-        <div class="dm-card-header">
-            <h3 class="dm-card-title">Vista previa de datos (primeras 100 filas)</h3>
-        </div>
-        <div class="dm-table-responsive">
-            <table class="dm-table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Fecha</th>
-                        <th>Identificación</th>
-                        <th>Paciente</th>
-                        <th>Parámetro</th>
-                        <th>Resultado</th>
-                        <th>Unidad</th>
-                        <th>Plan Salud</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var fila in Preview.Filas)
-                    {
-                        <tr class="@(FilaTieneError(fila.LineNumber) ? "dm-row-error" : "")">
-                            <td class="dm-td-num">@fila.LineNumber</td>
-                            <td>@(fila.FechaOrden?.ToString("dd/MM/yyyy") ?? "—")</td>
-                            <td>@(fila.Identificacion ?? "—")</td>
-                            <td>@(fila.NombrePaciente ?? "—")</td>
-                            <td>@(fila.Parametro ?? "—")</td>
-                            <td class="dm-td-resultado">@(fila.ResultadoTexto ?? "—")</td>
-                            <td>@(fila.UnidadMedida ?? "—")</td>
-                            <td>@(fila.PlanSalud ?? "—")</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Tabla de errores -->
-    @if (Preview.Errores.Any())
+    <!-- ── PASO 1: Selección de archivo ──────────────────────────────────── -->
+    @if (Paso == 1)
     {
-        <div class="dm-card dm-card-errors">
-            <div class="dm-card-header">
-                <h3 class="dm-card-title dm-title-error">⚠️ Errores de validación (@Preview.Errores.Count)</h3>
-                <button class="dm-btn-sm dm-btn-outline" @onclick="DescargarErrores">
-                    ⬇ Descargar errores
+        <div class="dm-card dm-upload-area @(ArrastreSobre ? "dm-drag-over" : "")"
+             @ondragover:preventDefault="true"
+             @ondragover="@(() => ArrastreSobre = true)"
+             @ondragleave="@(() => ArrastreSobre = false)">
+
+            <div class="dm-upload-icon">📊</div>
+            <h3 class="dm-upload-title">Seleccione o arrastre el archivo Excel</h3>
+            <p class="dm-upload-desc">Formato aceptado: <strong>.xlsx</strong> — Máximo <strong>50 MB</strong></p>
+
+            <InputFile OnChange="HandleFileSeleccionado" class="dm-file-input-hidden" id="fileInput"
+                       accept=".xlsx" />
+            <label for="fileInput" class="dm-btn dm-btn-primary">
+                📂 Seleccionar Archivo
+            </label>
+
+            @if (!string.IsNullOrEmpty(NombreArchivo))
+            {
+                <div class="dm-file-selected">
+                    <span class="dm-file-icon">@(ArchivoSeleccionado != null ? "📄" : "⚠️")</span>
+                    <span class="dm-file-name">@NombreArchivo</span>
+                    <span class="dm-file-size">(@TamanoArchivo)</span>
+                </div>
+                @if (ArchivoSeleccionado != null)
+                {
+                    <button class="dm-btn dm-btn-success" @onclick="PrevisualizarArchivo" disabled="@Procesando">
+                        👁 Previsualizar
+                    </button>
+                }
+                else
+                {
+                    <p class="dm-file-error">Error al leer el archivo. Intenta seleccionarlo nuevamente.</p>
+                }
+            }
+        </div>
+
+        <div class="dm-info-box">
+            <h4>📋 Formato esperado del archivo</h4>
+            <div class="dm-columns-grid">
+                <div class="dm-col-item"><span class="dm-col-num">1</span> Fecha Orden</div>
+                <div class="dm-col-item"><span class="dm-col-num">2</span> Plan Salud</div>
+                <div class="dm-col-item"><span class="dm-col-num">3</span> Tipo Atención</div>
+                <div class="dm-col-item"><span class="dm-col-num">4</span> Identificación</div>
+                <div class="dm-col-item"><span class="dm-col-num">5</span> Paciente</div>
+                <div class="dm-col-item"><span class="dm-col-num">6</span> Examen</div>
+                <div class="dm-col-item"><span class="dm-col-num">7</span> Parámetro</div>
+                <div class="dm-col-item"><span class="dm-col-num">8</span> Resultado</div>
+                <div class="dm-col-item"><span class="dm-col-num">9</span> Unidad Medida</div>
+            </div>
+        </div>
+    }
+
+    <!-- ── PASO 2: Previsualización ───────────────────────────────────────── -->
+    @if (Paso == 2 && Preview != null)
+    {
+        <!-- Barra de acciones SUPERIOR -->
+        <div class="dm-actions-bar dm-actions-top">
+            <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
+                ← Cambiar archivo
+            </button>
+            @if (Preview.PuedeConfirmar)
+            {
+                <button class="dm-btn dm-btn-success" @onclick="ConfirmarProcesamiento"
+                        disabled="@Procesando">
+                    ✅ Confirmar y Procesar @Preview.FilasValidas fila(s)
                 </button>
+            }
+            else
+            {
+                <div class="dm-alert dm-alert-error-sm">
+                    Sin filas válidas. Corrija los errores e intente de nuevo.
+                </div>
+            }
+        </div>
+
+        <!-- Stats -->
+        <div class="dm-preview-header">
+            <div class="dm-preview-stats">
+                <div class="dm-stat dm-stat-total">
+                    <span class="dm-stat-value">@Preview.TotalFilas</span>
+                    <span class="dm-stat-label">Total Filas</span>
+                </div>
+                <div class="dm-stat dm-stat-ok">
+                    <span class="dm-stat-value">@Preview.FilasValidas</span>
+                    <span class="dm-stat-label">Válidas</span>
+                </div>
+                <div class="dm-stat dm-stat-err">
+                    <span class="dm-stat-value">@Preview.FilasConError</span>
+                    <span class="dm-stat-label">Con Error</span>
+                </div>
+            </div>
+
+            <div class="dm-progress-bar">
+                <div class="dm-progress-fill"
+                     style="width: @(Preview.TotalFilas > 0 ? (Preview.FilasValidas * 100 / Preview.TotalFilas) : 0)%">
+                </div>
+            </div>
+            <div class="dm-progress-text">
+                @(Preview.TotalFilas > 0
+                    ? $"{Preview.FilasValidas * 100 / Preview.TotalFilas}% de filas válidas"
+                    : "0% válidas")
+            </div>
+        </div>
+
+        <!-- Tabla de previsualización -->
+        <div class="dm-card">
+            <div class="dm-card-header">
+                <h3 class="dm-card-title">Vista previa (primeras 100 filas)</h3>
             </div>
             <div class="dm-table-responsive">
                 <table class="dm-table">
                     <thead>
                         <tr>
-                            <th>Fila</th>
-                            <th>Campo</th>
-                            <th>Tipo</th>
-                            <th>Mensaje</th>
-                            <th>Valor Recibido</th>
+                            <th>#</th>
+                            <th>Fecha</th>
+                            <th>Identificación</th>
+                            <th>Paciente</th>
+                            <th>Parámetro</th>
+                            <th>Resultado</th>
+                            <th>Unidad</th>
+                            <th>Plan Salud</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var err in Preview.Errores.Take(100))
+                        @foreach (var fila in Preview.Filas)
                         {
-                            <tr class="dm-row-error-detail">
-                                <td class="dm-td-num">@err.NumeroFila</td>
-                                <td><span class="dm-badge dm-badge-campo">@err.Campo</span></td>
-                                <td><span class="dm-badge dm-badge-tipo">@err.TipoError</span></td>
-                                <td>@err.Mensaje</td>
-                                <td class="dm-td-valor">@(err.ValorRecibido ?? "—")</td>
+                            <tr class="@(FilaTieneError(fila.LineNumber) ? "dm-row-error" : "")">
+                                <td class="dm-td-num">@fila.LineNumber</td>
+                                <td>@(fila.FechaOrden?.ToString("dd/MM/yyyy") ?? "—")</td>
+                                <td>@(fila.Identificacion ?? "—")</td>
+                                <td>@(fila.NombrePaciente ?? "—")</td>
+                                <td>@(fila.Parametro ?? "—")</td>
+                                <td class="dm-td-resultado">@(fila.ResultadoTexto ?? "—")</td>
+                                <td>@(fila.UnidadMedida ?? "—")</td>
+                                <td>@(fila.PlanSalud ?? "—")</td>
                             </tr>
                         }
                     </tbody>
                 </table>
             </div>
         </div>
+
+        <!-- Tabla de errores -->
+        @if (Preview.Errores.Any())
+        {
+            <div class="dm-card dm-card-errors">
+                <div class="dm-card-header">
+                    <h3 class="dm-card-title dm-title-error">⚠️ Errores de validación (@Preview.Errores.Count)</h3>
+                    <button class="dm-btn-sm dm-btn-outline" @onclick="DescargarErrores">
+                        ⬇ Descargar errores
+                    </button>
+                </div>
+                <div class="dm-table-responsive">
+                    <table class="dm-table">
+                        <thead>
+                            <tr>
+                                <th>Fila</th>
+                                <th>Campo</th>
+                                <th>Tipo</th>
+                                <th>Mensaje</th>
+                                <th>Valor Recibido</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var err in Preview.Errores.Take(100))
+                            {
+                                <tr class="dm-row-error-detail">
+                                    <td class="dm-td-num">@err.NumeroFila</td>
+                                    <td><span class="dm-badge dm-badge-campo">@err.Campo</span></td>
+                                    <td><span class="dm-badge dm-badge-tipo">@err.TipoError</span></td>
+                                    <td>@err.Mensaje</td>
+                                    <td class="dm-td-valor">@(err.ValorRecibido ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        <!-- Barra de acciones INFERIOR (espejo de la superior) -->
+        <div class="dm-actions-bar dm-actions-bottom">
+            <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
+                ← Cambiar archivo
+            </button>
+            @if (Preview.PuedeConfirmar)
+            {
+                <button class="dm-btn dm-btn-success" @onclick="ConfirmarProcesamiento"
+                        disabled="@Procesando">
+                    ✅ Confirmar y Procesar @Preview.FilasValidas fila(s)
+                </button>
+            }
+        </div>
     }
 
-    <!-- Acciones -->
-    <div class="dm-actions-bar">
-        <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
-            ← Cambiar archivo
-        </button>
-
-        @if (Preview.PuedeConfirmar)
-        {
-            <button class="dm-btn dm-btn-success" @onclick="ConfirmarProcesamiento"
-                    disabled="@Procesando">
-                @if (Procesando)
-                { <span class="dm-spinner-sm"></span> }
-                ✅ Confirmar y Procesar @Preview.FilasValidas fila(s)
-            </button>
-        }
-        else
-        {
-            <div class="dm-alert dm-alert-error-sm">
-                El archivo no tiene filas válidas para procesar. Corrija los errores e intente de nuevo.
+    <!-- ── PASO 3: Resultado del procesamiento ─────────────────────────── -->
+    @if (Paso == 3 && Resultado != null)
+    {
+        <div class="dm-card dm-card-resultado @(Resultado.Exitoso ? "dm-card-ok" : "dm-card-error")">
+            <div class="dm-resultado-icon">
+                @(Resultado.Exitoso ? "✅" : "❌")
             </div>
-        }
-    </div>
-}
+            <h2 class="dm-resultado-titulo">
+                @(Resultado.Exitoso ? "¡Carga Procesada Exitosamente!" : "Error en el Procesamiento")
+            </h2>
 
-<!-- PASO 3: Resultado del procesamiento -->
-@if (Paso == 3 && Resultado != null)
-{
-    <div class="dm-card dm-card-resultado @(Resultado.Exitoso ? "dm-card-ok" : "dm-card-error")">
-        <div class="dm-resultado-icon">
-            @(Resultado.Exitoso ? "✅" : "❌")
-        </div>
-        <h2 class="dm-resultado-titulo">
-            @(Resultado.Exitoso ? "¡Carga Procesada Exitosamente!" : "Error en el Procesamiento")
-        </h2>
+            @if (Resultado.Exitoso)
+            {
+                <div class="dm-resultado-stats">
+                    <div class="dm-r-stat">
+                        <span class="dm-r-val">@Resultado.TotalFilas</span>
+                        <span class="dm-r-lbl">Total Procesadas</span>
+                    </div>
+                    <div class="dm-r-stat dm-r-ok">
+                        <span class="dm-r-val">@Resultado.FilasValidas</span>
+                        <span class="dm-r-lbl">Registradas</span>
+                    </div>
+                    <div class="dm-r-stat dm-r-err">
+                        <span class="dm-r-val">@Resultado.FilasError</span>
+                        <span class="dm-r-lbl">Con Error</span>
+                    </div>
+                    <div class="dm-r-stat">
+                        <span class="dm-r-val">@Resultado.PorcentajeExito%</span>
+                        <span class="dm-r-lbl">Éxito</span>
+                    </div>
+                </div>
+                <p class="dm-resultado-info">
+                    Los snapshots mensuales y prescripciones sugeridas han sido generados automáticamente.
+                </p>
+            }
+            else
+            {
+                <p class="dm-resultado-error">@Resultado.MensajeError</p>
+            }
 
-        @if (Resultado.Exitoso)
-        {
-            <div class="dm-resultado-stats">
-                <div class="dm-r-stat">
-                    <span class="dm-r-val">@Resultado.TotalFilas</span>
-                    <span class="dm-r-lbl">Total Procesadas</span>
-                </div>
-                <div class="dm-r-stat dm-r-ok">
-                    <span class="dm-r-val">@Resultado.FilasValidas</span>
-                    <span class="dm-r-lbl">Registradas</span>
-                </div>
-                <div class="dm-r-stat dm-r-err">
-                    <span class="dm-r-val">@Resultado.FilasError</span>
-                    <span class="dm-r-lbl">Con Error</span>
-                </div>
-                <div class="dm-r-stat">
-                    <span class="dm-r-val">@Resultado.PorcentajeExito%</span>
-                    <span class="dm-r-lbl">Éxito</span>
-                </div>
+            <div class="dm-resultado-acciones">
+                <a href="/historial-clinico" class="dm-btn dm-btn-primary">
+                    📈 Ver Historial Clínico
+                </a>
+                <a href="/prescripciones" class="dm-btn dm-btn-outline">
+                    💊 Ver Prescripciones
+                </a>
+                <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
+                    📤 Nueva Carga
+                </button>
             </div>
-            <p class="dm-resultado-info">
-                Los snapshots mensuales y prescripciones sugeridas han sido generados automáticamente.
-            </p>
-        }
-        else
-        {
-            <p class="dm-resultado-error">@Resultado.MensajeError</p>
-        }
-
-        <div class="dm-resultado-acciones">
-            <a href="/historial-clinico" class="dm-btn dm-btn-primary">
-                📈 Ver Historial Clínico
-            </a>
-            <a href="/prescripciones" class="dm-btn dm-btn-outline">
-                💊 Ver Prescripciones
-            </a>
-            <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
-                📤 Nueva Carga
-            </button>
         </div>
-    </div>
-}
+    }
+
+</div><!-- /dm-importar-page -->
 
 <style>
+    /* ── Centrado de página ────────────────────────────────────────────────── */
+    .dm-importar-page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 0 0.5rem;
+    }
+
     .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
     .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
     .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
 
+    /* ── Cards ─────────────────────────────────────────────────────────────── */
     .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
                padding: 1.5rem; margin-bottom: 1.5rem; }
     .dm-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
@@ -279,21 +312,23 @@
     .dm-card-error { border-top: 4px solid #ef4444; }
     .dm-title-error { color: #b45309; }
 
-    /* Upload */
-    .dm-upload-area { text-align: center; padding: 3rem; border: 2px dashed #e2e8f0;
+    /* ── Upload area ────────────────────────────────────────────────────────── */
+    .dm-upload-area { text-align: center; padding: 3.5rem 2rem; border: 2px dashed #e2e8f0;
                       transition: all 0.2s; cursor: default; }
     .dm-drag-over { border-color: #0ea5e9; background: #f0f9ff; }
-    .dm-upload-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-upload-icon { font-size: 3.5rem; margin-bottom: 1rem; }
     .dm-upload-title { font-size: 1.25rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
-    .dm-upload-desc { color: #64748b; margin-bottom: 1.5rem; }
+    .dm-upload-desc { color: #64748b; margin-bottom: 1.75rem; }
     .dm-file-input-hidden { display: none; }
-    .dm-file-selected { margin: 1rem 0; padding: 0.75rem 1rem; background: #f8fafc;
-                        border-radius: 8px; display: inline-flex; align-items: center; gap: 0.5rem; }
+    .dm-file-selected { margin: 1.25rem auto 1rem; padding: 0.75rem 1.25rem; background: #f8fafc;
+                        border-radius: 10px; display: inline-flex; align-items: center; gap: 0.5rem;
+                        border: 1px solid #e2e8f0; }
     .dm-file-icon { font-size: 1.25rem; }
     .dm-file-name { font-weight: 600; color: #1e293b; }
     .dm-file-size { color: #94a3b8; font-size: 0.85rem; }
+    .dm-file-error { color: #dc2626; font-size: 0.85rem; margin-top: 0.5rem; }
 
-    /* Info box */
+    /* ── Info box ────────────────────────────────────────────────────────────── */
     .dm-info-box { background: #f8fafc; border-radius: 12px; padding: 1.25rem 1.5rem;
                    border: 1px solid #e2e8f0; margin-top: 1.5rem; }
     .dm-info-box h4 { font-size: 0.9rem; color: #374151; margin: 0 0 1rem; font-weight: 700; }
@@ -303,11 +338,11 @@
                   display: inline-flex; align-items: center; justify-content: center;
                   font-size: 0.7rem; font-weight: 700; flex-shrink: 0; }
 
-    /* Preview header */
+    /* ── Preview header ──────────────────────────────────────────────────────── */
     .dm-preview-header { margin-bottom: 1.5rem; }
-    .dm-preview-stats { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .dm-preview-stats { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
     .dm-stat { background: white; border-radius: 10px; padding: 1rem 1.5rem; text-align: center;
-               box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
+               box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; flex-direction: column; min-width: 120px; }
     .dm-stat-ok { border-left: 3px solid #10b981; }
     .dm-stat-err { border-left: 3px solid #f59e0b; }
     .dm-stat-total { border-left: 3px solid #0ea5e9; }
@@ -318,7 +353,7 @@
                         border-radius: 4px; transition: width 0.4s ease; }
     .dm-progress-text { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; text-align: right; }
 
-    /* Tabla */
+    /* ── Tabla ───────────────────────────────────────────────────────────────── */
     .dm-table-responsive { overflow-x: auto; }
     .dm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
@@ -335,36 +370,35 @@
     .dm-badge-campo { background: #dbeafe; color: #1d4ed8; }
     .dm-badge-tipo { background: #fef3c7; color: #92400e; }
 
-    /* Botones */
+    /* ── Botones ────────────────────────────────────────────────────────────── */
     .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
               text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem;
-              cursor: pointer; border: none; transition: all 0.15s; }
+              cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap; }
     .dm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .dm-btn-primary { background: #0ea5e9; color: white; }
     .dm-btn-primary:hover:not(:disabled) { background: #0284c7; color: white; }
     .dm-btn-success { background: #10b981; color: white; }
-    .dm-btn-success:hover:not(:disabled) { background: #059669; color: white; }
+    .dm-btn-success:hover:not(:disabled) { background: #059669; }
     .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
     .dm-btn-outline:hover:not(:disabled) { border-color: #0ea5e9; color: #0ea5e9; }
     .dm-btn-sm { padding: 0.375rem 0.875rem; font-size: 0.8rem; border-radius: 6px;
                  background: white; color: #374151; border: 1.5px solid #e2e8f0;
                  cursor: pointer; font-weight: 600; }
 
+    /* ── Barras de acciones (top y bottom de la preview) ─────────────────────── */
     .dm-actions-bar { display: flex; justify-content: space-between; align-items: center;
-                      padding: 1rem 0; gap: 1rem; flex-wrap: wrap; }
+                      gap: 1rem; flex-wrap: wrap; }
+    .dm-actions-top { margin-bottom: 1.25rem; }
+    .dm-actions-bottom { margin-top: 1.25rem; padding-top: 1.25rem;
+                          border-top: 1px solid #f1f5f9; }
 
-    .dm-spinner-sm { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4);
-                     border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
-    @@keyframes spin { to { transform: rotate(360deg); } }
-
-    .dm-alert-error-sm { background: #fef2f2; color: #991b1b; padding: 0.75rem 1rem;
+    .dm-alert-error-sm { background: #fef2f2; color: #991b1b; padding: 0.625rem 1rem;
                          border-radius: 8px; font-size: 0.875rem; border-left: 3px solid #ef4444; }
 
-    /* Resultado */
+    /* ── Resultado final ─────────────────────────────────────────────────────── */
     .dm-resultado-icon { font-size: 4rem; margin-bottom: 1rem; }
     .dm-resultado-titulo { font-size: 1.5rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; }
-    .dm-resultado-stats { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1.5rem;
-                           flex-wrap: wrap; }
+    .dm-resultado-stats { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
     .dm-r-stat { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
     .dm-r-val { font-size: 2rem; font-weight: 800; color: #1e293b; }
     .dm-r-lbl { font-size: 0.8rem; color: #64748b; font-weight: 500; }
@@ -378,11 +412,12 @@
 @code {
     private int Paso = 1;
     private bool Procesando = false;
+    private bool LeyendoArchivo = false;
     private bool ArrastreSobre = false;
     private string NombreArchivo = string.Empty;
     private string TamanoArchivo = string.Empty;
     private IBrowserFile? ArchivoSeleccionado;
-    private MemoryStream? _archivoMs;   // archivo cacheado en memoria tras selección
+    private MemoryStream? _archivoMs;
     private PreVisualizacionDto? Preview;
     private ImportacionResultadoDto? Resultado;
 
@@ -393,7 +428,7 @@
     {
         var auth = await AuthState.GetAuthenticationStateAsync();
         var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
-        var userStr = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userStr = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
         UsuarioId = Guid.TryParse(userStr, out var u) ? u : Guid.Empty;
@@ -401,7 +436,6 @@
 
     private async Task HandleFileSeleccionado(InputFileChangeEventArgs e)
     {
-        // Mostrar nombre y tamaño inmediatamente (antes de leer el contenido)
         NombreArchivo = e.File.Name;
         TamanoArchivo = FormatearTamano(e.File.Size);
         Preview = null;
@@ -409,23 +443,27 @@
         ArchivoSeleccionado = null;
         _archivoMs?.Dispose();
         _archivoMs = null;
-        StateHasChanged(); // actualizar UI: nombre visible antes del stream
 
-        // Leer el archivo a MemoryStream mientras el browser-file reference es válido.
-        // MaximumReceiveMessageSize en el hub está configurado a 50 MB en Program.cs.
+        // Mostrar el overlay de loading inmediatamente
+        LeyendoArchivo = true;
+        StateHasChanged();
+
         try
         {
             using var browserStream = e.File.OpenReadStream(maxAllowedSize: 50_000_000);
             _archivoMs = new MemoryStream();
             await browserStream.CopyToAsync(_archivoMs);
-            ArchivoSeleccionado = e.File; // solo marcar OK cuando el stream completó
+            ArchivoSeleccionado = e.File;
         }
         catch (Exception ex)
         {
-            // NO borrar NombreArchivo — el usuario ya ve qué archivo falló
             _archivoMs?.Dispose();
             _archivoMs = null;
             GlobalToastService.ShowError($"No se pudo leer '{e.File.Name}': {ex.Message}");
+        }
+        finally
+        {
+            LeyendoArchivo = false;
         }
     }
 
@@ -506,11 +544,8 @@
     private bool FilaTieneError(int numeroFila) =>
         Preview?.Errores.Any(e => e.NumeroFila == numeroFila) ?? false;
 
-    private void DescargarErrores()
-    {
-        // TODO: implementar descarga CSV de errores
+    private void DescargarErrores() =>
         GlobalToastService.ShowWarning("Descarga de errores: próximamente disponible.");
-    }
 
     private static string FormatearTamano(long bytes)
     {
