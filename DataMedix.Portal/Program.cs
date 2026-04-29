@@ -3,32 +3,50 @@ using DataMedix.Infrastructure;
 using DataMedix.Portal.Components;
 using DataMedix.Portal.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ──────────────────────────────────────────────────────────────────────────────
-// CAPAS DE APLICACIÓN E INFRAESTRUCTURA
-// ──────────────────────────────────────────────────────────────────────────────
+// ── VALIDAR CONFIG CRÍTICA ─────────────────────────────────────────────────────
+var connStr = builder.Configuration.GetConnectionString("DatabasePostgres");
+if (string.IsNullOrWhiteSpace(connStr))
+    throw new InvalidOperationException(
+        "ConnectionStrings:DatabasePostgres está vacío. " +
+        "Local: verifica ASPNETCORE_ENVIRONMENT=Development y appsettings.Development.json. " +
+        "Railway: define ConnectionStrings__DatabasePostgres como variable de entorno.");
+
+// ── FORWARDED HEADERS (Railway / reverse proxy) ────────────────────────────────
+// Sin esto: HTTPS no detectado, redirect loops, cookies inseguras detrás del proxy
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear(); // confiar en cualquier proxy (Railway cambia IPs)
+    options.KnownProxies.Clear();
+});
+
+// ── CAPAS DE APLICACIÓN E INFRAESTRUCTURA ─────────────────────────────────────
 builder.Services
     .AddInfrastructure(builder.Configuration)
     .AddApplication();
 
-// ──────────────────────────────────────────────────────────────────────────────
-// SERVICIOS PORTAL
-// ──────────────────────────────────────────────────────────────────────────────
+// ── SERVICIOS PORTAL ──────────────────────────────────────────────────────────
 builder.Services.AddScoped<GlobalLoadingService>();
 builder.Services.AddScoped<GlobalToastService>();
 
-// ──────────────────────────────────────────────────────────────────────────────
-// BLAZOR + MVC
-// ──────────────────────────────────────────────────────────────────────────────
-builder.Services.AddRazorComponents(options => options.DetailedErrors = builder.Environment.IsDevelopment())
-    .AddInteractiveServerComponents();
+// ── BLAZOR + MVC ──────────────────────────────────────────────────────────────
+builder.Services
+    .AddRazorComponents(options => options.DetailedErrors = builder.Environment.IsDevelopment())
+    .AddInteractiveServerComponents()
+    .AddHubOptions(options =>
+    {
+        // Sube el límite del hub SignalR a 50 MB para permitir upload de Excel grandes
+        options.MaximumReceiveMessageSize = 50 * 1024 * 1024;
+    });
 builder.Services.AddControllers();
 
-// ──────────────────────────────────────────────────────────────────────────────
-// AUTENTICACIÓN (Cookie-based)
-// ──────────────────────────────────────────────────────────────────────────────
+// ── AUTENTICACIÓN (Cookie-based) ───────────────────────────────────────────────
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -48,25 +66,45 @@ builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
 
-// ──────────────────────────────────────────────────────────────────────────────
-// LOGGING
-// ──────────────────────────────────────────────────────────────────────────────
+// ── LOGGING ────────────────────────────────────────────────────────────────────
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 if (builder.Environment.IsProduction())
     builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
-// ──────────────────────────────────────────────────────────────────────────────
-// BUILD
-// ──────────────────────────────────────────────────────────────────────────────
+// ── BUILD ──────────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
+// PRIMERO: leer los headers del proxy antes de cualquier redirect/auth
+app.UseForwardedHeaders();
+
+if (app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/error");
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "text/html; charset=utf-8";
+            var feature = context.Features.Get<IExceptionHandlerFeature>();
+            var msg = WebUtility.HtmlEncode(feature?.Error?.Message ?? "Error interno del servidor");
+            var reqId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier;
+            await context.Response.WriteAsync(
+                $"<html><body style='font-family:system-ui;padding:2rem;max-width:600px'>" +
+                $"<h2 style='color:#dc2626'>Error del servidor</h2>" +
+                $"<p>{msg}</p>" +
+                $"<p style='color:#9ca3af;font-size:0.8rem'>Request ID: {reqId}</p>" +
+                $"</body></html>");
+        });
+    });
     app.UseHsts();
 }
 
+// UseHttpsRedirection es seguro aquí porque UseForwardedHeaders ya corrigió el scheme
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();

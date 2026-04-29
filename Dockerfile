@@ -26,9 +26,9 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-# Puerto que expone Railway/Render (8080 es el estándar)
-EXPOSE 8080
-ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 
-ENTRYPOINT ["dotnet", "DataMedix.Portal.dll"]
+# Railway inyecta $PORT en tiempo de ejecución — el CMD lo usa para ASPNETCORE_URLS
+# Si no está definido, cae a 8080 (compatibilidad con otros hosts)
+EXPOSE 8080
+CMD ["sh", "-c", "ASPNETCORE_URLS=http://+:${PORT:-8080} dotnet DataMedix.Portal.dll"]

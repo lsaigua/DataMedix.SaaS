@@ -43,15 +43,23 @@
         @if (!string.IsNullOrEmpty(NombreArchivo))
         {
             <div class="dm-file-selected">
-                <span class="dm-file-icon">📄</span>
+                <span class="dm-file-icon">@(ArchivoSeleccionado != null ? "📄" : "⚠️")</span>
                 <span class="dm-file-name">@NombreArchivo</span>
                 <span class="dm-file-size">(@TamanoArchivo)</span>
             </div>
-            <button class="dm-btn dm-btn-outline" @onclick="PrevisualizarArchivo" disabled="@Procesando">
-                @if (Procesando)
-                { <span class="dm-spinner-sm"></span> }
-                👁 Previsualizar
-            </button>
+            @if (ArchivoSeleccionado != null)
+            {
+                <button class="dm-btn dm-btn-outline" @onclick="PrevisualizarArchivo" disabled="@Procesando">
+                    @if (Procesando) { <span class="dm-spinner-sm"></span> }
+                    👁 Previsualizar
+                </button>
+            }
+            else
+            {
+                <p style="color:#dc2626;font-size:0.85rem;margin-top:0.5rem">
+                    Error al leer el archivo. Intenta seleccionarlo nuevamente.
+                </p>
+            }
         }
     </div>
 
@@ -393,27 +401,31 @@
 
     private async Task HandleFileSeleccionado(InputFileChangeEventArgs e)
     {
-        ArchivoSeleccionado = e.File;
+        // Mostrar nombre y tamaño inmediatamente (antes de leer el contenido)
         NombreArchivo = e.File.Name;
         TamanoArchivo = FormatearTamano(e.File.Size);
         Preview = null;
         Resultado = null;
-
-        // Copiar a MemoryStream AQUÍ, mientras el browser file reference aún es válido
-        // y antes de cualquier StateHasChanged() que destruiría _blazorFilesById.
+        ArchivoSeleccionado = null;
         _archivoMs?.Dispose();
         _archivoMs = null;
+        StateHasChanged(); // actualizar UI: nombre visible antes del stream
+
+        // Leer el archivo a MemoryStream mientras el browser-file reference es válido.
+        // MaximumReceiveMessageSize en el hub está configurado a 50 MB en Program.cs.
         try
         {
             using var browserStream = e.File.OpenReadStream(maxAllowedSize: 50_000_000);
             _archivoMs = new MemoryStream();
             await browserStream.CopyToAsync(_archivoMs);
+            ArchivoSeleccionado = e.File; // solo marcar OK cuando el stream completó
         }
         catch (Exception ex)
         {
-            GlobalToastService.ShowError($"Error leyendo el archivo: {ex.Message}");
-            ArchivoSeleccionado = null;
-            NombreArchivo = string.Empty;
+            // NO borrar NombreArchivo — el usuario ya ve qué archivo falló
+            _archivoMs?.Dispose();
+            _archivoMs = null;
+            GlobalToastService.ShowError($"No se pudo leer '{e.File.Name}': {ex.Message}");
         }
     }
 
