@@ -20,28 +20,22 @@ RUN dotnet publish DataMedix.Portal/DataMedix.Portal.csproj \
     -o /app/publish \
     --no-restore
 
-# Diagnóstico: verificar static web assets
-RUN echo "=== wwwroot ===" && ls /app/publish/wwwroot/ 2>/dev/null || echo "[WARN] wwwroot missing" && \
-    echo "=== _framework ===" && ls /app/publish/wwwroot/_framework/ 2>/dev/null || echo "[WARN] _framework missing" && \
-    echo "=== Manifest ===" && ls /app/publish/*.staticwebassets.* 2>/dev/null || echo "[WARN] no manifest" && \
-    echo "=== blazor.web.js en manifest ===" && \
-    grep -o '"Route":"[^"]*blazor[^"]*"' /app/publish/DataMedix.Portal.staticwebassets.endpoints.json 2>/dev/null || echo "[INFO] no blazor route en manifest" && \
-    echo "=== blazor.web.js en NuGet cache ===" && \
-    find /root/.nuget/packages -name "blazor.web.js" 2>/dev/null | head -5 || true
+# Diagnóstico: buscar blazor.web.js en todas las ubicaciones del SDK
+RUN echo "=== wwwroot ===" && find /app/publish/wwwroot -type f 2>/dev/null | sort | head -30 && \
+    echo "=== blazor.web.js en publish ===" && find /app/publish -name "blazor.web.js" 2>/dev/null || echo "no encontrado en publish" && \
+    echo "=== blazor.web.js en SDK packs ===" && find /usr/share/dotnet/packs -name "blazor.web.js" 2>/dev/null | head -5 || echo "no en packs" && \
+    echo "=== blazor.web.js en SDK ===" && find /usr/share/dotnet/sdk -name "blazor.web.js" 2>/dev/null | head -5 || echo "no en sdk" && \
+    echo "=== blazor.web.js en shared framework ===" && find /usr/share/dotnet/shared -name "blazor.web.js" 2>/dev/null | head -5 || echo "no en shared"
 
-# Garantizar que blazor.web.js esté físicamente en wwwroot/_framework
-# Necesario porque MapStaticAssets() a veces no lo sirve desde el manifiesto en Railway
-RUN mkdir -p /app/publish/wwwroot/_framework && \
-    if [ ! -f /app/publish/wwwroot/_framework/blazor.web.js ]; then \
-        BLAZOR=$(find /root/.nuget/packages -name "blazor.web.js" 2>/dev/null | head -1); \
-        if [ -n "$BLAZOR" ]; then \
-            cp "$BLAZOR" /app/publish/wwwroot/_framework/blazor.web.js; \
-            echo "[OK] blazor.web.js copiado desde $BLAZOR"; \
-        else \
-            echo "[WARN] blazor.web.js no encontrado en NuGet cache"; \
-        fi; \
+# Intentar copiar blazor.web.js al wwwroot físico (para UseStaticFiles)
+RUN BLAZOR=$(find /usr/share/dotnet -name "blazor.web.js" 2>/dev/null | head -1); \
+    [ -z "$BLAZOR" ] && BLAZOR=$(find /root/.nuget -name "blazor.web.js" 2>/dev/null | head -1); \
+    mkdir -p /app/publish/wwwroot/_framework; \
+    if [ -n "$BLAZOR" ]; then \
+        cp "$BLAZOR" /app/publish/wwwroot/_framework/blazor.web.js; \
+        echo "[OK] blazor.web.js copiado desde $BLAZOR"; \
     else \
-        echo "[OK] blazor.web.js ya existe en wwwroot/_framework/"; \
+        echo "[INFO] blazor.web.js no encontrado en disco — se servirá desde recurso embebido en runtime"; \
     fi && \
     ls -la /app/publish/wwwroot/_framework/ 2>/dev/null
 
