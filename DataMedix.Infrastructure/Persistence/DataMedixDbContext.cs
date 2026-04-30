@@ -1,9 +1,10 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using DataMedix.Domain.Entities;
 
 namespace DataMedix.Infrastructure.Persistence
 {
-    public class DataMedixDbContext : DbContext
+    public class DataMedixDbContext : DbContext, IDataProtectionKeyContext
     {
         public DataMedixDbContext(DbContextOptions<DataMedixDbContext> options) : base(options) { }
 
@@ -35,6 +36,9 @@ namespace DataMedix.Infrastructure.Persistence
 
         // Auditoría
         public DbSet<AuditoriaLog> AuditoriaLogs => Set<AuditoriaLog>();
+
+        // DataProtection (persistir claves en DB para sobrevivir reinicios en Railway)
+        public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
         protected override void OnModelCreating(ModelBuilder m)
         {
@@ -469,6 +473,18 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(pf => pf.UpdatedAt).HasColumnName("updated_at");
                 e.HasOne(pf => pf.Paciente).WithMany().HasForeignKey(pf => pf.PacienteId);
                 e.HasOne(pf => pf.Medico).WithMany().HasForeignKey(pf => pf.MedicoId);
+            });
+
+            // ========================
+            // DATA PROTECTION KEYS
+            // ========================
+            m.Entity<DataProtectionKey>(e =>
+            {
+                e.ToTable("data_protection_keys");
+                e.HasKey(d => d.Id);
+                e.Property(d => d.Id).HasColumnName("id").UseIdentityColumn();
+                e.Property(d => d.FriendlyName).HasColumnName("friendly_name");
+                e.Property(d => d.Xml).HasColumnName("xml");
             });
 
             // ========================

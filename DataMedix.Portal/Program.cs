@@ -75,6 +75,9 @@ if (builder.Environment.IsProduction())
 // ── BUILD ──────────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
+// Crear tabla data_protection_keys si no existe (primera vez / nuevos entornos)
+await app.Services.EnsureDataProtectionTableAsync();
+
 // PRIMERO: leer los headers del proxy antes de cualquier redirect/auth
 app.UseForwardedHeaders();
 
