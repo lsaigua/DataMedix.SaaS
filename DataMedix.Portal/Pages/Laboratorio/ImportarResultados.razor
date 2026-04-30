@@ -5,9 +5,12 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using DataMedix.Application.Services
 @using DataMedix.Application.DTOs
+@using DataMedix.Application.Interfaces
 @using System.Security.Claims
 
 @inject ImportacionService ImportacionSvc
+@inject IExcelExporter ExcelExporter
+@inject IJSRuntime JS
 @inject GlobalLoadingService GlobalLoadingService
 @inject GlobalToastService GlobalToastService
 @inject AuthenticationStateProvider AuthState
@@ -15,7 +18,7 @@
 
 <PageTitle>Carga Masiva | DataMedix</PageTitle>
 
-<!-- Overlay de loading (leyendo archivo o previsualizando) -->
+<!-- Overlay de loading -->
 @if (LeyendoArchivo || Procesando)
 {
     <div class="dm-overlay-root">
@@ -26,7 +29,6 @@
     </div>
 }
 
-<!-- Contenido centrado -->
 <div class="dm-importar-page">
 
     <div class="dm-page-header">
@@ -180,45 +182,22 @@
             </div>
         </div>
 
-        <!-- Tabla de errores -->
+        <!-- Tabla de errores de previsualización -->
         @if (Preview.Errores.Any())
         {
             <div class="dm-card dm-card-errors">
                 <div class="dm-card-header">
                     <h3 class="dm-card-title dm-title-error">⚠️ Errores de validación (@Preview.Errores.Count)</h3>
-                    <button class="dm-btn-sm dm-btn-outline" @onclick="DescargarErrores">
-                        ⬇ Descargar errores
+                    <button class="dm-btn-sm dm-btn-outline" @onclick="DescargarErroresPreview"
+                            disabled="@DescargandoErrores">
+                        @(DescargandoErrores ? "Generando…" : "⬇ Descargar errores")
                     </button>
                 </div>
-                <div class="dm-table-responsive">
-                    <table class="dm-table">
-                        <thead>
-                            <tr>
-                                <th>Fila</th>
-                                <th>Campo</th>
-                                <th>Tipo</th>
-                                <th>Mensaje</th>
-                                <th>Valor Recibido</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var err in Preview.Errores.Take(100))
-                            {
-                                <tr class="dm-row-error-detail">
-                                    <td class="dm-td-num">@err.NumeroFila</td>
-                                    <td><span class="dm-badge dm-badge-campo">@err.Campo</span></td>
-                                    <td><span class="dm-badge dm-badge-tipo">@err.TipoError</span></td>
-                                    <td>@err.Mensaje</td>
-                                    <td class="dm-td-valor">@(err.ValorRecibido ?? "—")</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                @RenderTablaErrores(Preview.Errores.Take(200).ToList())
             </div>
         }
 
-        <!-- Barra de acciones INFERIOR (espejo de la superior) -->
+        <!-- Barra de acciones INFERIOR -->
         <div class="dm-actions-bar dm-actions-bottom">
             <button class="dm-btn dm-btn-outline" @onclick="ReiniciarPaso">
                 ← Cambiar archivo
@@ -285,135 +264,37 @@
                 </button>
             </div>
         </div>
+
+        <!-- Detalle de errores post-procesamiento -->
+        @if (Resultado.FilasError > 0 && Resultado.Errores.Any())
+        {
+            <div class="dm-card dm-card-errors">
+                <div class="dm-card-header">
+                    <h3 class="dm-card-title dm-title-error">
+                        ⚠️ Registros con error (@Resultado.FilasError fila(s) — @Resultado.Errores.Count error(es))
+                    </h3>
+                    <button class="dm-btn-sm dm-btn-outline" @onclick="DescargarErroresResultado"
+                            disabled="@DescargandoErrores">
+                        @(DescargandoErrores ? "Generando…" : "⬇ Descargar errores (.xlsx)")
+                    </button>
+                </div>
+                <p class="dm-errors-hint">
+                    Los registros con error <strong>no fueron importados</strong>.
+                    Corrija el archivo original en las filas indicadas y vuelva a cargar solo los registros corregidos.
+                </p>
+                @RenderTablaErrores(Resultado.Errores)
+            </div>
+        }
     }
 
 </div><!-- /dm-importar-page -->
-
-<style>
-    /* ── Centrado de página ────────────────────────────────────────────────── */
-    .dm-importar-page {
-        max-width: 960px;
-        margin: 0 auto;
-        padding: 0 0.5rem;
-    }
-
-    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
-    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
-    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
-
-    /* ── Cards ─────────────────────────────────────────────────────────────── */
-    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-               padding: 1.5rem; margin-bottom: 1.5rem; }
-    .dm-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-    .dm-card-title { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0; }
-    .dm-card-errors { border-left: 4px solid #f59e0b; }
-    .dm-card-resultado { text-align: center; padding: 3rem; }
-    .dm-card-ok { border-top: 4px solid #10b981; }
-    .dm-card-error { border-top: 4px solid #ef4444; }
-    .dm-title-error { color: #b45309; }
-
-    /* ── Upload area ────────────────────────────────────────────────────────── */
-    .dm-upload-area { text-align: center; padding: 3.5rem 2rem; border: 2px dashed #e2e8f0;
-                      transition: all 0.2s; cursor: default; }
-    .dm-drag-over { border-color: #0ea5e9; background: #f0f9ff; }
-    .dm-upload-icon { font-size: 3.5rem; margin-bottom: 1rem; }
-    .dm-upload-title { font-size: 1.25rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
-    .dm-upload-desc { color: #64748b; margin-bottom: 1.75rem; }
-    .dm-file-input-hidden { display: none; }
-    .dm-file-selected { margin: 1.25rem auto 1rem; padding: 0.75rem 1.25rem; background: #f8fafc;
-                        border-radius: 10px; display: inline-flex; align-items: center; gap: 0.5rem;
-                        border: 1px solid #e2e8f0; }
-    .dm-file-icon { font-size: 1.25rem; }
-    .dm-file-name { font-weight: 600; color: #1e293b; }
-    .dm-file-size { color: #94a3b8; font-size: 0.85rem; }
-    .dm-file-error { color: #dc2626; font-size: 0.85rem; margin-top: 0.5rem; }
-
-    /* ── Info box ────────────────────────────────────────────────────────────── */
-    .dm-info-box { background: #f8fafc; border-radius: 12px; padding: 1.25rem 1.5rem;
-                   border: 1px solid #e2e8f0; margin-top: 1.5rem; }
-    .dm-info-box h4 { font-size: 0.9rem; color: #374151; margin: 0 0 1rem; font-weight: 700; }
-    .dm-columns-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; }
-    .dm-col-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #4b5563; }
-    .dm-col-num { background: #0ea5e9; color: white; border-radius: 50%; width: 20px; height: 20px;
-                  display: inline-flex; align-items: center; justify-content: center;
-                  font-size: 0.7rem; font-weight: 700; flex-shrink: 0; }
-
-    /* ── Preview header ──────────────────────────────────────────────────────── */
-    .dm-preview-header { margin-bottom: 1.5rem; }
-    .dm-preview-stats { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-    .dm-stat { background: white; border-radius: 10px; padding: 1rem 1.5rem; text-align: center;
-               box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; flex-direction: column; min-width: 120px; }
-    .dm-stat-ok { border-left: 3px solid #10b981; }
-    .dm-stat-err { border-left: 3px solid #f59e0b; }
-    .dm-stat-total { border-left: 3px solid #0ea5e9; }
-    .dm-stat-value { font-size: 1.75rem; font-weight: 800; color: #1e293b; }
-    .dm-stat-label { font-size: 0.75rem; color: #64748b; font-weight: 500; }
-    .dm-progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
-    .dm-progress-fill { height: 100%; background: linear-gradient(to right, #0ea5e9, #10b981);
-                        border-radius: 4px; transition: width 0.4s ease; }
-    .dm-progress-text { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; text-align: right; }
-
-    /* ── Tabla ───────────────────────────────────────────────────────────────── */
-    .dm-table-responsive { overflow-x: auto; }
-    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
-                   padding: 0.75rem 1rem; border-bottom: 2px solid #e2e8f0;
-                   white-space: nowrap; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
-    .dm-table td { padding: 0.625rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; }
-    .dm-table tbody tr:hover { background: #f8fafc; }
-    .dm-td-num { color: #94a3b8; font-size: 0.8rem; }
-    .dm-td-resultado { font-weight: 600; color: #1e293b; }
-    .dm-td-valor { font-family: monospace; font-size: 0.8rem; color: #ef4444; }
-    .dm-row-error { background: #fffbeb !important; }
-    .dm-row-error-detail { background: #fff7ed; }
-    .dm-badge { padding: 0.2rem 0.6rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; }
-    .dm-badge-campo { background: #dbeafe; color: #1d4ed8; }
-    .dm-badge-tipo { background: #fef3c7; color: #92400e; }
-
-    /* ── Botones ────────────────────────────────────────────────────────────── */
-    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
-              text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem;
-              cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap; }
-    .dm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .dm-btn-primary { background: #0ea5e9; color: white; }
-    .dm-btn-primary:hover:not(:disabled) { background: #0284c7; color: white; }
-    .dm-btn-success { background: #10b981; color: white; }
-    .dm-btn-success:hover:not(:disabled) { background: #059669; }
-    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
-    .dm-btn-outline:hover:not(:disabled) { border-color: #0ea5e9; color: #0ea5e9; }
-    .dm-btn-sm { padding: 0.375rem 0.875rem; font-size: 0.8rem; border-radius: 6px;
-                 background: white; color: #374151; border: 1.5px solid #e2e8f0;
-                 cursor: pointer; font-weight: 600; }
-
-    /* ── Barras de acciones (top y bottom de la preview) ─────────────────────── */
-    .dm-actions-bar { display: flex; justify-content: space-between; align-items: center;
-                      gap: 1rem; flex-wrap: wrap; }
-    .dm-actions-top { margin-bottom: 1.25rem; }
-    .dm-actions-bottom { margin-top: 1.25rem; padding-top: 1.25rem;
-                          border-top: 1px solid #f1f5f9; }
-
-    .dm-alert-error-sm { background: #fef2f2; color: #991b1b; padding: 0.625rem 1rem;
-                         border-radius: 8px; font-size: 0.875rem; border-left: 3px solid #ef4444; }
-
-    /* ── Resultado final ─────────────────────────────────────────────────────── */
-    .dm-resultado-icon { font-size: 4rem; margin-bottom: 1rem; }
-    .dm-resultado-titulo { font-size: 1.5rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; }
-    .dm-resultado-stats { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-    .dm-r-stat { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
-    .dm-r-val { font-size: 2rem; font-weight: 800; color: #1e293b; }
-    .dm-r-lbl { font-size: 0.8rem; color: #64748b; font-weight: 500; }
-    .dm-r-ok .dm-r-val { color: #10b981; }
-    .dm-r-err .dm-r-val { color: #f59e0b; }
-    .dm-resultado-info { color: #64748b; margin-bottom: 2rem; }
-    .dm-resultado-error { color: #ef4444; margin-bottom: 2rem; font-weight: 600; }
-    .dm-resultado-acciones { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
-</style>
 
 @code {
     private int Paso = 1;
     private bool Procesando = false;
     private bool LeyendoArchivo = false;
     private bool ArrastreSobre = false;
+    private bool DescargandoErrores = false;
     private string NombreArchivo = string.Empty;
     private string TamanoArchivo = string.Empty;
     private IBrowserFile? ArchivoSeleccionado;
@@ -444,7 +325,6 @@
         _archivoMs?.Dispose();
         _archivoMs = null;
 
-        // Mostrar el overlay de loading inmediatamente
         LeyendoArchivo = true;
         StateHasChanged();
 
@@ -511,9 +391,16 @@
                 _archivoMs, NombreArchivo, TenantId, UsuarioId);
 
             if (Resultado.Exitoso)
-                GlobalToastService.ShowSuccess($"✅ {Resultado.FilasValidas} resultado(s) importados correctamente.");
+            {
+                var msg = Resultado.FilasError > 0
+                    ? $"✅ {Resultado.FilasValidas} resultado(s) importados. {Resultado.FilasError} fila(s) con error (ver detalle abajo)."
+                    : $"✅ {Resultado.FilasValidas} resultado(s) importados correctamente.";
+                GlobalToastService.ShowSuccess(msg);
+            }
             else
+            {
                 GlobalToastService.ShowError(Resultado.MensajeError ?? "Error al procesar.");
+            }
 
             Paso = 3;
         }
@@ -525,6 +412,40 @@
         {
             Procesando = false;
             GlobalLoadingService.Hide();
+        }
+    }
+
+    private async Task DescargarErroresPreview()
+    {
+        if (Preview == null || !Preview.Errores.Any()) return;
+        await DescargarErroresComoExcel(Preview.Errores, $"errores_preview_{NombreArchivo}");
+    }
+
+    private async Task DescargarErroresResultado()
+    {
+        if (Resultado == null || !Resultado.Errores.Any()) return;
+        await DescargarErroresComoExcel(Resultado.Errores, $"errores_{NombreArchivo}");
+    }
+
+    private async Task DescargarErroresComoExcel(IEnumerable<ErrorImportacionDto> errores, string nombreBase)
+    {
+        DescargandoErrores = true;
+        StateHasChanged();
+        try
+        {
+            var bytes = ExcelExporter.GenerarErroresExcel(errores, NombreArchivo);
+            var base64 = Convert.ToBase64String(bytes);
+            var fileName = $"{Path.GetFileNameWithoutExtension(nombreBase)}_errores.xlsx";
+            await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, base64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            GlobalToastService.ShowError($"No se pudo generar el archivo: {ex.Message}");
+        }
+        finally
+        {
+            DescargandoErrores = false;
         }
     }
 
@@ -544,8 +465,34 @@
     private bool FilaTieneError(int numeroFila) =>
         Preview?.Errores.Any(e => e.NumeroFila == numeroFila) ?? false;
 
-    private void DescargarErrores() =>
-        GlobalToastService.ShowWarning("Descarga de errores: próximamente disponible.");
+    private RenderFragment RenderTablaErrores(List<ErrorImportacionDto> errores) => __builder =>
+    {
+        <div class="dm-table-responsive">
+            <table class="dm-table">
+                <thead>
+                    <tr>
+                        <th>Fila</th>
+                        <th>Campo</th>
+                        <th>Tipo</th>
+                        <th>Descripción</th>
+                        <th>Valor Recibido</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var err in errores)
+                    {
+                        <tr class="dm-row-error-detail">
+                            <td class="dm-td-num">@err.NumeroFila</td>
+                            <td><span class="dm-badge dm-badge-campo">@(err.Campo ?? "—")</span></td>
+                            <td><span class="dm-badge dm-badge-tipo dm-badge-tipo-@err.TipoError.ToLower()">@err.TipoError</span></td>
+                            <td>@err.Mensaje</td>
+                            <td class="dm-td-valor">@(err.ValorRecibido ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    };
 
     private static string FormatearTamano(long bytes)
     {
@@ -556,3 +503,131 @@
 
     public void Dispose() => _archivoMs?.Dispose();
 }
+
+<style>
+    /* ── Centrado de página ────────────────────────────────────────────────── */
+    .dm-importar-page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 0 0.5rem;
+    }
+
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+
+    /* ── Cards ─────────────────────────────────────────────────────────────── */
+    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+               padding: 1.5rem; margin-bottom: 1.5rem; }
+    .dm-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .dm-card-title { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-card-errors { border-left: 4px solid #f59e0b; }
+    .dm-card-resultado { text-align: center; padding: 3rem; }
+    .dm-card-ok { border-top: 4px solid #10b981; }
+    .dm-card-error { border-top: 4px solid #ef4444; }
+    .dm-title-error { color: #b45309; }
+    .dm-errors-hint { font-size: 0.85rem; color: #78716c; margin: -0.25rem 0 1rem;
+                      padding: 0.625rem 0.875rem; background: #fffbeb; border-radius: 6px; }
+
+    /* ── Upload area ────────────────────────────────────────────────────────── */
+    .dm-upload-area { text-align: center; padding: 3.5rem 2rem; border: 2px dashed #e2e8f0;
+                      transition: all 0.2s; cursor: default; }
+    .dm-drag-over { border-color: #0ea5e9; background: #f0f9ff; }
+    .dm-upload-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+    .dm-upload-title { font-size: 1.25rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
+    .dm-upload-desc { color: #64748b; margin-bottom: 1.75rem; }
+    .dm-file-input-hidden { display: none; }
+    .dm-file-selected { margin: 1.25rem auto 1rem; padding: 0.75rem 1.25rem; background: #f8fafc;
+                        border-radius: 10px; display: inline-flex; align-items: center; gap: 0.5rem;
+                        border: 1px solid #e2e8f0; }
+    .dm-file-icon { font-size: 1.25rem; }
+    .dm-file-name { font-weight: 600; color: #1e293b; }
+    .dm-file-size { color: #94a3b8; font-size: 0.85rem; }
+    .dm-file-error { color: #dc2626; font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* ── Info box ────────────────────────────────────────────────────────────── */
+    .dm-info-box { background: #f8fafc; border-radius: 12px; padding: 1.25rem 1.5rem;
+                   border: 1px solid #e2e8f0; margin-top: 1.5rem; }
+    .dm-info-box h4 { font-size: 0.9rem; color: #374151; margin: 0 0 1rem; font-weight: 700; }
+    .dm-columns-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; }
+    .dm-col-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #4b5563; }
+    .dm-col-num { background: #0ea5e9; color: white; border-radius: 50%; width: 20px; height: 20px;
+                  display: inline-flex; align-items: center; justify-content: center;
+                  font-size: 0.7rem; font-weight: 700; flex-shrink: 0; }
+
+    /* ── Preview header ──────────────────────────────────────────────────────── */
+    .dm-preview-header { margin-bottom: 1.5rem; }
+    .dm-preview-stats { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .dm-stat { background: white; border-radius: 10px; padding: 1rem 1.5rem; text-align: center;
+               box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; flex-direction: column; min-width: 120px; }
+    .dm-stat-ok { border-left: 3px solid #10b981; }
+    .dm-stat-err { border-left: 3px solid #f59e0b; }
+    .dm-stat-total { border-left: 3px solid #0ea5e9; }
+    .dm-stat-value { font-size: 1.75rem; font-weight: 800; color: #1e293b; }
+    .dm-stat-label { font-size: 0.75rem; color: #64748b; font-weight: 500; }
+    .dm-progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .dm-progress-fill { height: 100%; background: linear-gradient(to right, #0ea5e9, #10b981);
+                        border-radius: 4px; transition: width 0.4s ease; }
+    .dm-progress-text { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; text-align: right; }
+
+    /* ── Tabla ───────────────────────────────────────────────────────────────── */
+    .dm-table-responsive { overflow-x: auto; }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
+                   padding: 0.75rem 1rem; border-bottom: 2px solid #e2e8f0;
+                   white-space: nowrap; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dm-table td { padding: 0.625rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-td-num { color: #94a3b8; font-size: 0.8rem; }
+    .dm-td-resultado { font-weight: 600; color: #1e293b; }
+    .dm-td-valor { font-family: monospace; font-size: 0.8rem; color: #ef4444; }
+    .dm-row-error { background: #fffbeb !important; }
+    .dm-row-error-detail { background: #fff7ed; }
+    .dm-badge { padding: 0.2rem 0.6rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; }
+    .dm-badge-campo { background: #dbeafe; color: #1d4ed8; }
+    .dm-badge-tipo { background: #fef3c7; color: #92400e; }
+    .dm-badge-tipo-requerido { background: #fef2f2; color: #991b1b; }
+    .dm-badge-tipo-parametro_desconocido { background: #fdf4ff; color: #7e22ce; }
+    .dm-badge-tipo-formato { background: #fff7ed; color: #9a3412; }
+    .dm-badge-tipo-duplicado { background: #f0fdf4; color: #166534; }
+
+    /* ── Botones ────────────────────────────────────────────────────────────── */
+    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem;
+              cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap; }
+    .dm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover:not(:disabled) { background: #0284c7; color: white; }
+    .dm-btn-success { background: #10b981; color: white; }
+    .dm-btn-success:hover:not(:disabled) { background: #059669; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover:not(:disabled) { border-color: #0ea5e9; color: #0ea5e9; }
+    .dm-btn-sm { padding: 0.375rem 0.875rem; font-size: 0.8rem; border-radius: 6px;
+                 background: white; color: #374151; border: 1.5px solid #e2e8f0;
+                 cursor: pointer; font-weight: 600; transition: all 0.15s; }
+    .dm-btn-sm:hover:not(:disabled) { border-color: #0ea5e9; color: #0ea5e9; }
+    .dm-btn-sm:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* ── Barras de acciones ──────────────────────────────────────────────────── */
+    .dm-actions-bar { display: flex; justify-content: space-between; align-items: center;
+                      gap: 1rem; flex-wrap: wrap; }
+    .dm-actions-top { margin-bottom: 1.25rem; }
+    .dm-actions-bottom { margin-top: 1.25rem; padding-top: 1.25rem;
+                          border-top: 1px solid #f1f5f9; }
+
+    .dm-alert-error-sm { background: #fef2f2; color: #991b1b; padding: 0.625rem 1rem;
+                         border-radius: 8px; font-size: 0.875rem; border-left: 3px solid #ef4444; }
+
+    /* ── Resultado final ─────────────────────────────────────────────────────── */
+    .dm-resultado-icon { font-size: 4rem; margin-bottom: 1rem; }
+    .dm-resultado-titulo { font-size: 1.5rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; }
+    .dm-resultado-stats { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .dm-r-stat { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+    .dm-r-val { font-size: 2rem; font-weight: 800; color: #1e293b; }
+    .dm-r-lbl { font-size: 0.8rem; color: #64748b; font-weight: 500; }
+    .dm-r-ok .dm-r-val { color: #10b981; }
+    .dm-r-err .dm-r-val { color: #f59e0b; }
+    .dm-resultado-info { color: #64748b; margin-bottom: 2rem; }
+    .dm-resultado-error { color: #ef4444; margin-bottom: 2rem; font-weight: 600; }
+    .dm-resultado-acciones { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+</style>

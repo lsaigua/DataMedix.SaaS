@@ -1,6 +1,7 @@
 using DataMedix.Application.Interfaces;
 using DataMedix.Infrastructure.Excel;
 using DataMedix.Infrastructure.Persistence;
+
 using DataMedix.Infrastructure.Repositories;
 using DataMedix.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
@@ -32,6 +33,7 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
             services.AddScoped<IExcelReader, ExcelReader>();
+            services.AddScoped<IExcelExporter, ExcelExporter>();
 
             // Persistir claves de DataProtection en PostgreSQL
             // Sin esto, cada redeploy en Railway genera claves nuevas → falla antiforgery
