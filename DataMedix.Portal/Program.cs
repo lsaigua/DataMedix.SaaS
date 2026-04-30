@@ -81,37 +81,6 @@ await app.Services.EnsureDataProtectionTableAsync();
 // PRIMERO: leer los headers del proxy antes de cualquier redirect/auth
 app.UseForwardedHeaders();
 
-// Fallback para _framework/blazor.web.js desde recurso embebido del framework.
-// En Railway, dotnet publish no materializa este archivo en wwwroot físico;
-// MapStaticAssets no lo incluye en el manifiesto. Sin este middleware el circuit
-// Blazor no se establece y ningún componente interactivo funciona.
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path.Value?.EndsWith("/blazor.web.js", StringComparison.OrdinalIgnoreCase) == true)
-    {
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            try
-            {
-                var resourceName = asm.GetManifestResourceNames()
-                    .FirstOrDefault(n =>
-                        n.Contains("blazor", StringComparison.OrdinalIgnoreCase) &&
-                        n.Contains("web", StringComparison.OrdinalIgnoreCase) &&
-                        n.EndsWith(".js", StringComparison.OrdinalIgnoreCase));
-                if (resourceName == null) continue;
-
-                context.Response.ContentType = "application/javascript; charset=utf-8";
-                context.Response.Headers["Cache-Control"] = "no-cache";
-                await using var stream = asm.GetManifestResourceStream(resourceName)!;
-                await stream.CopyToAsync(context.Response.Body);
-                return;
-            }
-            catch { /* omitir assemblies problemáticos */ }
-        }
-    }
-    await next();
-});
-
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -160,8 +129,6 @@ app.Use(async (context, next) =>
     }
 });
 
-// UseStaticFiles sirve los archivos físicos de wwwroot (incluye _framework/blazor.web.js
-// copiado por el Dockerfile). MapStaticAssets sirve los assets del manifiesto fingerprinted.
 app.UseStaticFiles();
 app.MapStaticAssets();
 app.MapControllers();

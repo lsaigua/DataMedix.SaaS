@@ -14,40 +14,26 @@ RUN dotnet restore DataMedix.Portal/DataMedix.Portal.csproj
 # Copiar todo el código
 COPY . .
 
-# Publicar en modo Release
+# Publicar en modo Release — SIN --no-restore para que los targets de Blazor
+# static web assets se ejecuten completos y generen _framework/blazor.web.js
 RUN dotnet publish DataMedix.Portal/DataMedix.Portal.csproj \
     -c Release \
-    -o /app/publish \
-    --no-restore
+    -o /app/publish
 
-# Diagnóstico: buscar blazor.web.js en todas las ubicaciones del SDK
-RUN echo "=== wwwroot ===" && find /app/publish/wwwroot -type f 2>/dev/null | sort | head -30 && \
-    echo "=== blazor.web.js en publish ===" && find /app/publish -name "blazor.web.js" 2>/dev/null || echo "no encontrado en publish" && \
-    echo "=== blazor.web.js en SDK packs ===" && find /usr/share/dotnet/packs -name "blazor.web.js" 2>/dev/null | head -5 || echo "no en packs" && \
-    echo "=== blazor.web.js en SDK ===" && find /usr/share/dotnet/sdk -name "blazor.web.js" 2>/dev/null | head -5 || echo "no en sdk" && \
-    echo "=== blazor.web.js en shared framework ===" && find /usr/share/dotnet/shared -name "blazor.web.js" 2>/dev/null | head -5 || echo "no en shared"
-
-# Intentar copiar blazor.web.js al wwwroot físico (para UseStaticFiles)
-RUN BLAZOR=$(find /usr/share/dotnet -name "blazor.web.js" 2>/dev/null | head -1); \
-    [ -z "$BLAZOR" ] && BLAZOR=$(find /root/.nuget -name "blazor.web.js" 2>/dev/null | head -1); \
-    mkdir -p /app/publish/wwwroot/_framework; \
-    if [ -n "$BLAZOR" ]; then \
-        cp "$BLAZOR" /app/publish/wwwroot/_framework/blazor.web.js; \
-        echo "[OK] blazor.web.js copiado desde $BLAZOR"; \
-    else \
-        echo "[INFO] blazor.web.js no encontrado en disco — se servirá desde recurso embebido en runtime"; \
-    fi && \
-    ls -la /app/publish/wwwroot/_framework/ 2>/dev/null
+# Verificar que blazor.web.js quedó en el output
+RUN echo "=== _framework ===" && ls /app/publish/wwwroot/_framework/ 2>/dev/null || echo "(vacío)"
 
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
+# libkrb5-3 silencia el warning "Cannot load libgssapi_krb5.so.2" en logs
+RUN apt-get update && apt-get install -y --no-install-recommends libkrb5-3 && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_ENVIRONMENT=Production
 
-# Railway inyecta $PORT en tiempo de ejecución — el CMD lo usa para ASPNETCORE_URLS
-# Si no está definido, cae a 8080 (compatibilidad con otros hosts)
+# Railway inyecta $PORT en tiempo de ejecución
 EXPOSE 8080
 CMD ["sh", "-c", "ASPNETCORE_URLS=http://+:${PORT:-8080} dotnet DataMedix.Portal.dll"]
