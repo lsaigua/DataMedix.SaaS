@@ -20,13 +20,30 @@ RUN dotnet publish DataMedix.Portal/DataMedix.Portal.csproj \
     -o /app/publish \
     --no-restore
 
-# Diagnóstico: verificar que los static web assets de Blazor quedaron en el publish
-RUN echo "=== wwwroot contents ===" && \
-    ls /app/publish/wwwroot/ 2>/dev/null || echo "[WARN] wwwroot missing" && \
-    echo "=== _framework ===" && \
-    ls /app/publish/wwwroot/_framework/ 2>/dev/null || echo "[WARN] _framework missing" && \
-    echo "=== Static web assets manifest ===" && \
-    ls /app/publish/*.staticwebassets.* 2>/dev/null || echo "[WARN] no staticwebassets manifest"
+# Diagnóstico: verificar static web assets
+RUN echo "=== wwwroot ===" && ls /app/publish/wwwroot/ 2>/dev/null || echo "[WARN] wwwroot missing" && \
+    echo "=== _framework ===" && ls /app/publish/wwwroot/_framework/ 2>/dev/null || echo "[WARN] _framework missing" && \
+    echo "=== Manifest ===" && ls /app/publish/*.staticwebassets.* 2>/dev/null || echo "[WARN] no manifest" && \
+    echo "=== blazor.web.js en manifest ===" && \
+    grep -o '"Route":"[^"]*blazor[^"]*"' /app/publish/DataMedix.Portal.staticwebassets.endpoints.json 2>/dev/null || echo "[INFO] no blazor route en manifest" && \
+    echo "=== blazor.web.js en NuGet cache ===" && \
+    find /root/.nuget/packages -name "blazor.web.js" 2>/dev/null | head -5 || true
+
+# Garantizar que blazor.web.js esté físicamente en wwwroot/_framework
+# Necesario porque MapStaticAssets() a veces no lo sirve desde el manifiesto en Railway
+RUN mkdir -p /app/publish/wwwroot/_framework && \
+    if [ ! -f /app/publish/wwwroot/_framework/blazor.web.js ]; then \
+        BLAZOR=$(find /root/.nuget/packages -name "blazor.web.js" 2>/dev/null | head -1); \
+        if [ -n "$BLAZOR" ]; then \
+            cp "$BLAZOR" /app/publish/wwwroot/_framework/blazor.web.js; \
+            echo "[OK] blazor.web.js copiado desde $BLAZOR"; \
+        else \
+            echo "[WARN] blazor.web.js no encontrado en NuGet cache"; \
+        fi; \
+    else \
+        echo "[OK] blazor.web.js ya existe en wwwroot/_framework/"; \
+    fi && \
+    ls -la /app/publish/wwwroot/_framework/ 2>/dev/null
 
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime

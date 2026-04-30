@@ -129,8 +129,9 @@ app.Use(async (context, next) =>
     }
 });
 
-// MapStaticAssets reemplaza UseStaticFiles en .NET 9/10 para Blazor Web Apps.
-// Sirve wwwroot/ físico + _framework/blazor.web.js y demás static web assets del framework.
+// UseStaticFiles sirve los archivos físicos de wwwroot (incluye _framework/blazor.web.js
+// copiado por el Dockerfile). MapStaticAssets sirve los assets del manifiesto fingerprinted.
+app.UseStaticFiles();
 app.MapStaticAssets();
 app.MapControllers();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
