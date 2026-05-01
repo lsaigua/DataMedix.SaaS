@@ -1,0 +1,586 @@
+@page "/clinico/reglas"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.RuleEngine
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+@using System.Text.Json
+
+@inject IReglaClinicaRepository ReglaRepo
+@inject IRuleCache RuleCache
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Reglas Clínicas | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Reglas Clínicas</h1>
+        <p class="dm-page-subtitle">Motor de reglas KDIGO configurable — @_todasLasReglas.Count reglas cargadas</p>
+    </div>
+    <div class="dm-page-actions">
+        <button class="dm-btn dm-btn-outline" @onclick="CargarAsync" disabled="@_cargando">
+            🔄 Actualizar
+        </button>
+    </div>
+</div>
+
+<!-- Filtros por tipo -->
+<div class="dm-tabs-row">
+    @foreach (var tipo in _tipos)
+    {
+        var count = tipo == "TODOS"
+            ? _todasLasReglas.Count
+            : _todasLasReglas.Count(r => r.Tipo == tipo);
+        <button class="dm-tab @(_filtroTipo == tipo ? "dm-tab-active" : "")"
+                @onclick="() => _filtroTipo = tipo">
+            @TipoIcon(tipo) @tipo
+            <span class="dm-tab-count">@count</span>
+        </button>
+    }
+</div>
+
+@if (_errorMensaje != null)
+{
+    <div class="dm-error-banner"><span>⚠</span> @_errorMensaje</div>
+}
+
+@if (_mensajeOk != null)
+{
+    <div class="dm-ok-banner"><span>✓</span> @_mensajeOk</div>
+}
+
+@if (_cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando reglas...</p>
+    </div>
+}
+else if (!ReglasFiltradas.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">⚙️</div>
+        <h3 class="dm-empty-title">Sin reglas para este tipo</h3>
+    </div>
+}
+else
+{
+    <div class="dm-table-container">
+        <table class="dm-table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th style="text-align:center">Prio.</th>
+                    <th style="text-align:center">Activo</th>
+                    <th style="text-align:center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var regla in ReglasFiltradas)
+                {
+                    <tr class="@(!regla.Activo ? "dm-row-inactivo" : "")">
+                        <td>
+                            <span class="dm-tipo-badge @TipoBadgeClase(regla.Tipo)">
+                                @TipoIcon(regla.Tipo) @regla.Tipo
+                            </span>
+                        </td>
+                        <td>
+                            <span class="dm-codigo-badge">@regla.Codigo</span>
+                        </td>
+                        <td class="dm-nombre-cell">
+                            @regla.Nombre
+                            @if (!string.IsNullOrEmpty(regla.Severidad))
+                            {
+                                <span class="dm-severidad-badge @SeveridadClase(regla.Severidad)">@regla.Severidad</span>
+                            }
+                        </td>
+                        <td style="text-align:center">
+                            <span class="dm-prio-num">@regla.Prioridad</span>
+                        </td>
+                        <td style="text-align:center">
+                            @if (_esAdmin)
+                            {
+                                <button class="dm-toggle @(regla.Activo ? "dm-toggle-on" : "dm-toggle-off")"
+                                        @onclick="() => ToggleActivoAsync(regla)"
+                                        title="@(regla.Activo ? "Desactivar" : "Activar")">
+                                    @(regla.Activo ? "ON" : "OFF")
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="dm-toggle-readonly @(regla.Activo ? "dm-toggle-on" : "dm-toggle-off")">
+                                    @(regla.Activo ? "ON" : "OFF")
+                                </span>
+                            }
+                        </td>
+                        <td style="text-align:center">
+                            <button class="dm-btn dm-btn-xs dm-btn-outline"
+                                    @onclick="() => AbrirEdicion(regla)">
+                                @(_esAdmin ? "✏️ Editar" : "👁 Ver")
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<!-- Modal edición / vista -->
+@if (_modalEdicion && _reglaEditando != null)
+{
+    <div class="dm-modal-overlay" @onclick="CerrarModal">
+        <div class="dm-modal dm-modal-lg" @onclick:stopPropagation>
+            <div class="dm-modal-header">
+                <div>
+                    <h3>@(_esAdmin ? "Editar" : "Ver") regla</h3>
+                    <span class="dm-modal-subtitle">
+                        <span class="dm-tipo-badge @TipoBadgeClase(_reglaEditando.Tipo)">
+                            @TipoIcon(_reglaEditando.Tipo) @_reglaEditando.Tipo
+                        </span>
+                        <span class="dm-codigo-badge">@_reglaEditando.Codigo</span>
+                    </span>
+                </div>
+                <button class="dm-modal-close" @onclick="CerrarModal">✕</button>
+            </div>
+
+            <div class="dm-modal-body">
+                <div class="dm-modal-nombre">@_reglaEditando.Nombre</div>
+
+                <div class="dm-edit-grid">
+                    <div class="dm-field-group">
+                        <label>Prioridad</label>
+                        @if (_esAdmin)
+                        {
+                            <input type="number" @bind="_editPrioridad" class="dm-input dm-input-sm"
+                                   min="1" max="9999" />
+                        }
+                        else
+                        {
+                            <span class="dm-readonly-val">@_editPrioridad</span>
+                        }
+                    </div>
+
+                    @if (_reglaEditando.Tipo == "ALERTA")
+                    {
+                        <div class="dm-field-group">
+                            <label>Severidad</label>
+                            @if (_esAdmin)
+                            {
+                                <select @bind="_editSeveridad" class="dm-select dm-select-sm">
+                                    <option value="CRITICA">CRITICA</option>
+                                    <option value="ALTA">ALTA</option>
+                                    <option value="MEDIA">MEDIA</option>
+                                </select>
+                            }
+                            else
+                            {
+                                <span class="dm-readonly-val @SeveridadClase(_editSeveridad)">@_editSeveridad</span>
+                            }
+                        </div>
+                    }
+
+                    <div class="dm-field-group">
+                        <label>Activo</label>
+                        @if (_esAdmin)
+                        {
+                            <label class="dm-switch-label">
+                                <input type="checkbox" @bind="_editActivo" class="dm-checkbox" />
+                                @(_editActivo ? "Sí" : "No")
+                            </label>
+                        }
+                        else
+                        {
+                            <span class="dm-readonly-val">@(_editActivo ? "Sí" : "No")</span>
+                        }
+                    </div>
+
+                    <div class="dm-field-group">
+                        <label>Versión</label>
+                        <span class="dm-readonly-val">v@_reglaEditando.Version</span>
+                    </div>
+                </div>
+
+                <div class="dm-field-group" style="margin-top: 0.75rem;">
+                    <label>Condiciones JSON</label>
+                    @if (_esAdmin)
+                    {
+                        <textarea @bind="_editCondicionesJson" class="dm-textarea dm-textarea-code"
+                                  rows="8" spellcheck="false"></textarea>
+                        @if (_jsonCondError != null)
+                        {
+                            <span class="dm-json-error">@_jsonCondError</span>
+                        }
+                    }
+                    else
+                    {
+                        <pre class="dm-pre-json">@FormatJson(_reglaEditando.CondicionesJson)</pre>
+                    }
+                </div>
+
+                <div class="dm-field-group">
+                    <label>Acción JSON</label>
+                    @if (_esAdmin)
+                    {
+                        <textarea @bind="_editAccionJson" class="dm-textarea dm-textarea-code"
+                                  rows="5" spellcheck="false"></textarea>
+                        @if (_jsonAccionError != null)
+                        {
+                            <span class="dm-json-error">@_jsonAccionError</span>
+                        }
+                    }
+                    else
+                    {
+                        <pre class="dm-pre-json">@FormatJson(_reglaEditando.AccionJson)</pre>
+                    }
+                </div>
+
+                @if (_modalError != null)
+                {
+                    <div class="dm-modal-error">⚠ @_modalError</div>
+                }
+            </div>
+
+            <div class="dm-modal-footer">
+                <button class="dm-btn dm-btn-outline" @onclick="CerrarModal" disabled="@_guardando">
+                    @(_esAdmin ? "Cancelar" : "Cerrar")
+                </button>
+                @if (_esAdmin)
+                {
+                    <button class="dm-btn dm-btn-primary" @onclick="GuardarAsync" disabled="@_guardando">
+                        @if (_guardando) { <span class="dm-spinner-sm"></span> }
+                        💾 Guardar
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+    .dm-page-actions { display: flex; gap: 0.75rem; }
+
+    .dm-tabs-row { display: flex; gap: 0.4rem; margin-bottom: 1.5rem; flex-wrap: wrap;
+                   border-bottom: 2px solid #e2e8f0; padding-bottom: 0; }
+    .dm-tab { padding: 0.5rem 1rem; border: none; background: none; color: #64748b; font-size: 0.85rem;
+              font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent;
+              margin-bottom: -2px; display: flex; align-items: center; gap: 0.4rem;
+              border-radius: 4px 4px 0 0; transition: all 0.15s; }
+    .dm-tab:hover { color: #374151; background: #f8fafc; }
+    .dm-tab-active { color: #0ea5e9; border-bottom-color: #0ea5e9; }
+    .dm-tab-count { background: #f1f5f9; color: #64748b; padding: 0.1rem 0.4rem;
+                    border-radius: 10px; font-size: 0.7rem; font-weight: 700; }
+
+    .dm-table-container { background: white; border-radius: 12px; border: 1px solid #e2e8f0;
+                           overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .dm-table thead tr { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+    .dm-table th { padding: 0.75rem 1rem; font-weight: 700; color: #64748b; font-size: 0.75rem;
+                   text-transform: uppercase; letter-spacing: 0.04em; text-align: left; }
+    .dm-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+    .dm-table tbody tr:hover { background: #f8fafc; }
+    .dm-table td { padding: 0.75rem 1rem; color: #374151; vertical-align: middle; }
+    .dm-row-inactivo { opacity: 0.55; }
+
+    .dm-tipo-badge { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem; font-weight: 800;
+                     text-transform: uppercase; display: inline-flex; align-items: center; gap: 0.3rem; }
+    .dm-tipo-epo { background: #eff6ff; color: #1d4ed8; }
+    .dm-tipo-hierro { background: #fef3c7; color: #92400e; }
+    .dm-tipo-alerta { background: #fee2e2; color: #991b1b; }
+    .dm-tipo-modificador { background: #f3e8ff; color: #7c3aed; }
+
+    .dm-codigo-badge { font-family: monospace; font-size: 0.75rem; font-weight: 700; background: #f1f5f9;
+                        color: #475569; padding: 0.15rem 0.5rem; border-radius: 4px; white-space: nowrap; }
+
+    .dm-nombre-cell { max-width: 380px; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .dm-severidad-badge { padding: 0.1rem 0.45rem; border-radius: 20px; font-size: 0.65rem; font-weight: 800; }
+    .dm-sev-critica { background: #fecdd3; color: #881337; }
+    .dm-sev-alta { background: #fed7aa; color: #9a3412; }
+    .dm-sev-media { background: #fef3c7; color: #92400e; }
+
+    .dm-prio-num { font-weight: 700; font-family: monospace; color: #475569; }
+
+    .dm-toggle { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem; font-weight: 800;
+                 border: none; cursor: pointer; transition: all 0.15s; }
+    .dm-toggle-readonly { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem; font-weight: 800; }
+    .dm-toggle-on { background: #dcfce7; color: #166534; }
+    .dm-toggle-off { background: #f1f5f9; color: #94a3b8; }
+
+    .dm-btn { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
+              cursor: pointer; border: none; transition: all 0.15s; }
+    .dm-btn-xs { padding: 0.25rem 0.6rem; font-size: 0.75rem; border-radius: 6px; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover { background: #f8fafc; }
+    .dm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .dm-spinner-sm { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white;
+                     border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .dm-empty-state { text-align: center; padding: 3rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .dm-empty-title { font-size: 1.1rem; font-weight: 700; color: #374151; }
+
+    .dm-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
+                       padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
+                       align-items: center; font-size: 0.875rem; font-weight: 500; }
+    .dm-ok-banner { background: #dcfce7; color: #166534; border: 1px solid #86efac; border-radius: 8px;
+                    padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
+                    align-items: center; font-size: 0.875rem; font-weight: 500; }
+
+    /* Modal */
+    .dm-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); display: flex;
+                        align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+    .dm-modal { background: white; border-radius: 16px; max-width: 540px; width: 100%;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.2); display: flex; flex-direction: column;
+                max-height: 90vh; overflow: hidden; }
+    .dm-modal-lg { max-width: 720px; }
+    .dm-modal-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid #f1f5f9;
+                       display: flex; justify-content: space-between; align-items: flex-start; }
+    .dm-modal-header h3 { margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b; }
+    .dm-modal-subtitle { font-size: 0.8rem; color: #64748b; margin-top: 0.35rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .dm-modal-close { background: none; border: none; font-size: 1.1rem; cursor: pointer; color: #64748b;
+                      padding: 0.25rem; line-height: 1; }
+    .dm-modal-close:hover { color: #374151; }
+    .dm-modal-body { padding: 1.25rem 1.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.875rem; }
+    .dm-modal-footer { padding: 1rem 1.5rem; border-top: 1px solid #f1f5f9; display: flex;
+                       justify-content: flex-end; gap: 0.75rem; }
+    .dm-modal-nombre { font-weight: 700; font-size: 0.95rem; color: #1e293b; padding: 0.5rem 0.75rem;
+                       background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .dm-modal-error { background: #fee2e2; color: #991b1b; border-radius: 8px;
+                      padding: 0.625rem 0.875rem; font-size: 0.825rem; font-weight: 500; }
+
+    .dm-edit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
+    .dm-field-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .dm-field-group > label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dm-input { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                font-size: 0.875rem; color: #374151; background: white; outline: none; }
+    .dm-input-sm { padding: 0.35rem 0.6rem; font-size: 0.825rem; }
+    .dm-input:focus { border-color: #0ea5e9; }
+    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; }
+    .dm-select-sm { padding: 0.35rem 0.6rem; font-size: 0.825rem; }
+    .dm-select:focus { border-color: #0ea5e9; }
+    .dm-textarea { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                   font-size: 0.875rem; color: #374151; background: white; outline: none;
+                   resize: vertical; width: 100%; box-sizing: border-box; }
+    .dm-textarea-code { font-family: monospace; font-size: 0.78rem; }
+    .dm-textarea:focus { border-color: #0ea5e9; }
+    .dm-pre-json { font-family: monospace; font-size: 0.75rem; background: #f8fafc; border-radius: 8px;
+                   padding: 0.75rem; border: 1px solid #e2e8f0; overflow-x: auto; white-space: pre-wrap;
+                   word-break: break-word; max-height: 220px; overflow-y: auto; margin: 0; }
+    .dm-readonly-val { font-size: 0.875rem; color: #374151; font-weight: 600; padding: 0.35rem 0; }
+    .dm-checkbox { width: 16px; height: 16px; cursor: pointer; }
+    .dm-switch-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.875rem;
+                       font-weight: 600; color: #374151; cursor: pointer; }
+    .dm-json-error { font-size: 0.75rem; color: #dc2626; font-weight: 500; }
+</style>
+
+@code {
+    private List<ReglaClinica> _todasLasReglas = new();
+    private string _filtroTipo = "TODOS";
+    private bool _cargando = true;
+    private string? _errorMensaje;
+    private string? _mensajeOk;
+    private bool _esAdmin;
+
+    private readonly string[] _tipos = ["TODOS", "EPO", "HIERRO", "ALERTA", "MODIFICADOR"];
+
+    // Modal
+    private ReglaClinica? _reglaEditando;
+    private bool _modalEdicion;
+    private bool _guardando;
+    private int _editPrioridad;
+    private bool _editActivo;
+    private string _editSeveridad = "";
+    private string _editCondicionesJson = "";
+    private string _editAccionJson = "";
+    private string? _modalError;
+    private string? _jsonCondError;
+    private string? _jsonAccionError;
+
+    private static readonly JsonSerializerOptions _jsonIndented = new() { WriteIndented = true };
+
+    private IEnumerable<ReglaClinica> ReglasFiltradas =>
+        _filtroTipo == "TODOS"
+            ? _todasLasReglas
+            : _todasLasReglas.Where(r => r.Tipo == _filtroTipo);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var rol = auth.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+        _esAdmin = rol is "SUPERADMIN" or "ADMIN";
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _errorMensaje = null;
+        _mensajeOk = null;
+        StateHasChanged();
+
+        try
+        {
+            _todasLasReglas = (await ReglaRepo.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMensaje = ex.Message;
+            _todasLasReglas = [];
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirEdicion(ReglaClinica regla)
+    {
+        _reglaEditando = regla;
+        _editPrioridad = regla.Prioridad;
+        _editActivo = regla.Activo;
+        _editSeveridad = regla.Severidad ?? "MEDIA";
+        _editCondicionesJson = FormatJson(regla.CondicionesJson);
+        _editAccionJson = FormatJson(regla.AccionJson);
+        _modalError = null;
+        _jsonCondError = null;
+        _jsonAccionError = null;
+        _modalEdicion = true;
+    }
+
+    private void CerrarModal()
+    {
+        if (_guardando) return;
+        _modalEdicion = false;
+        _reglaEditando = null;
+    }
+
+    private async Task ToggleActivoAsync(ReglaClinica regla)
+    {
+        _mensajeOk = null;
+        _errorMensaje = null;
+
+        try
+        {
+            regla.Activo = !regla.Activo;
+            await ReglaRepo.UpdateAsync(regla);
+            RuleCache.Invalidate();
+            _mensajeOk = $"Regla {regla.Codigo} {(regla.Activo ? "activada" : "desactivada")}.";
+        }
+        catch (Exception ex)
+        {
+            regla.Activo = !regla.Activo; // revert
+            _errorMensaje = ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_reglaEditando == null) return;
+
+        _jsonCondError = null;
+        _jsonAccionError = null;
+        _modalError = null;
+
+        if (!ValidarJson(_editCondicionesJson, out _jsonCondError)) return;
+        if (!ValidarJson(_editAccionJson, out _jsonAccionError)) return;
+
+        _guardando = true;
+        StateHasChanged();
+
+        try
+        {
+            _reglaEditando.Prioridad      = _editPrioridad;
+            _reglaEditando.Activo         = _editActivo;
+            _reglaEditando.Severidad      = _reglaEditando.Tipo == "ALERTA" ? _editSeveridad : _reglaEditando.Severidad;
+            _reglaEditando.CondicionesJson = _editCondicionesJson.Trim();
+            _reglaEditando.AccionJson      = _editAccionJson.Trim();
+
+            await ReglaRepo.UpdateAsync(_reglaEditando);
+            RuleCache.Invalidate();
+
+            _modalEdicion = false;
+            _mensajeOk = $"Regla {_reglaEditando.Codigo} guardada. Caché invalidada.";
+        }
+        catch (Exception ex)
+        {
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private static bool ValidarJson(string json, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            error = "El JSON no puede estar vacío.";
+            return false;
+        }
+        try
+        {
+            JsonDocument.Parse(json);
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            error = $"JSON inválido: {ex.Message}";
+            return false;
+        }
+    }
+
+    private static string FormatJson(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return "";
+        try
+        {
+            var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc, _jsonIndented);
+        }
+        catch { return json; }
+    }
+
+    private static string TipoIcon(string tipo) => tipo switch
+    {
+        "EPO"         => "💉",
+        "HIERRO"      => "🔬",
+        "ALERTA"      => "🚨",
+        "MODIFICADOR" => "⚙️",
+        _             => "📋"
+    };
+
+    private static string TipoBadgeClase(string tipo) => tipo switch
+    {
+        "EPO"         => "dm-tipo-epo",
+        "HIERRO"      => "dm-tipo-hierro",
+        "ALERTA"      => "dm-tipo-alerta",
+        "MODIFICADOR" => "dm-tipo-modificador",
+        _             => ""
+    };
+
+    private static string SeveridadClase(string? sev) => sev switch
+    {
+        "CRITICA" => "dm-sev-critica",
+        "ALTA"    => "dm-sev-alta",
+        _         => "dm-sev-media"
+    };
+}

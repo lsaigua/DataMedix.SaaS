@@ -3,8 +3,10 @@
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
+@using DataMedix.Application.RuleEngine
 @using DataMedix.Domain.Entities
 @using System.Security.Claims
+@using System.Text.Json
 
 @inject IPrescripcionRepository PrescripcionRepo
 @inject ISnapshotMensualRepository SnapshotRepo
@@ -98,6 +100,19 @@
         <span class="dm-stat-num">@ListaPrescripciones.Count(p => p.Estado == "RECHAZADO")</span>
         <span class="dm-stat-lbl">Rechazadas</span>
     </div>
+    @{
+        var totalCriticas = ListaPrescripciones
+            .Where(p => p.Estado == "PENDIENTE")
+            .SelectMany(p => ParseAlertas(p.AlertasJson))
+            .Count(a => a.Severidad == "CRITICA");
+    }
+    @if (totalCriticas > 0)
+    {
+        <div class="dm-stat-chip dm-stat-critica">
+            <span class="dm-stat-num">@totalCriticas</span>
+            <span class="dm-stat-lbl">Alertas críticas</span>
+        </div>
+    }
 </div>
 
 @if (ErrorMensaje != null)
@@ -129,7 +144,10 @@ else
         @foreach (var presc in PrescripcionesFiltradas)
         {
             var snap = Snapshots.FirstOrDefault(s => s.PacienteId == presc.PacienteId && s.PeriodDate == presc.PeriodDate);
-            <div class="dm-presc-card @(presc.Estado == "PENDIENTE" ? "dm-card-pending" : "")">
+            var alertas = ParseAlertas(presc.AlertasJson);
+            var tieneCritica = alertas.Any(a => a.Severidad == "CRITICA");
+
+            <div class="dm-presc-card @(tieneCritica ? "dm-card-critica" : presc.Estado == "PENDIENTE" ? "dm-card-pending" : "")">
                 <div class="dm-presc-card-header">
                     <div class="dm-paciente-cell">
                         <div class="dm-avatar">@(presc.Paciente?.PrimerNombre?.FirstOrDefault() ?? '?')</div>
@@ -143,6 +161,20 @@ else
                         <span class="dm-estado-badge @EstadoClase(presc.Estado)">@presc.Estado</span>
                     </div>
                 </div>
+
+                <!-- Alertas clínicas del motor -->
+                @if (alertas.Any())
+                {
+                    <div class="dm-alertas-row">
+                        @foreach (var alerta in alertas.OrderBy(a => SeveridadOrden(a.Severidad)))
+                        {
+                            <span class="dm-alerta-badge @AlertaBadgeClase(alerta.Severidad)"
+                                  title="@alerta.Mensaje">
+                                @AlertaIcon(alerta.Severidad) @alerta.Codigo
+                            </span>
+                        }
+                    </div>
+                }
 
                 <!-- Datos del snapshot -->
                 @if (snap != null)
@@ -186,8 +218,16 @@ else
                             {
                                 <span class="dm-accion-badge @AccionClase(presc.EpoAccion)">@presc.EpoAccion</span>
                             }
+                            @if (!string.IsNullOrEmpty(presc.ReglaEpoCodigo))
+                            {
+                                <span class="dm-regla-badge">@presc.ReglaEpoCodigo</span>
+                            }
                         </div>
-                        @if (!string.IsNullOrEmpty(presc.EpoDosisSugerida))
+                        @if (presc.EpoUiSemana.HasValue)
+                        {
+                            <div class="dm-sug-dosis">💊 @presc.EpoUiSemana.Value.ToString("N0") UI/sem</div>
+                        }
+                        else if (!string.IsNullOrEmpty(presc.EpoDosisSugerida))
                         {
                             <div class="dm-sug-dosis">📋 @presc.EpoDosisSugerida</div>
                         }
@@ -195,7 +235,7 @@ else
                         {
                             <div class="dm-sug-obs">@presc.EpoObservacion</div>
                         }
-                        @if (string.IsNullOrEmpty(presc.EpoAccion) && string.IsNullOrEmpty(presc.EpoObservacion))
+                        @if (!presc.EpoUiSemana.HasValue && string.IsNullOrEmpty(presc.EpoAccion) && string.IsNullOrEmpty(presc.EpoObservacion))
                         {
                             <div class="dm-sin-dato">Sin datos suficientes</div>
                         }
@@ -210,8 +250,20 @@ else
                             {
                                 <span class="dm-accion-badge @AccionClase(presc.HierroAccion)">@presc.HierroAccion</span>
                             }
+                            @if (!string.IsNullOrEmpty(presc.ReglaHierroCodigo))
+                            {
+                                <span class="dm-regla-badge">@presc.ReglaHierroCodigo</span>
+                            }
                         </div>
-                        @if (!string.IsNullOrEmpty(presc.HierroDosisSugerida))
+                        @if (presc.HierroMgMes.HasValue)
+                        {
+                            <div class="dm-sug-dosis">💊 @presc.HierroMgMes.Value.ToString("N0") mg/mes</div>
+                            @if (presc.HierroGanzoniMg.HasValue && presc.HierroGanzoniMg != presc.HierroMgMes)
+                            {
+                                <div class="dm-sug-ganzoni">Ganzoni: @presc.HierroGanzoniMg.Value.ToString("N0") mg</div>
+                            }
+                        }
+                        else if (!string.IsNullOrEmpty(presc.HierroDosisSugerida))
                         {
                             <div class="dm-sug-dosis">📋 @presc.HierroDosisSugerida</div>
                         }
@@ -219,7 +271,7 @@ else
                         {
                             <div class="dm-sug-obs">@presc.HierroObservacion</div>
                         }
-                        @if (string.IsNullOrEmpty(presc.HierroAccion) && string.IsNullOrEmpty(presc.HierroObservacion))
+                        @if (!presc.HierroMgMes.HasValue && string.IsNullOrEmpty(presc.HierroAccion) && string.IsNullOrEmpty(presc.HierroObservacion))
                         {
                             <div class="dm-sin-dato">Sin datos suficientes</div>
                         }
@@ -233,12 +285,27 @@ else
                     </div>
                 }
 
+                <!-- Contexto del motor (expandible) -->
+                @if (!string.IsNullOrEmpty(presc.ContextoJson))
+                {
+                    <div class="dm-ctx-section">
+                        <button class="dm-ctx-toggle-btn" @onclick="() => ToggleContexto(presc.Id)">
+                            @(_contextosExpandidos.Contains(presc.Id) ? "▲" : "▼")
+                            Contexto del motor
+                        </button>
+                        @if (_contextosExpandidos.Contains(presc.Id))
+                        {
+                            <pre class="dm-ctx-pre">@FormatJson(presc.ContextoJson)</pre>
+                        }
+                    </div>
+                }
+
                 <!-- Acciones de revisión -->
                 @if (presc.Estado == EstadoPrescripcion.Pendiente)
                 {
                     <div class="dm-presc-actions">
                         <button class="dm-btn dm-btn-sm dm-btn-success"
-                                @onclick="() => AprobarAsync(presc)">
+                                @onclick="() => AbrirModalAprobar(presc)">
                             ✓ Aprobar
                         </button>
                         <button class="dm-btn dm-btn-sm dm-btn-warning"
@@ -263,13 +330,112 @@ else
                         @if (presc.RevisadoAt.HasValue)
                         {
                             <span class="dm-revisado-info">
-                                Revisado @presc.RevisadoAt.Value.ToString("dd/MM/yyyy HH:mm")
+                                @presc.Estado.ToLower().Replace("aprobado", "Aprobado").Replace("rechazado", "Rechazado").Replace("revisado", "Revisado")
+                                @presc.RevisadoAt.Value.ToString("dd/MM/yyyy HH:mm")
                             </span>
                         }
                     </div>
                 }
             </div>
         }
+    </div>
+}
+
+<!-- Modal de aprobación con PrescripcionFinal -->
+@if (_modalAprobar && _aprobandoPresc != null)
+{
+    <div class="dm-modal-overlay" @onclick="CerrarModal">
+        <div class="dm-modal" @onclick:stopPropagation>
+            <div class="dm-modal-header">
+                <h3>Aprobar Prescripción</h3>
+                <span class="dm-modal-subtitle">@(_aprobandoPresc.Paciente?.NombreCompleto) — @_aprobandoPresc.PeriodDate.ToString("MMMM yyyy")</span>
+            </div>
+
+            <div class="dm-modal-body">
+                <!-- EPO -->
+                <div class="dm-modal-section">
+                    <label class="dm-modal-section-title">
+                        <input type="checkbox" @bind="_epoPrescrito" class="dm-checkbox" />
+                        💉 Prescribir EPO
+                    </label>
+                    @if (_epoPrescrito)
+                    {
+                        <div class="dm-modal-fields">
+                            <div class="dm-field-group">
+                                <label>Dosis</label>
+                                <input type="text" @bind="_epoDosis" class="dm-input"
+                                       placeholder="ej: 6000 UI/sem" />
+                            </div>
+                            <div class="dm-field-group">
+                                <label>Frecuencia</label>
+                                <select @bind="_epoFrecuencia" class="dm-select">
+                                    <option value="Semanal">Semanal</option>
+                                    <option value="Bisemanal">Bisemanal</option>
+                                    <option value="3 veces/sem">3 veces/sem</option>
+                                    <option value="Mensual">Mensual</option>
+                                </select>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- Hierro IV -->
+                <div class="dm-modal-section">
+                    <label class="dm-modal-section-title">
+                        <input type="checkbox" @bind="_hierroPrescrito" class="dm-checkbox" />
+                        🔬 Prescribir Hierro IV
+                    </label>
+                    @if (_hierroPrescrito)
+                    {
+                        <div class="dm-modal-fields">
+                            <div class="dm-field-group">
+                                <label>Dosis</label>
+                                <input type="text" @bind="_hierroDosis" class="dm-input"
+                                       placeholder="ej: 400 mg/mes" />
+                            </div>
+                            <div class="dm-field-group">
+                                <label>Frecuencia</label>
+                                <select @bind="_hierroFrecuencia" class="dm-select">
+                                    <option value="Mensual">Mensual</option>
+                                    <option value="Quincenal">Quincenal</option>
+                                    <option value="Semanal">Semanal</option>
+                                </select>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- Diagnóstico / Observaciones -->
+                <div class="dm-field-group">
+                    <label>Diagnóstico</label>
+                    <input type="text" @bind="_diagnostico" class="dm-input"
+                           placeholder="Diagnóstico principal" />
+                </div>
+                <div class="dm-field-group">
+                    <label>Observaciones</label>
+                    <textarea @bind="_observacionesFinal" class="dm-textarea" rows="2"
+                              placeholder="Observaciones adicionales del médico..."></textarea>
+                </div>
+
+                @if (_modalError != null)
+                {
+                    <div class="dm-modal-error">⚠ @_modalError</div>
+                }
+            </div>
+
+            <div class="dm-modal-footer">
+                <button class="dm-btn dm-btn-outline" @onclick="CerrarModal" disabled="@_guardando">
+                    Cancelar
+                </button>
+                <button class="dm-btn dm-btn-success" @onclick="ConfirmarAprobacionAsync" disabled="@_guardando">
+                    @if (_guardando)
+                    {
+                        <span class="dm-spinner-sm"></span>
+                    }
+                    ✓ Confirmar aprobación
+                </button>
+            </div>
+        </div>
     </div>
 }
 
@@ -302,6 +468,7 @@ else
     .dm-stat-ok { background: #dcfce7; color: #166534; }
     .dm-stat-info { background: #eff6ff; color: #1d4ed8; }
     .dm-stat-error { background: #fee2e2; color: #991b1b; }
+    .dm-stat-critica { background: #fecdd3; color: #881337; }
 
     .dm-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 1.25rem; }
 
@@ -309,6 +476,7 @@ else
                      box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden;
                      display: flex; flex-direction: column; }
     .dm-card-pending { border-left: 4px solid #f59e0b; }
+    .dm-card-critica { border-left: 4px solid #dc2626; }
 
     .dm-presc-card-header { display: flex; justify-content: space-between; align-items: flex-start;
                              padding: 1rem 1.25rem; border-bottom: 1px solid #f1f5f9; }
@@ -326,6 +494,14 @@ else
     .dm-estado-revisado { background: #eff6ff; color: #1d4ed8; }
     .dm-estado-aprobado { background: #dcfce7; color: #166534; }
     .dm-estado-rechazado { background: #fee2e2; color: #991b1b; }
+
+    .dm-alertas-row { display: flex; gap: 0.4rem; padding: 0.5rem 1.25rem; flex-wrap: wrap;
+                      background: #fef2f2; border-bottom: 1px solid #fecdd3; }
+    .dm-alerta-badge { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+                       cursor: default; white-space: nowrap; }
+    .dm-alerta-critica { background: #fecdd3; color: #881337; }
+    .dm-alerta-alta { background: #fed7aa; color: #9a3412; }
+    .dm-alerta-media { background: #fef3c7; color: #92400e; }
 
     .dm-snap-row { display: flex; gap: 0.5rem; padding: 0.75rem 1.25rem; background: #f8fafc;
                    border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; }
@@ -347,11 +523,12 @@ else
     .dm-suggestions { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
     .dm-sug-block { padding: 0.875rem 1.25rem; border-bottom: 1px solid #f1f5f9; }
     .dm-sug-epo { border-right: 1px solid #f1f5f9; }
-    .dm-sug-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+    .dm-sug-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
     .dm-sug-icon { font-size: 1rem; }
     .dm-sug-title { font-weight: 700; font-size: 0.8rem; color: #374151; text-transform: uppercase;
                     letter-spacing: 0.03em; }
-    .dm-sug-dosis { font-size: 0.825rem; color: #1e293b; font-weight: 600; margin-bottom: 0.25rem; }
+    .dm-sug-dosis { font-size: 0.825rem; color: #1e293b; font-weight: 700; margin-bottom: 0.2rem; }
+    .dm-sug-ganzoni { font-size: 0.75rem; color: #64748b; margin-bottom: 0.2rem; }
     .dm-sug-obs { font-size: 0.78rem; color: #64748b; line-height: 1.4; }
     .dm-sin-dato { font-size: 0.78rem; color: #cbd5e1; }
 
@@ -361,8 +538,20 @@ else
     .dm-accion-reducir { background: #fef3c7; color: #d97706; }
     .dm-accion-suspender { background: #f1f5f9; color: #64748b; }
 
+    .dm-regla-badge { padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700;
+                      font-family: monospace; background: #f1f5f9; color: #475569; white-space: nowrap; }
+
     .dm-obs-generales { padding: 0.625rem 1.25rem; font-size: 0.78rem; color: #64748b;
                          background: #fffbeb; border-bottom: 1px solid #fef3c7; line-height: 1.45; }
+
+    .dm-ctx-section { border-top: 1px solid #f1f5f9; }
+    .dm-ctx-toggle-btn { width: 100%; padding: 0.4rem 1.25rem; background: none; border: none;
+                         text-align: left; font-size: 0.75rem; color: #94a3b8; cursor: pointer;
+                         font-weight: 600; }
+    .dm-ctx-toggle-btn:hover { color: #475569; background: #f8fafc; }
+    .dm-ctx-pre { font-size: 0.7rem; color: #374151; background: #f8fafc; padding: 0.75rem 1.25rem;
+                  margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+                  border-top: 1px solid #f1f5f9; max-height: 200px; overflow-y: auto; }
 
     .dm-presc-actions { display: flex; gap: 0.5rem; padding: 0.875rem 1.25rem; flex-wrap: wrap; align-items: center; }
     .dm-revisado-info { font-size: 0.75rem; color: #94a3b8; margin-left: auto; }
@@ -381,10 +570,13 @@ else
     .dm-btn-warning:hover { background: #b45309; }
     .dm-btn-danger-outline { background: white; color: #dc2626; border: 1.5px solid #fca5a5; }
     .dm-btn-danger-outline:hover { background: #fee2e2; }
+    .dm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
     .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
                   border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .dm-spinner-sm { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white;
+                     border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
     @@keyframes spin { to { transform: rotate(360deg); } }
 
     .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
@@ -393,10 +585,38 @@ else
     .dm-empty-desc { margin-bottom: 1.5rem; font-size: 0.9rem; }
 
     .dm-page-actions { display: flex; gap: 0.75rem; }
-
     .dm-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
                        padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
                        align-items: center; font-size: 0.875rem; font-weight: 500; }
+
+    /* Modal */
+    .dm-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); display: flex;
+                        align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+    .dm-modal { background: white; border-radius: 16px; max-width: 540px; width: 100%;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.2); display: flex; flex-direction: column;
+                max-height: 90vh; overflow: hidden; }
+    .dm-modal-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid #f1f5f9; }
+    .dm-modal-header h3 { margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b; }
+    .dm-modal-subtitle { font-size: 0.8rem; color: #64748b; margin-top: 0.2rem; display: block; }
+    .dm-modal-body { padding: 1.25rem 1.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; }
+    .dm-modal-footer { padding: 1rem 1.5rem; border-top: 1px solid #f1f5f9; display: flex;
+                       justify-content: flex-end; gap: 0.75rem; }
+    .dm-modal-section { background: #f8fafc; border-radius: 10px; padding: 1rem; border: 1px solid #e2e8f0; }
+    .dm-modal-section-title { font-weight: 700; font-size: 0.875rem; color: #374151;
+                               display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+    .dm-modal-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
+    .dm-field-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .dm-field-group label { font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; }
+    .dm-input { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                font-size: 0.875rem; color: #374151; background: white; outline: none; }
+    .dm-input:focus { border-color: #0ea5e9; }
+    .dm-textarea { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
+                   font-size: 0.875rem; color: #374151; background: white; outline: none;
+                   resize: vertical; font-family: inherit; }
+    .dm-textarea:focus { border-color: #0ea5e9; }
+    .dm-checkbox { width: 16px; height: 16px; cursor: pointer; }
+    .dm-modal-error { background: #fee2e2; color: #991b1b; border-radius: 8px; padding: 0.625rem 0.875rem;
+                      font-size: 0.825rem; font-weight: 500; }
 </style>
 
 @code {
@@ -413,6 +633,26 @@ else
     private Guid TenantId;
     private string? ErrorMensaje;
     private System.Threading.CancellationTokenSource? _debounce;
+
+    // Contextos expandidos
+    private readonly HashSet<Guid> _contextosExpandidos = new();
+
+    // Modal de aprobación
+    private PrescripcionSugerida? _aprobandoPresc;
+    private bool _modalAprobar = false;
+    private bool _epoPrescrito;
+    private string _epoDosis = "";
+    private string _epoFrecuencia = "Semanal";
+    private bool _hierroPrescrito;
+    private string _hierroDosis = "";
+    private string _hierroFrecuencia = "Mensual";
+    private string _diagnostico = "";
+    private string _observacionesFinal = "";
+    private bool _guardando = false;
+    private string? _modalError;
+
+    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions _jsonIndented = new() { WriteIndented = true };
 
     private IEnumerable<PrescripcionSugerida> PrescripcionesFiltradas =>
         ListaPrescripciones.Where(p =>
@@ -446,21 +686,20 @@ else
             if (PacienteId.HasValue)
             {
                 var presc = await PrescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(TenantId, PacienteId.Value, periodDate);
-                ListaPrescripciones = presc != null ? new List<PrescripcionSugerida> { presc } : new List<PrescripcionSugerida>();
+                ListaPrescripciones = presc != null ? [presc] : [];
 
                 var snap = await SnapshotRepo.GetByPacienteYPeriodoAsync(TenantId, PacienteId.Value, periodDate);
-                Snapshots = snap != null ? new List<SnapshotMensual> { snap } : new List<SnapshotMensual>();
+                Snapshots = snap != null ? [snap] : [];
             }
             else
             {
-                // GetByPeriodoAsync devuelve todos los estados; filtramos localmente por estado y búsqueda
                 ListaPrescripciones = await PrescripcionRepo.GetByPeriodoAsync(TenantId, periodDate);
                 Snapshots = await SnapshotRepo.GetByPeriodoAsync(TenantId, periodDate);
             }
         }
         catch (Exception ex)
         {
-            ListaPrescripciones = new();
+            ListaPrescripciones = [];
             ErrorMensaje = ex.Message;
         }
         finally
@@ -469,15 +708,86 @@ else
         }
     }
 
-    private async Task AprobarAsync(PrescripcionSugerida presc)
+    private void AbrirModalAprobar(PrescripcionSugerida presc)
     {
-        var auth = await AuthState.GetAuthenticationStateAsync();
-        var userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        presc.Estado = EstadoPrescripcion.Aprobado;
-        presc.RevisadoAt = DateTime.UtcNow;
-        if (Guid.TryParse(userId, out var uid)) presc.RevisadoPor = uid;
-        await PrescripcionRepo.UpsertSugeridaAsync(presc);
+        _aprobandoPresc = presc;
+        _epoPrescrito = presc.EpoUiSemana.HasValue && presc.EpoUiSemana > 0;
+        _epoDosis = presc.EpoUiSemana.HasValue
+            ? $"{presc.EpoUiSemana.Value:N0} UI/sem"
+            : presc.EpoDosisSugerida ?? "";
+        _epoFrecuencia = "Semanal";
+        _hierroPrescrito = presc.HierroMgMes.HasValue && presc.HierroMgMes > 0;
+        _hierroDosis = presc.HierroMgMes.HasValue
+            ? $"{presc.HierroMgMes.Value:N0} mg/mes"
+            : presc.HierroDosisSugerida ?? "";
+        _hierroFrecuencia = "Mensual";
+        _diagnostico = "";
+        _observacionesFinal = "";
+        _modalError = null;
+        _modalAprobar = true;
+    }
+
+    private void CerrarModal()
+    {
+        if (_guardando) return;
+        _modalAprobar = false;
+        _aprobandoPresc = null;
+    }
+
+    private async Task ConfirmarAprobacionAsync()
+    {
+        if (_aprobandoPresc == null) return;
+
+        _modalError = null;
+        _guardando = true;
         StateHasChanged();
+
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (!Guid.TryParse(userId, out var medicoId))
+            {
+                _modalError = "No se pudo identificar al médico. Recargue la sesión.";
+                return;
+            }
+
+            var final = new PrescripcionFinal
+            {
+                TenantId      = _aprobandoPresc.TenantId,
+                PacienteId    = _aprobandoPresc.PacienteId,
+                PrescripcionSugeridaId = _aprobandoPresc.Id,
+                MedicoId      = medicoId,
+                PeriodDate    = _aprobandoPresc.PeriodDate,
+                EpoPrescrito  = _epoPrescrito,
+                EpoDosis      = _epoPrescrito ? _epoDosis.Trim() : null,
+                EpoFrecuencia = _epoPrescrito ? _epoFrecuencia : null,
+                HierroPrescrito  = _hierroPrescrito,
+                HierroDosis      = _hierroPrescrito ? _hierroDosis.Trim() : null,
+                HierroFrecuencia = _hierroPrescrito ? _hierroFrecuencia : null,
+                Diagnostico      = string.IsNullOrWhiteSpace(_diagnostico) ? null : _diagnostico.Trim(),
+                Observaciones    = string.IsNullOrWhiteSpace(_observacionesFinal) ? null : _observacionesFinal.Trim(),
+            };
+
+            _aprobandoPresc.Estado      = EstadoPrescripcion.Aprobado;
+            _aprobandoPresc.RevisadoAt  = DateTime.UtcNow;
+            _aprobandoPresc.RevisadoPor = medicoId;
+
+            await PrescripcionRepo.AddFinalAsync(final);
+            await PrescripcionRepo.UpsertSugeridaAsync(_aprobandoPresc);
+
+            _modalAprobar = false;
+            _aprobandoPresc = null;
+        }
+        catch (Exception ex)
+        {
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _guardando = false;
+        }
     }
 
     private async Task MarcarRevisadoAsync(PrescripcionSugerida presc)
@@ -514,20 +824,65 @@ else
         });
     }
 
+    private void ToggleContexto(Guid id)
+    {
+        if (!_contextosExpandidos.Remove(id))
+            _contextosExpandidos.Add(id);
+    }
+
+    private static List<AlertaClinica> ParseAlertas(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return [];
+        try { return JsonSerializer.Deserialize<List<AlertaClinica>>(json, _jsonOpts) ?? []; }
+        catch { return []; }
+    }
+
+    private static string FormatJson(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return "";
+        try
+        {
+            var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc, _jsonIndented);
+        }
+        catch { return json; }
+    }
+
+    private static string AlertaBadgeClase(string severidad) => severidad switch
+    {
+        "CRITICA" => "dm-alerta-critica",
+        "ALTA"    => "dm-alerta-alta",
+        _         => "dm-alerta-media"
+    };
+
+    private static string AlertaIcon(string severidad) => severidad switch
+    {
+        "CRITICA" => "🔴",
+        "ALTA"    => "🟠",
+        _         => "🟡"
+    };
+
+    private static int SeveridadOrden(string severidad) => severidad switch
+    {
+        "CRITICA" => 0,
+        "ALTA"    => 1,
+        _         => 2
+    };
+
     private static string EstadoClase(string estado) => estado switch
     {
         "PENDIENTE" => "dm-estado-pendiente",
-        "REVISADO" => "dm-estado-revisado",
-        "APROBADO" => "dm-estado-aprobado",
+        "REVISADO"  => "dm-estado-revisado",
+        "APROBADO"  => "dm-estado-aprobado",
         "RECHAZADO" => "dm-estado-rechazado",
         _ => ""
     };
 
     private static string AccionClase(string accion) => accion switch
     {
-        "AUMENTAR" => "dm-accion-aumentar",
-        "MANTENER" => "dm-accion-mantener",
-        "REDUCIR" => "dm-accion-reducir",
+        "AUMENTAR"  => "dm-accion-aumentar",
+        "MANTENER"  => "dm-accion-mantener",
+        "REDUCIR"   => "dm-accion-reducir",
         "SUSPENDER" => "dm-accion-suspender",
         _ => ""
     };

@@ -42,7 +42,7 @@ namespace DataMedix.Infrastructure.Repositories
         {
             regla.UpdatedAt = DateTime.UtcNow;
             _db.ReglasClinicas.Update(regla);
-            await Task.CompletedTask;
+            await _db.SaveChangesAsync();
         }
     }
 }
