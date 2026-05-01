@@ -521,8 +521,16 @@ namespace DataMedix.Infrastructure.Repositories
             Guid tenantId, DateTime? desde, DateTime? hasta, string? accion, Guid? usuarioId)
         {
             var q = _db.AuditoriaLogs.Where(a => a.TenantId == tenantId);
-            if (desde.HasValue)   q = q.Where(a => a.CreatedAt >= desde.Value);
-            if (hasta.HasValue)   q = q.Where(a => a.CreatedAt <= hasta.Value.AddDays(1));
+            if (desde.HasValue)
+            {
+                var d = DateTime.SpecifyKind(desde.Value.Date, DateTimeKind.Utc);
+                q = q.Where(a => a.CreatedAt >= d);
+            }
+            if (hasta.HasValue)
+            {
+                var h = DateTime.SpecifyKind(hasta.Value.Date.AddDays(1), DateTimeKind.Utc);
+                q = q.Where(a => a.CreatedAt < h);
+            }
             if (!string.IsNullOrWhiteSpace(accion)) q = q.Where(a => a.Accion == accion);
             if (usuarioId.HasValue) q = q.Where(a => a.UsuarioId == usuarioId.Value);
             return q;

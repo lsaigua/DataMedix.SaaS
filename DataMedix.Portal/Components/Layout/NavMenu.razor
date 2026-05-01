@@ -2,95 +2,159 @@
 @using System.Security.Claims
 
 <CascadingAuthenticationState>
-<div class="dm-nav-root">
-    <div class="dm-nav-header">
-        <img src="images/datamedix-logo.png" alt="DataMedix" class="dm-nav-logo-img"
-             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
-        <div class="dm-nav-logo-fallback">DM</div>
-        <div class="dm-nav-brand">
-            <span class="dm-nav-brand-title">DataMedix</span>
-            <span class="dm-nav-brand-subtitle">Plataforma Clínica SaaS</span>
+<div class="dm-nav">
+
+    <!-- Brand -->
+    <div class="dm-nav-brand">
+        <div class="dm-nav-icon-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                 stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+        </div>
+        <div>
+            <div class="dm-nav-title">DataMedix</div>
+            <div class="dm-nav-subtitle">Plataforma Clínica</div>
         </div>
     </div>
 
+    <!-- Menu -->
     <nav class="dm-nav-menu">
-        <!-- GENERAL -->
-        <div class="dm-nav-section-title">GENERAL</div>
 
-        <NavLink href="/dashboard" class="dm-nav-link" Match="NavLinkMatch.All">
-            <span class="dm-nav-icon">🏠</span>
-            <span>Dashboard</span>
+        <div class="dm-nav-section">GENERAL</div>
+        <NavLink href="/dashboard" class="dm-nav-link" Match="NavLinkMatch.All" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                </svg>
+            </span>
+            Dashboard
         </NavLink>
 
-        <!-- LABORATORIO -->
-        <div class="dm-nav-section-title">LABORATORIO</div>
-
-        <NavLink href="/laboratorio/importar" class="dm-nav-link">
-            <span class="dm-nav-icon">📤</span>
-            <span>Cargar Resultados</span>
+        <div class="dm-nav-section">LABORATORIO</div>
+        <NavLink href="/laboratorio/importar" class="dm-nav-link" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+            </span>
+            Cargar Resultados
+        </NavLink>
+        <NavLink href="/historial-clinico" class="dm-nav-link" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+            </span>
+            Historial Clínico
+        </NavLink>
+        <NavLink href="/laboratorio/historial" class="dm-nav-link" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>
+                </svg>
+            </span>
+            Resultados Crudos
         </NavLink>
 
-        <NavLink href="/historial-clinico" class="dm-nav-link">
-            <span class="dm-nav-icon">📈</span>
-            <span>Historial Clínico</span>
+        <div class="dm-nav-section">CLÍNICO</div>
+        <NavLink href="/pacientes" class="dm-nav-link" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+            </span>
+            Pacientes
+        </NavLink>
+        <NavLink href="/prescripciones" class="dm-nav-link" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </span>
+            Prescripciones
+        </NavLink>
+        <NavLink href="/clinico/reglas" class="dm-nav-link" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
+                </svg>
+            </span>
+            Reglas Clínicas
         </NavLink>
 
-        <NavLink href="/laboratorio/historial" class="dm-nav-link">
-            <span class="dm-nav-icon">🔬</span>
-            <span>Resultados Crudos</span>
-        </NavLink>
-
-        <!-- CLÍNICO -->
-        <div class="dm-nav-section-title">CLÍNICO</div>
-
-        <NavLink href="/pacientes" class="dm-nav-link">
-            <span class="dm-nav-icon">👥</span>
-            <span>Pacientes</span>
-        </NavLink>
-
-        <NavLink href="/prescripciones" class="dm-nav-link">
-            <span class="dm-nav-icon">💊</span>
-            <span>Prescripciones</span>
-        </NavLink>
-
-        <NavLink href="/clinico/reglas" class="dm-nav-link">
-            <span class="dm-nav-icon">⚙️</span>
-            <span>Reglas Clínicas</span>
-        </NavLink>
-
-        <!-- ADMINISTRACIÓN -->
         <AuthorizeView Roles="SUPERADMIN,ADMIN">
             <Authorized>
-                <div class="dm-nav-section-title">ADMINISTRACIÓN</div>
-
-                <NavLink href="/cargas" class="dm-nav-link">
-                    <span class="dm-nav-icon">📦</span>
-                    <span>Lotes de Carga</span>
+                <div class="dm-nav-section">ADMINISTRACIÓN</div>
+                <NavLink href="/cargas" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                        </svg>
+                    </span>
+                    Lotes de Carga
                 </NavLink>
-
-                <NavLink href="/reportes" class="dm-nav-link">
-                    <span class="dm-nav-icon">📊</span>
-                    <span>Reportes</span>
+                <NavLink href="/reportes" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                        </svg>
+                    </span>
+                    Reportes
                 </NavLink>
-
-                <NavLink href="/usuarios" class="dm-nav-link">
-                    <span class="dm-nav-icon">👤</span>
-                    <span>Usuarios</span>
+                <NavLink href="/usuarios" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </span>
+                    Usuarios
                 </NavLink>
-
-                <NavLink href="/configuracion" class="dm-nav-link">
-                    <span class="dm-nav-icon">🔧</span>
-                    <span>Configuración</span>
+                <NavLink href="/configuracion" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
+                        </svg>
+                    </span>
+                    Configuración
                 </NavLink>
-
-                <NavLink href="/auditoria" class="dm-nav-link">
-                    <span class="dm-nav-icon">📋</span>
-                    <span>Auditoría</span>
+                <NavLink href="/auditoria" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                    </span>
+                    Auditoría
                 </NavLink>
             </Authorized>
         </AuthorizeView>
+
     </nav>
 
+    <!-- Footer / user -->
     <div class="dm-nav-footer">
         <AuthorizeView>
             <Authorized>
@@ -98,96 +162,119 @@
                     <div class="dm-nav-user-avatar">
                         @(context.User.FindFirst("nombre_completo")?.Value?.FirstOrDefault().ToString().ToUpper() ?? "?")
                     </div>
-                    <div class="dm-nav-user-info">
+                    <div class="dm-nav-user-text">
                         <span class="dm-nav-user-name">
-                            @(context.User.FindFirst("nombre_completo")?.Value ?? context.User.FindFirst(ClaimTypes.Name)?.Value ?? "Usuario")
+                            @(context.User.FindFirst("nombre_completo")?.Value ?? "Usuario")
                         </span>
                         <span class="dm-nav-user-role">
-                            @(context.User.FindFirst(ClaimTypes.Role)?.Value ?? "—")
+                            @(context.User.FindFirst(ClaimTypes.Role)?.Value ?? "")
                         </span>
                     </div>
                 </div>
             </Authorized>
         </AuthorizeView>
-        <a href="/auth/logout" class="dm-nav-logout">
-            <span>🚪</span> Cerrar sesión
+        <a href="/auth/logout" class="dm-nav-logout" @onclick="HandleClick">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            Cerrar sesión
         </a>
     </div>
+
 </div>
 </CascadingAuthenticationState>
 
+@code {
+    [Parameter] public EventCallback OnNavClick { get; set; }
+
+    private async Task HandleClick() => await OnNavClick.InvokeAsync();
+}
+
 <style>
-    .dm-nav-root {
+    .dm-nav {
         height: 100%;
         display: flex;
         flex-direction: column;
         background: #0f172a;
-        color: #e2e8f0;
+        color: #cbd5e1;
         overflow: hidden;
     }
 
-    .dm-nav-header {
+    /* Brand */
+    .dm-nav-brand {
         display: flex;
         align-items: center;
         gap: 0.75rem;
         padding: 1.25rem 1.25rem 1rem;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
-
-    .dm-nav-logo-img {
-        width: 36px;
-        height: 36px;
-        object-fit: contain;
-        border-radius: 8px;
-    }
-
-    .dm-nav-logo-fallback {
-        display: none;
-        width: 36px;
-        height: 36px;
-        background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
-        border-radius: 8px;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        font-size: 0.9rem;
-        color: white;
+        border-bottom: 1px solid rgba(255,255,255,0.07);
         flex-shrink: 0;
     }
 
-    .dm-nav-brand { display: flex; flex-direction: column; }
-    .dm-nav-brand-title { font-weight: 800; font-size: 0.95rem; color: white; }
-    .dm-nav-brand-subtitle { font-size: 0.68rem; color: #64748b; }
+    .dm-nav-icon-wrap {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 100%);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(14,165,233,0.35);
+    }
 
+    .dm-nav-icon-wrap svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .dm-nav-title {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #f1f5f9;
+        letter-spacing: -0.02em;
+    }
+
+    .dm-nav-subtitle {
+        font-size: 0.65rem;
+        color: #475569;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+    }
+
+    /* Menu scroll area */
     .dm-nav-menu {
         flex: 1;
         overflow-y: auto;
-        padding: 1rem 0.75rem;
+        overflow-x: hidden;
+        padding: 0.875rem 0.75rem;
         scrollbar-width: thin;
-        scrollbar-color: #334155 transparent;
+        scrollbar-color: #1e293b transparent;
     }
 
-    .dm-nav-section-title {
-        font-size: 0.65rem;
-        font-weight: 700;
-        color: #475569;
-        letter-spacing: 0.08em;
-        padding: 1rem 0.75rem 0.35rem;
+    .dm-nav-section {
+        font-size: 0.6rem;
+        font-weight: 800;
+        color: #334155;
+        letter-spacing: 0.1em;
+        padding: 0.875rem 0.75rem 0.35rem;
         text-transform: uppercase;
     }
 
     .dm-nav-link {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        padding: 0.6rem 0.75rem;
+        gap: 0.65rem;
+        padding: 0.55rem 0.75rem;
         border-radius: 8px;
         color: #94a3b8;
         text-decoration: none;
-        font-size: 0.875rem;
+        font-size: 0.85rem;
         font-weight: 500;
-        transition: all 0.15s ease;
-        margin-bottom: 0.15rem;
+        transition: all 0.15s;
+        margin-bottom: 0.1rem;
+        white-space: nowrap;
     }
 
     .dm-nav-link:hover {
@@ -196,50 +283,60 @@
     }
 
     .dm-nav-link.active {
-        background: rgba(14, 165, 233, 0.15);
+        background: rgba(14,165,233,0.15);
         color: #38bdf8;
         font-weight: 600;
     }
 
-    .dm-nav-icon {
-        font-size: 1rem;
-        width: 20px;
-        text-align: center;
+    .dm-nav-li {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
         flex-shrink: 0;
     }
 
+    .dm-nav-li svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Footer */
     .dm-nav-footer {
-        padding: 0.875rem 1rem;
-        border-top: 1px solid rgba(255,255,255,0.08);
+        padding: 0.875rem 0.75rem;
+        border-top: 1px solid rgba(255,255,255,0.07);
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 0.5rem;
+        flex-shrink: 0;
     }
 
     .dm-nav-user {
         display: flex;
         align-items: center;
         gap: 0.625rem;
+        padding: 0.375rem 0.25rem;
     }
 
     .dm-nav-user-avatar {
-        width: 32px;
-        height: 32px;
+        width: 30px;
+        height: 30px;
         background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 700;
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         color: white;
         flex-shrink: 0;
     }
 
-    .dm-nav-user-info {
+    .dm-nav-user-text {
         display: flex;
         flex-direction: column;
-        overflow: hidden;
+        min-width: 0;
     }
 
     .dm-nav-user-name {
@@ -252,27 +349,28 @@
     }
 
     .dm-nav-user-role {
-        font-size: 0.65rem;
-        color: #64748b;
+        font-size: 0.62rem;
+        color: #475569;
         text-transform: uppercase;
-        font-weight: 600;
+        font-weight: 700;
+        letter-spacing: 0.06em;
     }
 
     .dm-nav-logout {
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        color: #64748b;
+        color: #475569;
         text-decoration: none;
         font-size: 0.8rem;
         font-weight: 500;
-        padding: 0.375rem 0.75rem;
+        padding: 0.45rem 0.75rem;
         border-radius: 8px;
         transition: all 0.15s;
     }
 
     .dm-nav-logout:hover {
-        background: rgba(239, 68, 68, 0.1);
-        color: #ef4444;
+        background: rgba(239,68,68,0.12);
+        color: #f87171;
     }
 </style>

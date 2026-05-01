@@ -155,9 +155,9 @@ else
         var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
         _tenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
 
-        // Default: últimos 30 días
-        _hasta = DateTime.Today;
-        _desde = DateTime.Today.AddDays(-30);
+        // Default: últimos 30 días (UTC)
+        _hasta = DateTime.UtcNow.Date;
+        _desde = DateTime.UtcNow.Date.AddDays(-30);
 
         if (_tenantId != Guid.Empty)
             await CargarAsync();

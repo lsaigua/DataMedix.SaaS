@@ -152,9 +152,19 @@ namespace DataMedix.Infrastructure.Repositories
 
         public async Task UpdateAsync(Usuario usuario)
         {
-            usuario.UpdatedAt = DateTime.UtcNow;
-            _db.Usuarios.Update(usuario);
-            await _db.SaveChangesAsync();
+            await _db.Usuarios
+                .Where(u => u.Id == usuario.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.PrimerNombre,    usuario.PrimerNombre)
+                    .SetProperty(u => u.SegundoNombre,   usuario.SegundoNombre)
+                    .SetProperty(u => u.PrimerApellido,  usuario.PrimerApellido)
+                    .SetProperty(u => u.SegundoApellido, usuario.SegundoApellido)
+                    .SetProperty(u => u.Identificacion,  usuario.Identificacion)
+                    .SetProperty(u => u.Telefono,        usuario.Telefono)
+                    .SetProperty(u => u.Email,           usuario.Email)
+                    .SetProperty(u => u.Activo,          usuario.Activo)
+                    .SetProperty(u => u.Codigo,          usuario.Codigo)
+                    .SetProperty(u => u.UpdatedAt,       DateTime.UtcNow));
         }
 
         public async Task<List<Rol>> GetRolesDisponiblesAsync() =>

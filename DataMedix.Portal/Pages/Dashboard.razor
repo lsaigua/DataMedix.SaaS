@@ -12,208 +12,473 @@
 
 <PageTitle>Dashboard | DataMedix</PageTitle>
 
-<div class="dm-page-header">
-    <div>
-        <h1 class="dm-page-title">Dashboard</h1>
-        <p class="dm-page-subtitle">Resumen clínico del período @PeriodoTexto</p>
+<div class="dash-header">
+    <div class="dash-header-info">
+        <h1 class="dash-title">Dashboard</h1>
+        <p class="dash-subtitle">Resumen clínico · <span class="dash-periodo">@_periodoTexto</span></p>
     </div>
-    <div class="dm-page-actions">
-        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">
-            <span>↑</span> Nueva Carga
-        </a>
-    </div>
+    <a href="/laboratorio/importar" class="dm-btn dm-btn-primary dash-cta">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Nueva Carga
+    </a>
 </div>
 
-@if (!string.IsNullOrEmpty(ErrorMensaje))
+@if (!string.IsNullOrEmpty(_error))
 {
-    <div class="dm-error-banner">Error cargando KPIs: @ErrorMensaje</div>
+    <div class="dm-error-banner">Error: @_error</div>
 }
 
-@if (Cargando)
+@if (_cargando)
 {
     <div class="dm-loading-container">
         <div class="dm-spinner"></div>
-        <p>Cargando información del dashboard...</p>
+        <p>Cargando dashboard...</p>
     </div>
 }
 else
 {
-    <!-- KPIs Principales -->
-    <div class="dm-kpi-grid">
-        <div class="dm-kpi-card dm-kpi-blue">
-            <div class="dm-kpi-icon">👥</div>
-            <div class="dm-kpi-content">
-                <div class="dm-kpi-value">@TotalPacientes</div>
-                <div class="dm-kpi-label">Pacientes Activos</div>
+    <!-- KPI Grid -->
+    <div class="dash-kpi-grid">
+        <div class="dash-kpi dash-kpi-blue">
+            <div class="dash-kpi-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
             </div>
+            <div class="dash-kpi-body">
+                <span class="dash-kpi-value">@_totalPacientes</span>
+                <span class="dash-kpi-label">Pacientes Activos</span>
+            </div>
+            <div class="dash-kpi-bar dash-kpi-bar-blue"></div>
         </div>
-        <div class="dm-kpi-card dm-kpi-green">
-            <div class="dm-kpi-icon">📋</div>
-            <div class="dm-kpi-content">
-                <div class="dm-kpi-value">@PacientesPeriodo</div>
-                <div class="dm-kpi-label">Con Resultados Mes</div>
+
+        <div class="dash-kpi dash-kpi-emerald">
+            <div class="dash-kpi-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
             </div>
+            <div class="dash-kpi-body">
+                <span class="dash-kpi-value">@_pacientesPeriodo</span>
+                <span class="dash-kpi-label">Con Resultados del Mes</span>
+            </div>
+            <div class="dash-kpi-bar dash-kpi-bar-emerald"></div>
         </div>
-        <div class="dm-kpi-card dm-kpi-orange">
-            <div class="dm-kpi-icon">💊</div>
-            <div class="dm-kpi-content">
-                <div class="dm-kpi-value">@PrescripcionesPendientes</div>
-                <div class="dm-kpi-label">Prescripciones Pendientes</div>
+
+        <div class="dash-kpi @(_prescPendientes > 0 ? "dash-kpi-amber" : "dash-kpi-slate")">
+            <div class="dash-kpi-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
             </div>
+            <div class="dash-kpi-body">
+                <span class="dash-kpi-value">@_prescPendientes</span>
+                <span class="dash-kpi-label">Prescripciones Pendientes</span>
+                @if (_prescPendientes > 0)
+                {
+                    <span class="dash-kpi-badge">Requiere atención</span>
+                }
+            </div>
+            <div class="dash-kpi-bar @(_prescPendientes > 0 ? "dash-kpi-bar-amber" : "dash-kpi-bar-slate")"></div>
         </div>
-        <div class="dm-kpi-card dm-kpi-purple">
-            <div class="dm-kpi-icon">📁</div>
-            <div class="dm-kpi-content">
-                <div class="dm-kpi-value">@LotesDelMes</div>
-                <div class="dm-kpi-label">Cargas del Mes</div>
+
+        <div class="dash-kpi dash-kpi-violet">
+            <div class="dash-kpi-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                </svg>
             </div>
+            <div class="dash-kpi-body">
+                <span class="dash-kpi-value">@_lotesDelMes</span>
+                <span class="dash-kpi-label">Cargas del Mes</span>
+            </div>
+            <div class="dash-kpi-bar dash-kpi-bar-violet"></div>
         </div>
     </div>
 
-    <!-- Alertas clínicas del período -->
-    @if (PrescripcionesPendientes > 0)
+    <!-- Alert -->
+    @if (_prescPendientes > 0)
     {
-        <div class="dm-alert dm-alert-warning">
-            <strong>⚠️ Atención médica requerida:</strong>
-            Hay <strong>@PrescripcionesPendientes</strong> prescripción(es) pendiente(s) de revisión
-            para el período @PeriodoTexto.
-            <a href="/prescripciones" class="dm-alert-link">Revisar ahora →</a>
+        <div class="dash-alert">
+            <div class="dash-alert-icon">⚠</div>
+            <div class="dash-alert-body">
+                <strong>@_prescPendientes prescripción(es) pendiente(s)</strong> de revisión médica para @_periodoTexto.
+            </div>
+            <a href="/prescripciones" class="dm-btn dm-btn-amber">Revisar ahora →</a>
         </div>
     }
 
-    <!-- Accesos rápidos -->
-    <div class="dm-section-title">Accesos Rápidos</div>
-    <div class="dm-quick-access-grid">
-        <a href="/laboratorio/importar" class="dm-quick-card">
-            <span class="dm-quick-icon">📤</span>
-            <span class="dm-quick-label">Cargar Resultados</span>
-            <span class="dm-quick-desc">Importar archivo Excel del laboratorio</span>
+    <!-- Quick access -->
+    <div class="dash-section-title">Accesos Rápidos</div>
+    <div class="dash-quick-grid">
+        <a href="/laboratorio/importar" class="dash-quick-card">
+            <div class="dash-quick-icon dash-quick-blue">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+            </div>
+            <div class="dash-quick-text">
+                <span class="dash-quick-label">Cargar Resultados</span>
+                <span class="dash-quick-desc">Importar archivo Excel del laboratorio</span>
+            </div>
+            <span class="dash-quick-arrow">→</span>
         </a>
-        <a href="/pacientes" class="dm-quick-card">
-            <span class="dm-quick-icon">👤</span>
-            <span class="dm-quick-label">Pacientes</span>
-            <span class="dm-quick-desc">Gestionar y buscar pacientes</span>
+
+        <a href="/pacientes" class="dash-quick-card">
+            <div class="dash-quick-icon dash-quick-emerald">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+            </div>
+            <div class="dash-quick-text">
+                <span class="dash-quick-label">Pacientes</span>
+                <span class="dash-quick-desc">Gestionar y buscar pacientes</span>
+            </div>
+            <span class="dash-quick-arrow">→</span>
         </a>
-        <a href="/historial-clinico" class="dm-quick-card">
-            <span class="dm-quick-icon">📈</span>
-            <span class="dm-quick-label">Historial Clínico</span>
-            <span class="dm-quick-desc">Ver resultados mensuales</span>
+
+        <a href="/historial-clinico" class="dash-quick-card">
+            <div class="dash-quick-icon dash-quick-cyan">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+            </div>
+            <div class="dash-quick-text">
+                <span class="dash-quick-label">Historial Clínico</span>
+                <span class="dash-quick-desc">Evolución mensual de laboratorio</span>
+            </div>
+            <span class="dash-quick-arrow">→</span>
         </a>
-        <a href="/prescripciones" class="dm-quick-card">
-            <span class="dm-quick-icon">💉</span>
-            <span class="dm-quick-label">Prescripciones</span>
-            <span class="dm-quick-desc">EPO y Hierro IV sugeridos</span>
+
+        <a href="/prescripciones" class="dash-quick-card">
+            <div class="dash-quick-icon dash-quick-violet">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <div class="dash-quick-text">
+                <span class="dash-quick-label">Prescripciones</span>
+                <span class="dash-quick-desc">EPO y Hierro IV sugeridos por IA</span>
+            </div>
+            <span class="dash-quick-arrow">→</span>
         </a>
-        <a href="/cargas" class="dm-quick-card">
-            <span class="dm-quick-icon">📦</span>
-            <span class="dm-quick-label">Lotes de Carga</span>
-            <span class="dm-quick-desc">Historial de importaciones</span>
+
+        <a href="/clinico/reglas" class="dash-quick-card">
+            <div class="dash-quick-icon dash-quick-amber">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
+                </svg>
+            </div>
+            <div class="dash-quick-text">
+                <span class="dash-quick-label">Reglas Clínicas</span>
+                <span class="dash-quick-desc">Motor de decisiones EPO/Hierro</span>
+            </div>
+            <span class="dash-quick-arrow">→</span>
         </a>
-        <a href="/rangos-prescriba" class="dm-quick-card">
-            <span class="dm-quick-icon">⚙️</span>
-            <span class="dm-quick-label">Rangos a Prescribir</span>
-            <span class="dm-quick-desc">Configurar rangos clínicos</span>
+
+        <a href="/reportes" class="dash-quick-card">
+            <div class="dash-quick-icon dash-quick-rose">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+            </div>
+            <div class="dash-quick-text">
+                <span class="dash-quick-label">Reportes</span>
+                <span class="dash-quick-desc">Análisis clínico del período</span>
+            </div>
+            <span class="dash-quick-arrow">→</span>
         </a>
     </div>
 }
 
 <style>
-    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
-    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
-    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
-    .dm-page-actions { display: flex; gap: 0.75rem; align-items: center; }
-    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600;
-               font-size: 0.875rem; text-decoration: none; display: inline-flex;
-               align-items: center; gap: 0.5rem; cursor: pointer; border: none; }
+    /* ── Header ──────────────────────────────────────────────── */
+    .dash-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 1.75rem;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .dash-title {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0;
+        letter-spacing: -0.03em;
+    }
+    .dash-subtitle {
+        color: #64748b;
+        margin: 0.2rem 0 0;
+        font-size: 0.875rem;
+    }
+    .dash-periodo {
+        font-weight: 600;
+        color: #0ea5e9;
+        text-transform: capitalize;
+    }
+    .dash-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-shrink: 0;
+    }
+
+    /* ── KPI Grid ────────────────────────────────────────────── */
+    .dash-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        width: 100%;
+    }
+
+    .dash-kpi {
+        background: white;
+        border-radius: 14px;
+        padding: 1.25rem 1.25rem 1rem;
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        border: 1px solid #f1f5f9;
+        position: relative;
+        overflow: hidden;
+        transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .dash-kpi:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-1px); }
+
+    .dash-kpi-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .dash-kpi-icon svg { width: 22px; height: 22px; }
+
+    .dash-kpi-body { flex: 1; min-width: 0; }
+    .dash-kpi-value {
+        display: block;
+        font-size: 1.9rem;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1;
+        letter-spacing: -0.04em;
+    }
+    .dash-kpi-label {
+        display: block;
+        font-size: 0.78rem;
+        color: #64748b;
+        font-weight: 500;
+        margin-top: 0.3rem;
+    }
+    .dash-kpi-badge {
+        display: inline-block;
+        margin-top: 0.4rem;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        background: #fef3c7;
+        color: #92400e;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    /* Bottom accent bar */
+    .dash-kpi-bar {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        height: 3px;
+        border-radius: 0 0 14px 14px;
+    }
+
+    /* Color variants */
+    .dash-kpi-blue .dash-kpi-icon     { background: #eff6ff; color: #2563eb; }
+    .dash-kpi-emerald .dash-kpi-icon  { background: #f0fdf4; color: #16a34a; }
+    .dash-kpi-amber .dash-kpi-icon    { background: #fffbeb; color: #d97706; }
+    .dash-kpi-slate .dash-kpi-icon    { background: #f8fafc; color: #64748b; }
+    .dash-kpi-violet .dash-kpi-icon   { background: #f5f3ff; color: #7c3aed; }
+    .dash-kpi-bar-blue    { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+    .dash-kpi-bar-emerald { background: linear-gradient(90deg, #16a34a, #4ade80); }
+    .dash-kpi-bar-amber   { background: linear-gradient(90deg, #d97706, #fbbf24); }
+    .dash-kpi-bar-slate   { background: #e2e8f0; }
+    .dash-kpi-bar-violet  { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+
+    /* ── Alert ───────────────────────────────────────────────── */
+    .dash-alert {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-left: 4px solid #f59e0b;
+        border-radius: 10px;
+        padding: 0.875rem 1.25rem;
+        margin-bottom: 1.75rem;
+        flex-wrap: wrap;
+    }
+    .dash-alert-icon { font-size: 1.1rem; color: #b45309; flex-shrink: 0; }
+    .dash-alert-body { flex: 1; font-size: 0.875rem; color: #92400e; }
+
+    .dm-btn-amber {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.45rem 0.875rem;
+        background: #f59e0b;
+        color: white;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 0.8rem;
+        font-weight: 700;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .dm-btn-amber:hover { background: #d97706; color: white; }
+
+    /* ── Quick access ────────────────────────────────────────── */
+    .dash-section-title {
+        font-size: 0.7rem;
+        font-weight: 800;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.875rem;
+    }
+    .dash-quick-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.875rem;
+        width: 100%;
+    }
+    .dash-quick-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 0.875rem;
+        transition: all 0.18s;
+        color: inherit;
+    }
+    .dash-quick-card:hover {
+        border-color: #0ea5e9;
+        box-shadow: 0 4px 16px rgba(14,165,233,0.12);
+        transform: translateY(-1px);
+        color: inherit;
+    }
+    .dash-quick-icon {
+        width: 40px; height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center; justify-content: center;
+        flex-shrink: 0;
+    }
+    .dash-quick-icon svg { width: 18px; height: 18px; }
+    .dash-quick-blue    { background: #eff6ff; color: #2563eb; }
+    .dash-quick-emerald { background: #f0fdf4; color: #16a34a; }
+    .dash-quick-cyan    { background: #ecfeff; color: #0891b2; }
+    .dash-quick-violet  { background: #f5f3ff; color: #7c3aed; }
+    .dash-quick-amber   { background: #fffbeb; color: #d97706; }
+    .dash-quick-rose    { background: #fff1f2; color: #e11d48; }
+    .dash-quick-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .dash-quick-label { font-size: 0.875rem; font-weight: 700; color: #1e293b; }
+    .dash-quick-desc { font-size: 0.75rem; color: #94a3b8; margin-top: 0.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dash-quick-arrow { color: #cbd5e1; font-size: 1rem; flex-shrink: 0; }
+
+    /* ── Shared ──────────────────────────────────────────────── */
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 4rem 2rem; color: #64748b; gap: 1rem; }
+    .dm-spinner { width: 38px; height: 38px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .dm-error-banner { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.875rem; }
+    .dm-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.575rem 1.1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem; text-decoration: none; cursor: pointer; border: none; transition: all 0.15s; }
     .dm-btn-primary { background: #0ea5e9; color: white; }
     .dm-btn-primary:hover { background: #0284c7; color: white; }
 
-    .dm-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                   gap: 1.25rem; margin-bottom: 2rem; }
-    .dm-kpi-card { background: white; border-radius: 12px; padding: 1.5rem;
-                   display: flex; align-items: center; gap: 1rem;
-                   box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid; }
-    .dm-kpi-blue { border-color: #0ea5e9; }
-    .dm-kpi-green { border-color: #10b981; }
-    .dm-kpi-orange { border-color: #f59e0b; }
-    .dm-kpi-purple { border-color: #8b5cf6; }
-    .dm-kpi-icon { font-size: 2rem; }
-    .dm-kpi-value { font-size: 2rem; font-weight: 800; color: #1e293b; line-height: 1; }
-    .dm-kpi-label { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; font-weight: 500; }
-
-    .dm-alert { padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 2rem;
-                border-left: 4px solid; font-size: 0.9rem; }
-    .dm-alert-warning { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
-    .dm-alert-link { color: #b45309; font-weight: 600; text-decoration: underline; margin-left: 0.5rem; }
-
-    .dm-section-title { font-size: 1rem; font-weight: 700; color: #374151;
-                        margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    .dm-quick-access-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-                            gap: 1rem; }
-    .dm-quick-card { background: white; border: 1.5px solid #e2e8f0; border-radius: 12px;
-                     padding: 1.25rem; text-decoration: none; display: flex; flex-direction: column;
-                     gap: 0.5rem; transition: all 0.2s ease; cursor: pointer; }
-    .dm-quick-card:hover { border-color: #0ea5e9; box-shadow: 0 4px 12px rgba(14,165,233,0.15);
-                           transform: translateY(-2px); }
-    .dm-quick-icon { font-size: 1.75rem; }
-    .dm-quick-label { font-size: 0.9rem; font-weight: 700; color: #1e293b; }
-    .dm-quick-desc { font-size: 0.75rem; color: #94a3b8; }
-
-    .dm-loading-container { display: flex; flex-direction: column; align-items: center;
-                            padding: 3rem; color: #64748b; gap: 1rem; }
-    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0;
-                  border-top-color: #0ea5e9; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @@keyframes spin { to { transform: rotate(360deg); } }
-    .dm-error-banner { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
-                       border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem;
-                       font-size: 0.875rem; }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @@media (max-width: 1200px) {
+        .dash-quick-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @@media (max-width: 900px) {
+        .dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @@media (max-width: 600px) {
+        .dash-kpi-grid { grid-template-columns: 1fr; }
+        .dash-quick-grid { grid-template-columns: 1fr; }
+        .dash-header { flex-direction: column; align-items: flex-start; }
+    }
 </style>
 
 @code {
-    private bool Cargando = true;
-    private int TotalPacientes = 0;
-    private int PacientesPeriodo = 0;
-    private int PrescripcionesPendientes = 0;
-    private int LotesDelMes = 0;
-    private string PeriodoTexto = string.Empty;
-    private Guid TenantId;
+    private bool _cargando = true;
+    private int _totalPacientes;
+    private int _pacientesPeriodo;
+    private int _prescPendientes;
+    private int _lotesDelMes;
+    private string _periodoTexto = "";
+    private Guid _tenantId;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
         var now = DateTime.UtcNow;
-        PeriodoTexto = now.ToString("MMMM yyyy");
+        _periodoTexto = now.ToString("MMMM yyyy");
 
         var auth = await AuthState.GetAuthenticationStateAsync();
         var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
-        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        _tenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
 
-        if (TenantId != Guid.Empty)
-            await CargarKpisAsync(now);
+        if (_tenantId != Guid.Empty)
+            await CargarAsync(now);
 
-        Cargando = false;
+        _cargando = false;
     }
 
-    private string? ErrorMensaje;
-
-    private async Task CargarKpisAsync(DateTime now)
+    private async Task CargarAsync(DateTime now)
     {
         var periodDate = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        ErrorMensaje = null;
         try
         {
-            // Secuencial — EF Core DbContext no soporta operaciones concurrentes
-            TotalPacientes = await PacienteRepo.CountAsync(TenantId);
-            var snapshots = await SnapshotRepo.GetByPeriodoAsync(TenantId, periodDate);
-            var prescripciones = await PrescripcionRepo.GetPendientesAsync(TenantId, periodDate);
-            var lotes = await LoteRepo.GetByTenantAsync(TenantId, 1, 200);
+            _totalPacientes  = await PacienteRepo.CountAsync(_tenantId);
+            var snapshots    = await SnapshotRepo.GetByPeriodoAsync(_tenantId, periodDate);
+            var prescripciones = await PrescripcionRepo.GetPendientesAsync(_tenantId, periodDate);
+            var lotes        = await LoteRepo.GetByTenantAsync(_tenantId, 1, 200);
 
-            PacientesPeriodo = snapshots.Count;
-            PrescripcionesPendientes = prescripciones.Count;
-            LotesDelMes = lotes.Count(l => l.PeriodDate.Year == now.Year && l.PeriodDate.Month == now.Month);
+            _pacientesPeriodo = snapshots.Count;
+            _prescPendientes  = prescripciones.Count;
+            _lotesDelMes      = lotes.Count(l => l.PeriodDate.Year == now.Year && l.PeriodDate.Month == now.Month);
         }
         catch (Exception ex)
         {
-            ErrorMensaje = ex.Message;
+            _error = ex.Message;
         }
     }
 }
