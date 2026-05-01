@@ -494,7 +494,38 @@ namespace DataMedix.Infrastructure.Repositories
         private readonly DataMedixDbContext _db;
         public AuditoriaRepository(DataMedixDbContext db) => _db = db;
 
-        public async Task RegistrarAsync(AuditoriaLog log) =>
+        public async Task RegistrarAsync(AuditoriaLog log)
+        {
             await _db.AuditoriaLogs.AddAsync(log);
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task<List<AuditoriaLog>> GetPagedAsync(
+            Guid tenantId, int pagina, int tamano,
+            DateTime? desde, DateTime? hasta, string? accion, Guid? usuarioId)
+        {
+            var q = BuildQuery(tenantId, desde, hasta, accion, usuarioId);
+            return await q
+                .OrderByDescending(a => a.CreatedAt)
+                .Skip((pagina - 1) * tamano)
+                .Take(tamano)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+
+        public async Task<int> CountAsync(
+            Guid tenantId, DateTime? desde, DateTime? hasta, string? accion, Guid? usuarioId) =>
+            await BuildQuery(tenantId, desde, hasta, accion, usuarioId).CountAsync();
+
+        private IQueryable<AuditoriaLog> BuildQuery(
+            Guid tenantId, DateTime? desde, DateTime? hasta, string? accion, Guid? usuarioId)
+        {
+            var q = _db.AuditoriaLogs.Where(a => a.TenantId == tenantId);
+            if (desde.HasValue)   q = q.Where(a => a.CreatedAt >= desde.Value);
+            if (hasta.HasValue)   q = q.Where(a => a.CreatedAt <= hasta.Value.AddDays(1));
+            if (!string.IsNullOrWhiteSpace(accion)) q = q.Where(a => a.Accion == accion);
+            if (usuarioId.HasValue) q = q.Where(a => a.UsuarioId == usuarioId.Value);
+            return q;
+        }
     }
 }

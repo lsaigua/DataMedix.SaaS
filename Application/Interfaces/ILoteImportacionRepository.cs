@@ -80,5 +80,9 @@ namespace DataMedix.Application.Interfaces
     public interface IAuditoriaRepository
     {
         Task RegistrarAsync(AuditoriaLog log);
+        Task<List<AuditoriaLog>> GetPagedAsync(Guid tenantId, int pagina, int tamano,
+            DateTime? desde, DateTime? hasta, string? accion, Guid? usuarioId);
+        Task<int> CountAsync(Guid tenantId,
+            DateTime? desde, DateTime? hasta, string? accion, Guid? usuarioId);
     }
 }

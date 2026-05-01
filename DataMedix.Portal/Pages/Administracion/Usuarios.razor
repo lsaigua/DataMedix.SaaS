@@ -1,0 +1,550 @@
+@page "/usuarios"
+@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+
+@inject AuthenticationStateProvider AuthState
+@inject IUsuarioRepository UsuarioRepo
+@inject IAuditoriaRepository AuditoriaRepo
+
+<PageTitle>Usuarios | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Usuarios</h1>
+        <p class="dm-page-subtitle">Gestión de accesos al sistema — @_total usuario(s)</p>
+    </div>
+    <div class="dm-page-actions">
+        <button class="dm-btn dm-btn-primary" @onclick="AbrirModalCrear">
+            + Nuevo Usuario
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="dm-error-banner">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_exito))
+{
+    <div class="dm-success-banner">@_exito</div>
+}
+
+<!-- Filtros -->
+<div class="dm-filter-bar">
+    <div class="dm-filter-group">
+        <input class="dm-input" placeholder="Buscar por nombre, email o identificación..."
+               @bind="_busqueda" @bind:event="oninput" @onkeyup="@(async e => { if(e.Key=="Enter") await BuscarAsync(); })" />
+        <button class="dm-btn dm-btn-secondary" @onclick="BuscarAsync">Buscar</button>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        <span class="dm-badge dm-badge-info">@_total usuarios</span>
+        <button class="dm-btn dm-btn-ghost" @onclick="LimpiarAsync" title="Limpiar filtros">✕</button>
+    </div>
+</div>
+
+<!-- Tabla -->
+@if (_cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando usuarios...</p>
+    </div>
+}
+else if (!_usuarios.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">👤</div>
+        <p>No se encontraron usuarios@(string.IsNullOrEmpty(_busqueda) ? "" : $" para \"{_busqueda}\"").</p>
+    </div>
+}
+else
+{
+    <div class="dm-table-wrapper">
+        <table class="dm-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Email</th>
+                    <th>Identificación</th>
+                    <th>Rol</th>
+                    <th>Estado</th>
+                    <th>Último Acceso</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in _usuarios)
+                {
+                    var rolNombre = u.Roles.FirstOrDefault(r => r.Activo && r.TenantId == _tenantId)?.Rol?.Nombre
+                                   ?? u.Roles.FirstOrDefault(r => r.Activo)?.Rol?.Nombre
+                                   ?? "—";
+                    <tr class="@(u.Activo ? "" : "dm-row-inactive")">
+                        <td>
+                            <div class="dm-user-cell">
+                                <div class="dm-user-avatar-sm">@(u.PrimerNombre.FirstOrDefault())</div>
+                                <div>
+                                    <div class="dm-user-name">@u.NombreCompleto</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="dm-text-mono">@u.Email</td>
+                        <td>@u.Identificacion</td>
+                        <td>
+                            <span class="dm-badge @RolBadgeClass(rolNombre)">@rolNombre</span>
+                        </td>
+                        <td>
+                            @if (u.Activo)
+                            {
+                                <span class="dm-badge dm-badge-success">Activo</span>
+                            }
+                            else
+                            {
+                                <span class="dm-badge dm-badge-neutral">Inactivo</span>
+                            }
+                        </td>
+                        <td class="dm-text-muted">
+                            @(u.UltimoAcceso.HasValue ? u.UltimoAcceso.Value.ToLocalTime().ToString("dd/MM/yy HH:mm") : "Nunca")
+                        </td>
+                        <td>
+                            <div class="dm-actions-cell">
+                                <button class="dm-btn-icon" title="Editar" @onclick="() => AbrirModalEditar(u)">✏️</button>
+                                <button class="dm-btn-icon @(u.Activo ? "dm-btn-icon-danger" : "dm-btn-icon-success")"
+                                        title="@(u.Activo ? "Desactivar" : "Activar")"
+                                        @onclick="() => ToggleActivoAsync(u)">
+                                    @(u.Activo ? "🔒" : "🔓")
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginación -->
+    @if (_totalPaginas > 1)
+    {
+        <div class="dm-pagination">
+            <button class="dm-btn dm-btn-ghost" disabled="@(_pagina <= 1)" @onclick="() => CambiarPaginaAsync(_pagina - 1)">← Anterior</button>
+            <span class="dm-pagination-info">Página @_pagina de @_totalPaginas</span>
+            <button class="dm-btn dm-btn-ghost" disabled="@(_pagina >= _totalPaginas)" @onclick="() => CambiarPaginaAsync(_pagina + 1)">Siguiente →</button>
+        </div>
+    }
+}
+
+<!-- Modal Crear / Editar -->
+@if (_modalAbierto)
+{
+    <div class="dm-modal-backdrop" @onclick="CerrarModal">
+        <div class="dm-modal" @onclick:stopPropagation="true">
+            <div class="dm-modal-header">
+                <h3>@(_editando == null ? "Nuevo Usuario" : "Editar Usuario")</h3>
+                <button class="dm-modal-close" @onclick="CerrarModal">✕</button>
+            </div>
+            <div class="dm-modal-body">
+                @if (!string.IsNullOrEmpty(_modalError))
+                {
+                    <div class="dm-error-banner" style="margin-bottom:1rem">@_modalError</div>
+                }
+
+                <div class="dm-form-row">
+                    <div class="dm-form-group">
+                        <label class="dm-label">Primer Nombre *</label>
+                        <input class="dm-input" @bind="_form.PrimerNombre" placeholder="Ej: Juan" />
+                    </div>
+                    <div class="dm-form-group">
+                        <label class="dm-label">Segundo Nombre</label>
+                        <input class="dm-input" @bind="_form.SegundoNombre" placeholder="Opcional" />
+                    </div>
+                </div>
+                <div class="dm-form-row">
+                    <div class="dm-form-group">
+                        <label class="dm-label">Primer Apellido *</label>
+                        <input class="dm-input" @bind="_form.PrimerApellido" placeholder="Ej: Pérez" />
+                    </div>
+                    <div class="dm-form-group">
+                        <label class="dm-label">Segundo Apellido</label>
+                        <input class="dm-input" @bind="_form.SegundoApellido" placeholder="Opcional" />
+                    </div>
+                </div>
+                <div class="dm-form-row">
+                    <div class="dm-form-group">
+                        <label class="dm-label">Identificación *</label>
+                        <input class="dm-input" @bind="_form.Identificacion" placeholder="Cédula o pasaporte" />
+                    </div>
+                    <div class="dm-form-group">
+                        <label class="dm-label">Teléfono</label>
+                        <input class="dm-input" @bind="_form.Telefono" placeholder="Ej: 0999123456" />
+                    </div>
+                </div>
+                <div class="dm-form-group">
+                    <label class="dm-label">Correo Electrónico *</label>
+                    <input class="dm-input" type="email" @bind="_form.Email" placeholder="usuario@clinica.com" />
+                </div>
+                @if (_editando == null)
+                {
+                    <div class="dm-form-group">
+                        <label class="dm-label">Contraseña *</label>
+                        <input class="dm-input" type="password" @bind="_form.Password" placeholder="Mínimo 6 caracteres" />
+                    </div>
+                    <div class="dm-form-group">
+                        <label class="dm-label">Rol *</label>
+                        <select class="dm-input" @bind="_form.RolId">
+                            <option value="">-- Seleccionar rol --</option>
+                            @foreach (var rol in _rolesDisponibles)
+                            {
+                                <option value="@rol.Id">@rol.Nombre — @DescripcionRol(rol.Nombre)</option>
+                            }
+                        </select>
+                    </div>
+                }
+                else
+                {
+                    <div class="dm-form-group">
+                        <label class="dm-label">Código de Usuario</label>
+                        <input class="dm-input" @bind="_form.Codigo" />
+                    </div>
+                }
+            </div>
+            <div class="dm-modal-footer">
+                <button class="dm-btn dm-btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                <button class="dm-btn dm-btn-primary" @onclick="GuardarAsync" disabled="@_guardando">
+                    @(_guardando ? "Guardando..." : (_editando == null ? "Crear Usuario" : "Guardar Cambios"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Guid _tenantId;
+    private Guid _usuarioActualId;
+    private List<Usuario> _usuarios = [];
+    private List<Rol> _rolesDisponibles = [];
+    private int _total;
+    private int _pagina = 1;
+    private const int _tamano = 20;
+    private int _totalPaginas => (int)Math.Ceiling((double)_total / _tamano);
+    private string _busqueda = "";
+    private bool _cargando = true;
+    private string _error = "";
+    private string _exito = "";
+
+    // Modal
+    private bool _modalAbierto;
+    private Usuario? _editando;
+    private UsuarioFormModel _form = new();
+    private bool _guardando;
+    private string _modalError = "";
+
+    private record UsuarioFormModel
+    {
+        public string PrimerNombre { get; set; } = "";
+        public string? SegundoNombre { get; set; }
+        public string PrimerApellido { get; set; } = "";
+        public string? SegundoApellido { get; set; }
+        public string Identificacion { get; set; } = "";
+        public string? Telefono { get; set; }
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string Codigo { get; set; } = "";
+        public string RolId { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        var userStr = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _tenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        _usuarioActualId = Guid.TryParse(userStr, out var u) ? u : Guid.Empty;
+
+        if (_tenantId != Guid.Empty)
+        {
+            _rolesDisponibles = await UsuarioRepo.GetRolesDisponiblesAsync();
+            await CargarAsync();
+        }
+        else
+        {
+            _error = "No se pudo determinar el tenant. Verifique su sesión.";
+            _cargando = false;
+        }
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _error = "";
+        try
+        {
+            _total = await UsuarioRepo.CountAsync(_tenantId, _busqueda);
+            _usuarios = await UsuarioRepo.GetByTenantAsync(_tenantId, _busqueda, _pagina, _tamano);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error cargando usuarios: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        _pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task LimpiarAsync()
+    {
+        _busqueda = "";
+        _pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int pagina)
+    {
+        _pagina = pagina;
+        await CargarAsync();
+    }
+
+    private void AbrirModalCrear()
+    {
+        _editando = null;
+        _form = new();
+        _modalError = "";
+        _modalAbierto = true;
+    }
+
+    private void AbrirModalEditar(Usuario u)
+    {
+        _editando = u;
+        _form = new()
+        {
+            PrimerNombre = u.PrimerNombre,
+            SegundoNombre = u.SegundoNombre,
+            PrimerApellido = u.PrimerApellido,
+            SegundoApellido = u.SegundoApellido,
+            Identificacion = u.Identificacion,
+            Telefono = u.Telefono,
+            Email = u.Email,
+            Codigo = u.Codigo
+        };
+        _modalError = "";
+        _modalAbierto = true;
+    }
+
+    private void CerrarModal() => _modalAbierto = false;
+
+    private async Task GuardarAsync()
+    {
+        _modalError = "";
+
+        if (string.IsNullOrWhiteSpace(_form.PrimerNombre) ||
+            string.IsNullOrWhiteSpace(_form.PrimerApellido) ||
+            string.IsNullOrWhiteSpace(_form.Identificacion) ||
+            string.IsNullOrWhiteSpace(_form.Email))
+        {
+            _modalError = "Los campos marcados con * son obligatorios.";
+            return;
+        }
+
+        if (_editando == null)
+        {
+            if (string.IsNullOrWhiteSpace(_form.Password) || _form.Password.Length < 6)
+            {
+                _modalError = "La contraseña debe tener al menos 6 caracteres.";
+                return;
+            }
+            if (!Guid.TryParse(_form.RolId, out var rolId))
+            {
+                _modalError = "Seleccione un rol para el usuario.";
+                return;
+            }
+
+            _guardando = true;
+            try
+            {
+                var nuevo = new Usuario
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = _tenantId,
+                    Codigo = string.IsNullOrWhiteSpace(_form.Codigo)
+                        ? $"USR-{DateTime.UtcNow:yyyyMMddHHmmss}"
+                        : _form.Codigo,
+                    Identificacion = _form.Identificacion.Trim(),
+                    PrimerNombre = _form.PrimerNombre.Trim(),
+                    SegundoNombre = _form.SegundoNombre?.Trim(),
+                    PrimerApellido = _form.PrimerApellido.Trim(),
+                    SegundoApellido = _form.SegundoApellido?.Trim(),
+                    Email = _form.Email.Trim().ToLowerInvariant(),
+                    Telefono = _form.Telefono?.Trim(),
+                    Activo = true,
+                    CreatedBy = _usuarioActualId,
+                    PasswordHash = ""
+                };
+                await UsuarioRepo.AddAsync(nuevo, _form.Password, rolId);
+
+                await AuditoriaRepo.RegistrarAsync(new AuditoriaLog
+                {
+                    TenantId = _tenantId,
+                    UsuarioId = _usuarioActualId,
+                    Accion = "CREATE",
+                    Entidad = "Usuario",
+                    EntidadId = nuevo.Id,
+                    Descripcion = $"Usuario creado: {nuevo.Email}"
+                });
+
+                _exito = $"Usuario {nuevo.NombreCompleto} creado correctamente.";
+                _modalAbierto = false;
+                await CargarAsync();
+            }
+            catch (Exception ex)
+            {
+                _modalError = ex.Message.Contains("unique") || ex.Message.Contains("duplicate")
+                    ? "Ya existe un usuario con ese correo electrónico."
+                    : $"Error al crear usuario: {ex.Message}";
+            }
+            finally
+            {
+                _guardando = false;
+            }
+        }
+        else
+        {
+            _guardando = true;
+            try
+            {
+                _editando.PrimerNombre = _form.PrimerNombre.Trim();
+                _editando.SegundoNombre = _form.SegundoNombre?.Trim();
+                _editando.PrimerApellido = _form.PrimerApellido.Trim();
+                _editando.SegundoApellido = _form.SegundoApellido?.Trim();
+                _editando.Identificacion = _form.Identificacion.Trim();
+                _editando.Telefono = _form.Telefono?.Trim();
+                _editando.Email = _form.Email.Trim().ToLowerInvariant();
+                _editando.Codigo = string.IsNullOrWhiteSpace(_form.Codigo)
+                    ? _editando.Codigo
+                    : _form.Codigo;
+
+                await UsuarioRepo.UpdateAsync(_editando);
+
+                await AuditoriaRepo.RegistrarAsync(new AuditoriaLog
+                {
+                    TenantId = _tenantId,
+                    UsuarioId = _usuarioActualId,
+                    Accion = "UPDATE",
+                    Entidad = "Usuario",
+                    EntidadId = _editando.Id,
+                    Descripcion = $"Usuario editado: {_editando.Email}"
+                });
+
+                _exito = "Cambios guardados correctamente.";
+                _modalAbierto = false;
+                await CargarAsync();
+            }
+            catch (Exception ex)
+            {
+                _modalError = ex.Message.Contains("unique") || ex.Message.Contains("duplicate")
+                    ? "Ya existe un usuario con ese correo electrónico."
+                    : $"Error al guardar: {ex.Message}";
+            }
+            finally
+            {
+                _guardando = false;
+            }
+        }
+    }
+
+    private async Task ToggleActivoAsync(Usuario u)
+    {
+        if (u.Id == _usuarioActualId)
+        {
+            _error = "No puede desactivar su propio usuario.";
+            return;
+        }
+        _error = "";
+        try
+        {
+            u.Activo = !u.Activo;
+            await UsuarioRepo.UpdateAsync(u);
+
+            await AuditoriaRepo.RegistrarAsync(new AuditoriaLog
+            {
+                TenantId = _tenantId,
+                UsuarioId = _usuarioActualId,
+                Accion = u.Activo ? "UPDATE" : "DELETE",
+                Entidad = "Usuario",
+                EntidadId = u.Id,
+                Descripcion = $"Usuario {(u.Activo ? "activado" : "desactivado")}: {u.Email}"
+            });
+
+            _exito = $"Usuario {(u.Activo ? "activado" : "desactivado")} correctamente.";
+            await CargarAsync();
+        }
+        catch (Exception ex)
+        {
+            u.Activo = !u.Activo; // revert on error
+            _error = $"Error al actualizar estado: {ex.Message}";
+        }
+    }
+
+    private static string RolBadgeClass(string rol) => rol switch
+    {
+        "SUPERADMIN" => "dm-badge-critica",
+        "ADMIN"      => "dm-badge-warning",
+        "MEDICO"     => "dm-badge-info",
+        "OPERADOR"   => "dm-badge-neutral",
+        _            => "dm-badge-neutral"
+    };
+
+    private static string DescripcionRol(string rol) => rol switch
+    {
+        "ADMIN"       => "Administrador del centro",
+        "MEDICO"      => "Médico nefrológo",
+        "OPERADOR"    => "Carga de laboratorio",
+        "VISUALIZADOR" => "Solo lectura",
+        _             => ""
+    };
+}
+
+<style>
+    .dm-row-inactive td { opacity: 0.55; }
+    .dm-user-cell { display: flex; align-items: center; gap: 0.625rem; }
+    .dm-user-avatar-sm {
+        width: 28px; height: 28px;
+        background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.75rem; font-weight: 700; color: white; flex-shrink: 0;
+    }
+    .dm-user-name { font-weight: 600; font-size: 0.875rem; }
+    .dm-text-mono { font-family: monospace; font-size: 0.85rem; }
+    .dm-text-muted { color: var(--dm-text-muted, #64748b); font-size: 0.8rem; }
+    .dm-actions-cell { display: flex; gap: 0.25rem; }
+    .dm-btn-icon {
+        background: none; border: 1px solid transparent; border-radius: 6px;
+        padding: 0.25rem 0.4rem; cursor: pointer; font-size: 0.9rem;
+        transition: background 0.15s;
+    }
+    .dm-btn-icon:hover { background: rgba(0,0,0,0.06); }
+    .dm-btn-icon-danger:hover { background: rgba(239,68,68,0.1); }
+    .dm-btn-icon-success:hover { background: rgba(34,197,94,0.1); }
+    .dm-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .dm-form-group { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.875rem; }
+    .dm-label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+    .dm-badge-critica { background: #fef2f2; color: #dc2626; }
+    .dm-badge-warning { background: #fffbeb; color: #d97706; }
+    .dm-pagination {
+        display: flex; align-items: center; justify-content: center;
+        gap: 1rem; padding: 1.25rem 0;
+    }
+    .dm-pagination-info { font-size: 0.875rem; color: #64748b; }
+    .dm-success-banner {
+        background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+        padding: 0.75rem 1rem; color: #15803d; margin-bottom: 1rem; font-size: 0.875rem;
+    }
+</style>

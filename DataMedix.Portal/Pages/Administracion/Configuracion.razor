@@ -1,0 +1,316 @@
+@page "/configuracion"
+@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+
+@inject AuthenticationStateProvider AuthState
+@inject ITenantRepository TenantRepo
+@inject IUsuarioRepository UsuarioRepo
+@inject IPacienteRepository PacienteRepo
+@inject IAuditoriaRepository AuditoriaRepo
+
+<PageTitle>Configuración | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Configuración</h1>
+        <p class="dm-page-subtitle">Información y ajustes del centro de diálisis</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="dm-error-banner">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_exito))
+{
+    <div class="dm-success-banner">@_exito</div>
+}
+
+@if (_cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando configuración...</p>
+    </div>
+}
+else if (_tenant != null)
+{
+    <div class="dm-config-grid">
+
+        <!-- Tarjeta: Info del centro -->
+        <div class="dm-card dm-config-card">
+            <div class="dm-card-header">
+                <span class="dm-card-icon">🏥</span>
+                <h2 class="dm-card-title">Información del Centro</h2>
+            </div>
+            <div class="dm-card-body">
+                <div class="dm-form-group">
+                    <label class="dm-label">Nombre del Centro *</label>
+                    <input class="dm-input" @bind="_nombreEdit"
+                           placeholder="Ej: Clínica de Diálisis XYZ" />
+                    <p class="dm-field-hint">Nombre que aparece en reportes y documentos.</p>
+                </div>
+                <div class="dm-form-group">
+                    <label class="dm-label">Subdominio</label>
+                    <div class="dm-input-readonly">
+                        <span>@_tenant.Subdomain</span>
+                        <span class="dm-badge dm-badge-neutral">.datamedix.app</span>
+                    </div>
+                    <p class="dm-field-hint">El subdominio no puede cambiarse. Contacte soporte si necesita modificarlo.</p>
+                </div>
+                <div class="dm-form-group">
+                    <label class="dm-label">Estado</label>
+                    <div>
+                        @if (_tenant.Activo)
+                        {
+                            <span class="dm-badge dm-badge-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="dm-badge dm-badge-danger">Inactivo</span>
+                        }
+                    </div>
+                </div>
+                <div class="dm-card-actions">
+                    <button class="dm-btn dm-btn-primary" @onclick="GuardarNombreAsync" disabled="@_guardando">
+                        @(_guardando ? "Guardando..." : "Guardar Cambios")
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tarjeta: Estadísticas del sistema -->
+        <div class="dm-card dm-config-card">
+            <div class="dm-card-header">
+                <span class="dm-card-icon">📊</span>
+                <h2 class="dm-card-title">Estadísticas del Sistema</h2>
+            </div>
+            <div class="dm-card-body">
+                <div class="dm-stat-list">
+                    <div class="dm-stat-item">
+                        <div class="dm-stat-icon dm-stat-blue">👥</div>
+                        <div class="dm-stat-info">
+                            <div class="dm-stat-value">@_totalUsuarios</div>
+                            <div class="dm-stat-label">Usuarios activos</div>
+                        </div>
+                    </div>
+                    <div class="dm-stat-item">
+                        <div class="dm-stat-icon dm-stat-green">🩺</div>
+                        <div class="dm-stat-info">
+                            <div class="dm-stat-value">@_totalPacientes</div>
+                            <div class="dm-stat-label">Pacientes registrados</div>
+                        </div>
+                    </div>
+                    <div class="dm-stat-item">
+                        <div class="dm-stat-icon dm-stat-purple">📋</div>
+                        <div class="dm-stat-info">
+                            <div class="dm-stat-value">@_totalEventosAuditoria</div>
+                            <div class="dm-stat-label">Eventos de auditoría (últimos 30 días)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tarjeta: Información de la plataforma -->
+        <div class="dm-card dm-config-card dm-config-card-full">
+            <div class="dm-card-header">
+                <span class="dm-card-icon">⚙️</span>
+                <h2 class="dm-card-title">Plataforma DataMedix</h2>
+            </div>
+            <div class="dm-card-body">
+                <div class="dm-platform-info">
+                    <div class="dm-platform-item">
+                        <span class="dm-platform-label">Versión</span>
+                        <span class="dm-platform-value dm-badge dm-badge-info">v2.0 — Motor de Reglas</span>
+                    </div>
+                    <div class="dm-platform-item">
+                        <span class="dm-platform-label">Motor clínico</span>
+                        <span class="dm-platform-value">26 reglas configurables (EPO · Hierro · Alertas · Modificadores)</span>
+                    </div>
+                    <div class="dm-platform-item">
+                        <span class="dm-platform-label">Protocolo</span>
+                        <span class="dm-platform-value">Guías KDIGO · Fórmula de Ganzoni · Zonas Hb g/dL</span>
+                    </div>
+                    <div class="dm-platform-item">
+                        <span class="dm-platform-label">Soporte</span>
+                        <span class="dm-platform-value"><a href="mailto:soporte@datamedix.app" class="dm-link">soporte@datamedix.app</a></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+}
+
+@code {
+    private Guid _tenantId;
+    private Guid _usuarioActualId;
+    private Tenant? _tenant;
+    private string _nombreEdit = "";
+    private bool _cargando = true;
+    private bool _guardando;
+    private string _error = "";
+    private string _exito = "";
+
+    // Estadísticas
+    private int _totalUsuarios;
+    private int _totalPacientes;
+    private int _totalEventosAuditoria;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        var userStr = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _tenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        _usuarioActualId = Guid.TryParse(userStr, out var u) ? u : Guid.Empty;
+
+        if (_tenantId != Guid.Empty)
+            await CargarAsync();
+        else
+        {
+            _error = "No se pudo determinar el tenant. Verifique su sesión.";
+            _cargando = false;
+        }
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _error = "";
+        try
+        {
+            _tenant = await TenantRepo.GetByIdAsync(_tenantId);
+            if (_tenant != null)
+                _nombreEdit = _tenant.Nombre ?? "";
+
+            // Estadísticas
+            _totalUsuarios = await UsuarioRepo.CountAsync(_tenantId, null);
+            _totalPacientes = await PacienteRepo.CountAsync(_tenantId);
+            _totalEventosAuditoria = await AuditoriaRepo.CountAsync(
+                _tenantId, DateTime.Today.AddDays(-30), DateTime.Today, null, null);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error cargando configuración: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task GuardarNombreAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nombreEdit))
+        {
+            _error = "El nombre del centro es obligatorio.";
+            return;
+        }
+        _guardando = true;
+        _error = "";
+        _exito = "";
+        try
+        {
+            await TenantRepo.UpdateNombreAsync(_tenantId, _nombreEdit.Trim());
+
+            await AuditoriaRepo.RegistrarAsync(new AuditoriaLog
+            {
+                TenantId = _tenantId,
+                UsuarioId = _usuarioActualId,
+                Accion = "UPDATE",
+                Entidad = "Tenant",
+                EntidadId = _tenantId,
+                Descripcion = $"Nombre del centro actualizado: {_nombreEdit.Trim()}"
+            });
+
+            _exito = "Nombre del centro actualizado correctamente.";
+            if (_tenant != null) _tenant.Nombre = _nombreEdit.Trim();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+}
+
+<style>
+    .dm-config-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.25rem;
+    }
+    .dm-config-card { display: flex; flex-direction: column; }
+    .dm-config-card-full { grid-column: 1 / -1; }
+    .dm-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .dm-card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #f1f5f9;
+        background: #f8fafc;
+    }
+    .dm-card-icon { font-size: 1.2rem; }
+    .dm-card-title { font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0; }
+    .dm-card-body { padding: 1.25rem; flex: 1; }
+    .dm-card-actions { padding-top: 0.75rem; border-top: 1px solid #f1f5f9; margin-top: 0.5rem; }
+
+    .dm-form-group { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 1rem; }
+    .dm-label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+    .dm-field-hint { font-size: 0.75rem; color: #94a3b8; margin: 0.15rem 0 0; }
+    .dm-input-readonly {
+        display: flex; align-items: center; gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+        font-size: 0.875rem; color: #64748b;
+    }
+
+    /* Estadísticas */
+    .dm-stat-list { display: flex; flex-direction: column; gap: 1rem; }
+    .dm-stat-item { display: flex; align-items: center; gap: 0.875rem; }
+    .dm-stat-icon {
+        width: 42px; height: 42px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+    .dm-stat-blue { background: #eff6ff; }
+    .dm-stat-green { background: #f0fdf4; }
+    .dm-stat-purple { background: #f5f3ff; }
+    .dm-stat-info { display: flex; flex-direction: column; }
+    .dm-stat-value { font-size: 1.35rem; font-weight: 800; color: #0f172a; line-height: 1.2; }
+    .dm-stat-label { font-size: 0.78rem; color: #64748b; }
+
+    /* Info plataforma */
+    .dm-platform-info { display: flex; flex-direction: column; gap: 0.875rem; }
+    .dm-platform-item { display: flex; align-items: center; gap: 1rem; padding: 0.625rem 0; border-bottom: 1px solid #f1f5f9; }
+    .dm-platform-item:last-child { border-bottom: none; }
+    .dm-platform-label { font-size: 0.8rem; font-weight: 600; color: #64748b; width: 140px; flex-shrink: 0; }
+    .dm-platform-value { font-size: 0.875rem; color: #0f172a; }
+    .dm-link { color: #0ea5e9; text-decoration: none; }
+    .dm-link:hover { text-decoration: underline; }
+
+    .dm-success-banner {
+        background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+        padding: 0.75rem 1rem; color: #15803d; margin-bottom: 1rem; font-size: 0.875rem;
+    }
+
+    @@media (max-width: 768px) {
+        .dm-config-grid { grid-template-columns: 1fr; }
+        .dm-config-card-full { grid-column: 1; }
+    }
+</style>

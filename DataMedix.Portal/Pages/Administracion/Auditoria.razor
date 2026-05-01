@@ -1,0 +1,258 @@
+@page "/auditoria"
+@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+
+@inject AuthenticationStateProvider AuthState
+@inject IAuditoriaRepository AuditoriaRepo
+@inject IUsuarioRepository UsuarioRepo
+
+<PageTitle>Auditoría | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Auditoría</h1>
+        <p class="dm-page-subtitle">Registro de actividad del sistema — @_total evento(s)</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="dm-error-banner">@_error</div>
+}
+
+<!-- Filtros -->
+<div class="dm-audit-filters">
+    <div class="dm-form-group-inline">
+        <label class="dm-label-sm">Desde</label>
+        <input class="dm-input dm-input-sm" type="date" @bind="_desde" />
+    </div>
+    <div class="dm-form-group-inline">
+        <label class="dm-label-sm">Hasta</label>
+        <input class="dm-input dm-input-sm" type="date" @bind="_hasta" />
+    </div>
+    <div class="dm-form-group-inline">
+        <label class="dm-label-sm">Acción</label>
+        <select class="dm-input dm-input-sm" @bind="_accionFiltro">
+            <option value="">Todas</option>
+            <option value="LOGIN">LOGIN</option>
+            <option value="LOGOUT">LOGOUT</option>
+            <option value="IMPORT">IMPORT</option>
+            <option value="CREATE">CREATE</option>
+            <option value="UPDATE">UPDATE</option>
+            <option value="DELETE">DELETE</option>
+            <option value="APPROVE">APPROVE</option>
+            <option value="EXPORT">EXPORT</option>
+        </select>
+    </div>
+    <button class="dm-btn dm-btn-primary" @onclick="BuscarAsync">Aplicar</button>
+    <button class="dm-btn dm-btn-ghost" @onclick="LimpiarAsync">Limpiar</button>
+</div>
+
+<!-- Tabla -->
+@if (_cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Cargando registros...</p>
+    </div>
+}
+else if (!_logs.Any())
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">📋</div>
+        <p>No se encontraron eventos de auditoría con los filtros aplicados.</p>
+    </div>
+}
+else
+{
+    <div class="dm-table-wrapper">
+        <table class="dm-table">
+            <thead>
+                <tr>
+                    <th>Fecha / Hora</th>
+                    <th>Acción</th>
+                    <th>Entidad</th>
+                    <th>Descripción</th>
+                    <th>Resultado</th>
+                    <th>IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var log in _logs)
+                {
+                    <tr>
+                        <td class="dm-audit-fecha">
+                            <div>@log.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</div>
+                            <div class="dm-text-muted">@log.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</div>
+                        </td>
+                        <td>
+                            <span class="dm-accion-badge dm-accion-@log.Accion.ToLower()">
+                                @log.Accion
+                            </span>
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(log.Entidad))
+                            {
+                                <span class="dm-badge dm-badge-neutral">@log.Entidad</span>
+                            }
+                        </td>
+                        <td class="dm-audit-desc">
+                            @log.Descripcion
+                            @if (!string.IsNullOrEmpty(log.MensajeError))
+                            {
+                                <div class="dm-audit-error">@log.MensajeError</div>
+                            }
+                        </td>
+                        <td>
+                            @if (log.Resultado == "OK")
+                            {
+                                <span class="dm-badge dm-badge-success">OK</span>
+                            }
+                            else
+                            {
+                                <span class="dm-badge dm-badge-danger">ERROR</span>
+                            }
+                        </td>
+                        <td class="dm-text-muted dm-text-mono">@(log.IpAddress ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginación -->
+    @if (_totalPaginas > 1)
+    {
+        <div class="dm-pagination">
+            <button class="dm-btn dm-btn-ghost" disabled="@(_pagina <= 1)" @onclick="() => CambiarPaginaAsync(_pagina - 1)">← Anterior</button>
+            <span class="dm-pagination-info">Página @_pagina de @_totalPaginas</span>
+            <button class="dm-btn dm-btn-ghost" disabled="@(_pagina >= _totalPaginas)" @onclick="() => CambiarPaginaAsync(_pagina + 1)">Siguiente →</button>
+        </div>
+    }
+}
+
+@code {
+    private Guid _tenantId;
+    private List<AuditoriaLog> _logs = [];
+    private int _total;
+    private int _pagina = 1;
+    private const int _tamano = 30;
+    private int _totalPaginas => (int)Math.Ceiling((double)_total / _tamano);
+    private bool _cargando = true;
+    private string _error = "";
+
+    // Filtros
+    private DateTime? _desde;
+    private DateTime? _hasta;
+    private string _accionFiltro = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        _tenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+
+        // Default: últimos 30 días
+        _hasta = DateTime.Today;
+        _desde = DateTime.Today.AddDays(-30);
+
+        if (_tenantId != Guid.Empty)
+            await CargarAsync();
+        else
+        {
+            _error = "No se pudo determinar el tenant. Verifique su sesión.";
+            _cargando = false;
+        }
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var accion = string.IsNullOrWhiteSpace(_accionFiltro) ? null : _accionFiltro;
+            _total = await AuditoriaRepo.CountAsync(_tenantId, _desde, _hasta, accion, null);
+            _logs = await AuditoriaRepo.GetPagedAsync(_tenantId, _pagina, _tamano, _desde, _hasta, accion, null);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error cargando auditoría: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        _pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task LimpiarAsync()
+    {
+        _accionFiltro = "";
+        _hasta = DateTime.Today;
+        _desde = DateTime.Today.AddDays(-30);
+        _pagina = 1;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int pagina)
+    {
+        _pagina = pagina;
+        await CargarAsync();
+    }
+}
+
+<style>
+    .dm-audit-filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 0.75rem;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.25rem;
+    }
+    .dm-form-group-inline { display: flex; flex-direction: column; gap: 0.2rem; }
+    .dm-label-sm { font-size: 0.75rem; font-weight: 600; color: #374151; }
+    .dm-input-sm { padding: 0.4rem 0.65rem; font-size: 0.85rem; }
+    .dm-audit-fecha div:first-child { font-weight: 600; font-size: 0.85rem; }
+    .dm-audit-desc { font-size: 0.85rem; max-width: 320px; }
+    .dm-audit-error { color: #dc2626; font-size: 0.78rem; margin-top: 0.2rem; }
+    .dm-text-mono { font-family: monospace; font-size: 0.8rem; }
+    .dm-text-muted { color: #64748b; font-size: 0.8rem; }
+
+    /* Acción badges */
+    .dm-accion-badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 5px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .dm-accion-login, .dm-accion-logout  { background: #eff6ff; color: #1d4ed8; }
+    .dm-accion-import                     { background: #f0fdf4; color: #15803d; }
+    .dm-accion-create                     { background: #f0fdf4; color: #16a34a; }
+    .dm-accion-update                     { background: #fffbeb; color: #b45309; }
+    .dm-accion-delete                     { background: #fef2f2; color: #dc2626; }
+    .dm-accion-approve                    { background: #f5f3ff; color: #7c3aed; }
+    .dm-accion-export                     { background: #f0f9ff; color: #0369a1; }
+
+    .dm-badge-danger { background: #fef2f2; color: #dc2626; }
+    .dm-pagination {
+        display: flex; align-items: center; justify-content: center;
+        gap: 1rem; padding: 1.25rem 0;
+    }
+    .dm-pagination-info { font-size: 0.875rem; color: #64748b; }
+</style>
