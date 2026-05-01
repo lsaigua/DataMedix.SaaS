@@ -223,6 +223,36 @@ namespace DataMedix.Infrastructure.Repositories
                 .Take(meses)
                 .ToListAsync();
 
+        public async Task<List<SnapshotMensual>> GetByPeriodoConDetallesAsync(
+            Guid tenantId, DateTime periodDate) =>
+            await _db.SnapshotsMensuales
+                .Include(s => s.Paciente)
+                .Include(s => s.Detalles).ThenInclude(d => d.ParametroClinico)
+                .Where(s => s.TenantId == tenantId && s.PeriodDate == periodDate && s.Activo)
+                .AsNoTracking()
+                .ToListAsync();
+
+        public async Task<Dictionary<Guid, List<SnapshotMensual>>> GetHistorialByPacientesAsync(
+            Guid tenantId, IEnumerable<Guid> pacienteIds, DateTime hasta, int meses = 6)
+        {
+            var ids = pacienteIds.ToList();
+            var desde = hasta.AddMonths(-meses);
+
+            var rows = await _db.SnapshotsMensuales
+                .Where(s => s.TenantId == tenantId &&
+                            ids.Contains(s.PacienteId) &&
+                            s.PeriodDate > desde &&
+                            s.PeriodDate < hasta &&
+                            s.Activo)
+                .OrderByDescending(s => s.PeriodDate)
+                .AsNoTracking()
+                .ToListAsync();
+
+            return rows
+                .GroupBy(s => s.PacienteId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+        }
+
         public async Task<List<SnapshotMensual>> GetByPeriodoAsync(Guid tenantId, DateTime periodDate,
             string? busqueda = null, int pagina = 1, int tamano = 50, string? planSalud = null)
         {
@@ -394,6 +424,68 @@ namespace DataMedix.Infrastructure.Repositories
                 .OrderBy(p => p.Paciente.PrimerApellido)
                 .ThenBy(p => p.Paciente.PrimerNombre)
                 .ToListAsync();
+        }
+
+        public async Task<List<PrescripcionSugerida>> GetByPeriodoBatchAsync(
+            Guid tenantId, DateTime periodDate) =>
+            await _db.PrescripcionesSugeridas
+                .Where(p => p.TenantId == tenantId && p.PeriodDate == periodDate && p.Activo)
+                .AsNoTracking()
+                .ToListAsync();
+
+        public async Task<HashSet<Guid>> GetPacientesConHierroPrevioAsync(
+            Guid tenantId, DateTime hasta)
+        {
+            var ids = await _db.PrescripcionesSugeridas
+                .Where(p => p.TenantId == tenantId &&
+                            p.PeriodDate < hasta &&
+                            p.HierroDosisSugerida != null &&
+                            p.Activo)
+                .Select(p => p.PacienteId)
+                .Distinct()
+                .ToListAsync();
+            return ids.ToHashSet();
+        }
+
+        public async Task<Dictionary<Guid, decimal?>> GetEpoActualByPacientesAsync(
+            Guid tenantId, IEnumerable<Guid> pacienteIds, DateTime hasta)
+        {
+            var ids = pacienteIds.ToList();
+            var rows = await _db.PrescripcionesSugeridas
+                .Where(p => p.TenantId == tenantId &&
+                            ids.Contains(p.PacienteId) &&
+                            p.PeriodDate < hasta &&
+                            p.EpoUiSemana != null &&
+                            p.Activo)
+                .Select(p => new { p.PacienteId, p.PeriodDate, p.EpoUiSemana })
+                .ToListAsync();
+
+            return rows
+                .GroupBy(p => p.PacienteId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(p => p.PeriodDate).First().EpoUiSemana);
+        }
+
+        public async Task BulkUpsertSugeridaAsync(List<PrescripcionSugerida> prescripciones)
+        {
+            if (!prescripciones.Any()) return;
+
+            var ids = prescripciones.Select(p => p.Id).ToList();
+            var existingIds = await _db.PrescripcionesSugeridas
+                .AsNoTracking()
+                .Where(p => ids.Contains(p.Id))
+                .Select(p => p.Id)
+                .ToListAsync();
+
+            var existingSet = existingIds.ToHashSet();
+            var toInsert = prescripciones.Where(p => !existingSet.Contains(p.Id)).ToList();
+            var toUpdate = prescripciones.Where(p => existingSet.Contains(p.Id)).ToList();
+
+            if (toInsert.Any())
+                await _db.BulkInsertAsync(toInsert, new BulkConfig { SetOutputIdentity = false });
+            if (toUpdate.Any())
+                await _db.BulkUpdateAsync(toUpdate);
         }
     }
 

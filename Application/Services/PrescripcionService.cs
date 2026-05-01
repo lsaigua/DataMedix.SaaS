@@ -1,200 +1,247 @@
 using DataMedix.Application.Interfaces;
+using DataMedix.Application.RuleEngine;
 using DataMedix.Domain.Entities;
+using System.Text.Json;
 
 namespace DataMedix.Application.Services
 {
     /// <summary>
-    /// Motor clínico de prescripción sugerida para EPO y Hierro IV.
-    /// Basado en los rangos configurados en rango_prescriba por parámetro clínico.
-    /// Regla KDIGO: HB objetivo 10-12 g/dL. Ferritina objetivo 200-500 ng/mL.
+    /// Genera prescripciones sugeridas de EPO y Hierro EV usando el motor de reglas clínicas.
+    /// El motor evalúa las 26 reglas configurables en orden de prioridad.
+    /// Optimizado para carga masiva: pre-carga toda la data en batch antes de iterar.
     /// </summary>
     public class PrescripcionService
     {
+        private readonly IRuleEngine _ruleEngine;
         private readonly ISnapshotMensualRepository _snapshotRepo;
-        private readonly IRangoPreescribaRepository _rangoRepo;
         private readonly IPrescripcionRepository _prescripcionRepo;
-        private readonly IParametroClinicoRepository _parametroRepo;
 
         public PrescripcionService(
+            IRuleEngine ruleEngine,
             ISnapshotMensualRepository snapshotRepo,
-            IRangoPreescribaRepository rangoRepo,
-            IPrescripcionRepository prescripcionRepo,
-            IParametroClinicoRepository parametroRepo)
+            IPrescripcionRepository prescripcionRepo)
         {
+            _ruleEngine = ruleEngine;
             _snapshotRepo = snapshotRepo;
-            _rangoRepo = rangoRepo;
             _prescripcionRepo = prescripcionRepo;
-            _parametroRepo = parametroRepo;
         }
 
         /// <summary>
-        /// Genera prescripción sugerida para todos los pacientes de un período.
-        /// Se llama automáticamente después de procesar un lote de importación.
+        /// Genera prescripciones para todos los pacientes de un período.
+        /// Llamado automáticamente tras procesar un lote de importación.
+        /// Usa carga batch para eficiencia con 50+ pacientes concurrentes.
         /// </summary>
         public async Task GenerarParaPeriodoAsync(Guid tenantId, DateTime periodDate)
         {
-            var snapshots = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodDate);
-            var parametros = await _parametroRepo.GetAllAsync();
+            var snapshots = await _snapshotRepo.GetByPeriodoConDetallesAsync(tenantId, periodDate);
+            if (snapshots.Count == 0) return;
 
-            var hbParam = parametros.FirstOrDefault(p => p.Codigo == "HB");
-            var ferrParam = parametros.FirstOrDefault(p => p.Codigo == "FERR");
-            var isatParam = parametros.FirstOrDefault(p => p.Codigo == "ISAT");
+            var pacienteIds = snapshots.Select(s => s.PacienteId).Distinct().ToList();
 
-            List<RangoPrescriba> rangosEpo = hbParam != null
-                ? await _rangoRepo.GetByParametroAsync(hbParam.Id, tenantId)
-                : new List<RangoPrescriba>();
+            // Pre-cargar toda la data necesaria en una sola ronda de consultas
+            var historialMap = await _snapshotRepo.GetHistorialByPacientesAsync(
+                tenantId, pacienteIds, periodDate, meses: 6);
 
-            List<RangoPrescriba> rangosFerr = ferrParam != null
-                ? await _rangoRepo.GetByParametroAsync(ferrParam.Id, tenantId)
-                : new List<RangoPrescriba>();
+            var conHierroPrevio = await _prescripcionRepo.GetPacientesConHierroPrevioAsync(
+                tenantId, periodDate);
 
-            List<RangoPrescriba> rangosIsat = isatParam != null
-                ? await _rangoRepo.GetByParametroAsync(isatParam.Id, tenantId)
-                : new List<RangoPrescriba>();
+            var epoActualMap = await _prescripcionRepo.GetEpoActualByPacientesAsync(
+                tenantId, pacienteIds, periodDate);
+
+            var prescExistentes = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodDate);
+            var prescMap = prescExistentes.ToDictionary(p => p.PacienteId);
+
+            var resultado = new List<PrescripcionSugerida>(snapshots.Count);
 
             foreach (var snapshot in snapshots)
             {
-                await GenerarParaSnapshotAsync(snapshot, rangosEpo, rangosFerr, rangosIsat, tenantId);
-            }
-        }
+                prescMap.TryGetValue(snapshot.PacienteId, out var existente);
 
-        /// <summary>
-        /// Genera prescripción sugerida para un snapshot específico.
-        /// </summary>
-        public async Task GenerarParaSnapshotAsync(
-            SnapshotMensual snapshot,
-            List<RangoPrescriba> rangosEpo,
-            List<RangoPrescriba> rangosFerr,
-            List<RangoPrescriba> rangosIsat,
-            Guid tenantId)
-        {
-            var prescripcion = await _prescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(
-                tenantId, snapshot.PacienteId, snapshot.PeriodDate)
-                ?? new PrescripcionSugerida
+                // Solo regenerar si no existe o está en estado PENDIENTE
+                if (existente is { Estado: not null } && existente.Estado != EstadoPrescripcion.Pendiente)
+                    continue;
+
+                historialMap.TryGetValue(snapshot.PacienteId, out var historial);
+                epoActualMap.TryGetValue(snapshot.PacienteId, out var epoSemana);
+                bool tieneHierroPrevio = conHierroPrevio.Contains(snapshot.PacienteId);
+
+                var ctx = BuildContext(tenantId, snapshot, historial ?? [], epoSemana, tieneHierroPrevio, periodDate);
+                var evalResult = await _ruleEngine.EvaluateAsync(ctx);
+
+                var prescripcion = existente ?? new PrescripcionSugerida
                 {
                     TenantId = tenantId,
                     PacienteId = snapshot.PacienteId,
                     SnapshotId = snapshot.Id,
-                    PeriodDate = snapshot.PeriodDate,
+                    PeriodDate = periodDate,
                     Estado = EstadoPrescripcion.Pendiente
                 };
 
-            // Solo regenerar si está en estado PENDIENTE
-            if (prescripcion.Estado != EstadoPrescripcion.Pendiente) return;
-
-            // ── EPO: basado en HB ──────────────────────────────────────────
-            if (snapshot.HbValor.HasValue)
-            {
-                var rangoEpo = rangosEpo
-                    .OrderBy(r => r.Orden)
-                    .FirstOrDefault(r => r.AplicaParaValor(snapshot.HbValor.Value));
-
-                if (rangoEpo != null)
-                {
-                    prescripcion.EpoAccion = rangoEpo.Accion;
-                    prescripcion.EpoDosisSugerida = rangoEpo.DosisSugerida;
-                    prescripcion.EpoObservacion = rangoEpo.Observacion;
-                    prescripcion.EpoRangoId = rangoEpo.Id;
-                }
-            }
-            else
-            {
-                prescripcion.EpoObservacion = "No hay datos de Hemoglobina para este período.";
+                MapResult(evalResult, prescripcion, ctx);
+                resultado.Add(prescripcion);
             }
 
-            // ── HIERRO IV: basado en Ferritina + ISAT ─────────────────────
-            var accionHierro = DeterminarAccionHierro(
-                snapshot.FerritinaValor,
-                snapshot.SaturacionValor,
-                rangosFerr,
-                rangosIsat,
-                out var rangoHierroAplicado,
-                out var obsHierro);
-
-            prescripcion.HierroAccion = accionHierro;
-            prescripcion.HierroRangoId = rangoHierroAplicado?.Id;
-            prescripcion.HierroDosisSugerida = rangoHierroAplicado?.DosisSugerida;
-            prescripcion.HierroObservacion = obsHierro;
-
-            // ── Observaciones generales ────────────────────────────────────
-            prescripcion.ObservacionesGenerales = GenerarObservacionesGenerales(snapshot);
-
-            await _prescripcionRepo.UpsertSugeridaAsync(prescripcion);
+            await _prescripcionRepo.BulkUpsertSugeridaAsync(resultado);
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // LÓGICA CLÍNICA DE HIERRO
-        // ─────────────────────────────────────────────────────────────────────
-        private static string? DeterminarAccionHierro(
-            decimal? ferritina,
-            decimal? isat,
-            List<RangoPrescriba> rangosFerr,
-            List<RangoPrescriba> rangosIsat,
-            out RangoPrescriba? rangoAplicado,
-            out string? observacion)
+        /// <summary>
+        /// Genera prescripción para un único snapshot. Usado en reprocessing individual.
+        /// </summary>
+        public async Task GenerarParaSnapshotAsync(SnapshotMensual snapshot, Guid tenantId)
         {
-            rangoAplicado = null;
-            observacion = null;
+            var existente = await _prescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(
+                tenantId, snapshot.PacienteId, snapshot.PeriodDate);
 
-            if (!ferritina.HasValue && !isat.HasValue)
+            if (existente is { Estado: not null } && existente.Estado != EstadoPrescripcion.Pendiente)
+                return;
+
+            var historial = await _snapshotRepo.GetHistorialAsync(tenantId, snapshot.PacienteId, 6);
+            var conHierro = await _prescripcionRepo.GetPacientesConHierroPrevioAsync(tenantId, snapshot.PeriodDate);
+            var epoMap = await _prescripcionRepo.GetEpoActualByPacientesAsync(
+                tenantId, [snapshot.PacienteId], snapshot.PeriodDate);
+            epoMap.TryGetValue(snapshot.PacienteId, out var epoSemana);
+
+            var ctx = BuildContext(
+                tenantId, snapshot, historial, epoSemana,
+                conHierro.Contains(snapshot.PacienteId), snapshot.PeriodDate);
+
+            var evalResult = await _ruleEngine.EvaluateAsync(ctx);
+
+            existente ??= new PrescripcionSugerida
             {
-                observacion = "No hay datos de Ferritina ni ISAT para este período.";
-                return null;
+                TenantId = tenantId,
+                PacienteId = snapshot.PacienteId,
+                SnapshotId = snapshot.Id,
+                PeriodDate = snapshot.PeriodDate,
+                Estado = EstadoPrescripcion.Pendiente
+            };
+
+            MapResult(evalResult, existente, ctx);
+            await _prescripcionRepo.UpsertSugeridaAsync(existente);
+        }
+
+        // ── Context builder ────────────────────────────────────────────────────
+
+        private static EvaluationContext BuildContext(
+            Guid tenantId,
+            SnapshotMensual snapshot,
+            List<SnapshotMensual> historial,
+            decimal? epoUiSemana,
+            bool tieneHierroPrevio,
+            DateTime periodDate)
+        {
+            var ctx = new EvaluationContext
+            {
+                TenantId     = tenantId,
+                PacienteId   = snapshot.PacienteId,
+                PeriodDate   = periodDate,
+                Hb           = snapshot.HbValor,
+                TSAT         = snapshot.SaturacionValor,
+                Ferritina    = snapshot.FerritinaValor,
+                HierroSerico = snapshot.HierroValor,
+                EpoUiSemanaActual = epoUiSemana,
+                PrimeraVezHierro  = !tieneHierroPrevio,
+                MesActualEsImpar  = periodDate.Month % 2 != 0,
+                PerfilHierroActual = snapshot.FerritinaValor.HasValue && snapshot.SaturacionValor.HasValue,
+                MesesSinMejoraHb   = CalcularMesesSinMejoraHb(snapshot.HbValor, historial)
+            };
+
+            if (snapshot.Paciente?.FechaIngreso.HasValue == true)
+            {
+                var diff = periodDate - snapshot.Paciente.FechaIngreso!.Value;
+                ctx.MesesEnDialisis = Math.Max(0, (int)(diff.TotalDays / 30.44));
             }
 
-            // Prioridad: si ISAT < 20% → déficit funcional (iniciar hierro incluso con Ferritina normal)
-            if (isat.HasValue && isat.Value < 20)
+            // Valores adicionales desde SnapshotMensualDetalle (Potasio, PTH, Peso, etc.)
+            if (snapshot.Detalles is { Count: > 0 })
             {
-                observacion = $"ISAT {isat:F1}% < 20%. Déficit funcional de hierro. " +
-                              "Iniciar/aumentar hierro IV independientemente de Ferritina.";
-                return AccionPrescripcion.Aumentar;
-            }
-
-            // Si hay Ferritina, usar rangos de ferritina
-            if (ferritina.HasValue)
-            {
-                rangoAplicado = rangosFerr
-                    .OrderBy(r => r.Orden)
-                    .FirstOrDefault(r => r.AplicaParaValor(ferritina.Value));
-
-                if (rangoAplicado != null)
+                foreach (var d in snapshot.Detalles.Where(d => d.ValorNumerico.HasValue))
                 {
-                    observacion = rangoAplicado.Observacion;
-                    return rangoAplicado.Accion;
+                    var key = (d.ParametroNombre
+                        ?? d.ParametroClinico?.Codigo
+                        ?? "").Trim().ToUpperInvariant();
+
+                    switch (key)
+                    {
+                        case "POTASIO" or "K" or "K+":           ctx.Potasio    ??= d.ValorNumerico; break;
+                        case "PTH" or "PARATOHORMONA":            ctx.PTH        ??= d.ValorNumerico; break;
+                        case "ALBUMINA" or "ALB":                 ctx.Albumina   ??= d.ValorNumerico; break;
+                        case "CREATININA" or "CREAT":             ctx.Creatinina ??= d.ValorNumerico; break;
+                        case "BUN":                               ctx.BUN        ??= d.ValorNumerico; break;
+                        case "SODIO" or "NA" or "NA+":            ctx.Sodio      ??= d.ValorNumerico; break;
+                        case "CALCIO" or "CA" or "CA2+":          ctx.Calcio     ??= d.ValorNumerico; break;
+                        case "FOSFORO" or "P" or "FÓSFORO":       ctx.Fosforo    ??= d.ValorNumerico; break;
+                        case "PESO" or "PESO KG" or "PESOKG":     ctx.PesoKg     ??= d.ValorNumerico; break;
+                    }
                 }
             }
 
-            observacion = "Evaluar manualmente con Ferritina e ISAT disponibles.";
-            return null;
+            return ctx;
         }
 
-        private static string GenerarObservacionesGenerales(SnapshotMensual s)
+        // Cuenta meses consecutivos (hacia atrás desde el actual) sin mejora de Hb >= 0.5 g/dL.
+        private static int CalcularMesesSinMejoraHb(decimal? hbActual, List<SnapshotMensual> historial)
         {
-            var obs = new List<string>();
+            if (!hbActual.HasValue || historial.Count == 0) return 0;
 
-            if (!s.HbValor.HasValue)
-                obs.Add("Hemoglobina sin datos este período.");
-            else if (s.HbValor < 10)
-                obs.Add($"HB={s.HbValor:F1} g/dL. Anemia severa.");
-            else if (s.HbValor > 13)
-                obs.Add($"HB={s.HbValor:F1} g/dL. Por encima del rango objetivo. Riesgo CV.");
+            int count = 0;
+            decimal current = hbActual.Value;
 
-            if (!s.FerritinaValor.HasValue)
-                obs.Add("Ferritina sin datos este período.");
-            else if (s.FerritinaValor < 200)
-                obs.Add($"Ferritina={s.FerritinaValor:F0} ng/mL. Déficit de hierro.");
-            else if (s.FerritinaValor > 500)
-                obs.Add($"Ferritina={s.FerritinaValor:F0} ng/mL. Sobrecarga de hierro.");
+            foreach (var s in historial.OrderByDescending(s => s.PeriodDate))
+            {
+                if (!s.HbValor.HasValue) break;
+                if (current - s.HbValor.Value >= 0.5m) break; // mejora significativa encontrada
+                count++;
+                current = s.HbValor.Value;
+            }
 
-            if (!s.SaturacionValor.HasValue)
-                obs.Add("ISAT sin datos este período.");
-            else if (s.SaturacionValor < 20)
-                obs.Add($"ISAT={s.SaturacionValor:F1}%. Déficit funcional de hierro.");
+            return count;
+        }
 
-            if (s.EsDatosPeriodoAnterior)
-                obs.Add("⚠️ Usando datos del período anterior. No hay resultados del mes actual.");
+        // ── Result mapper ──────────────────────────────────────────────────────
 
-            return string.Join(" | ", obs);
+        private static readonly JsonSerializerOptions _jsonOpts = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+
+        private static void MapResult(EvaluationResult r, PrescripcionSugerida p, EvaluationContext ctx)
+        {
+            // EPO
+            p.ReglaEpoCodigo  = r.ReglaEpoCodigo;
+            p.EpoAccion       = r.EpoRecomendada ? "RECOMENDAR" : "NO_RECOMENDAR";
+            p.EpoUiSemana     = r.EpoUiSemana > 0 ? r.EpoUiSemana : null;
+            p.EpoDosisSugerida = r.EpoUiSemana > 0 ? $"{r.EpoUiSemana:F0} UI/semana" : null;
+            p.EpoObservacion  = r.EpoMensaje;
+
+            // Hierro IV
+            p.ReglaHierroCodigo  = r.ReglaHierroCodigo;
+            p.HierroAccion       = r.HierroRecomendado ? "RECOMENDAR" : null;
+            p.HierroMgMes        = r.HierroMgMes;
+            p.HierroDosisSugerida = r.HierroMgMes.HasValue ? $"{r.HierroMgMes:F0} mg/mes" : null;
+            p.HierroObservacion  = r.HierroMensaje;
+            p.HierroGanzoniMg    = r.HierroGanzoniMg;
+
+            // Alertas serializadas para UI
+            p.AlertasJson = r.Alertas.Count > 0
+                ? JsonSerializer.Serialize(r.Alertas, _jsonOpts)
+                : null;
+
+            // Observaciones generales: concatena mensajes de alertas
+            if (r.Alertas.Count > 0)
+                p.ObservacionesGenerales = string.Join(" | ",
+                    r.Alertas.Select(a => $"[{a.Severidad}] {a.Mensaje}"));
+
+            // Contexto clínico serializado para trazabilidad / auditoría
+            p.ContextoJson = JsonSerializer.Serialize(new
+            {
+                ctx.Hb, ctx.TSAT, ctx.Ferritina, ctx.HierroSerico,
+                ctx.Potasio, ctx.PTH, ctx.PesoKg,
+                ctx.MesesEnDialisis, ctx.MesesSinMejoraHb,
+                ctx.PrimeraVezHierro, ctx.MesActualEsImpar, ctx.PerfilHierroActual,
+                ctx.EpoUiSemanaActual,
+                r.ModificadoresAplicados
+            }, _jsonOpts);
         }
     }
 }

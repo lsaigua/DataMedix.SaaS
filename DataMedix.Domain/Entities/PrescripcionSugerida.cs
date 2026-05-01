@@ -20,6 +20,15 @@ namespace DataMedix.Domain.Entities
         public string? HierroObservacion { get; set; }
         public Guid? HierroRangoId { get; set; }
 
+        // ── Rule engine (Fase 1) ───────────────────────────────────────────────
+        public string? ReglaEpoCodigo { get; set; }
+        public string? ReglaHierroCodigo { get; set; }
+        public decimal? EpoUiSemana { get; set; }
+        public decimal? HierroMgMes { get; set; }
+        public decimal? HierroGanzoniMg { get; set; }
+        public string? AlertasJson { get; set; }
+        public string? ContextoJson { get; set; }
+
         public string? ObservacionesGenerales { get; set; }
         public string Estado { get; set; } = EstadoPrescripcion.Pendiente;
         public Guid? RevisadoPor { get; set; }

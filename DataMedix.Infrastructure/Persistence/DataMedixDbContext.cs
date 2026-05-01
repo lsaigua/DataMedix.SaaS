@@ -34,6 +34,9 @@ namespace DataMedix.Infrastructure.Persistence
         public DbSet<PrescripcionSugerida> PrescripcionesSugeridas => Set<PrescripcionSugerida>();
         public DbSet<PrescripcionFinal> PrescripcionesFinales => Set<PrescripcionFinal>();
 
+        // Reglas clínicas (motor de reglas Fase 1)
+        public DbSet<ReglaClinica> ReglasClinicas => Set<ReglaClinica>();
+
         // Auditoría
         public DbSet<AuditoriaLog> AuditoriaLogs => Set<AuditoriaLog>();
 
@@ -429,6 +432,13 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(ps => ps.HierroDosisSugerida).HasColumnName("hierro_dosis_sugerida");
                 e.Property(ps => ps.HierroObservacion).HasColumnName("hierro_observacion");
                 e.Property(ps => ps.HierroRangoId).HasColumnName("hierro_rango_id");
+                e.Property(ps => ps.ReglaEpoCodigo).HasColumnName("regla_epo_codigo").HasMaxLength(50);
+                e.Property(ps => ps.ReglaHierroCodigo).HasColumnName("regla_hierro_codigo").HasMaxLength(50);
+                e.Property(ps => ps.EpoUiSemana).HasColumnName("epo_ui_semana").HasColumnType("decimal(10,2)");
+                e.Property(ps => ps.HierroMgMes).HasColumnName("hierro_mg_mes").HasColumnType("decimal(10,2)");
+                e.Property(ps => ps.HierroGanzoniMg).HasColumnName("hierro_ganzoni_mg").HasColumnType("decimal(10,2)");
+                e.Property(ps => ps.AlertasJson).HasColumnName("alertas_json");
+                e.Property(ps => ps.ContextoJson).HasColumnName("contexto_json");
                 e.Property(ps => ps.ObservacionesGenerales).HasColumnName("observaciones_generales");
                 e.Property(ps => ps.Estado).HasColumnName("estado").HasMaxLength(50).HasDefaultValue("PENDIENTE");
                 e.Property(ps => ps.RevisadoPor).HasColumnName("revisado_por");
@@ -473,6 +483,34 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(pf => pf.UpdatedAt).HasColumnName("updated_at");
                 e.HasOne(pf => pf.Paciente).WithMany().HasForeignKey(pf => pf.PacienteId);
                 e.HasOne(pf => pf.Medico).WithMany().HasForeignKey(pf => pf.MedicoId);
+            });
+
+            // ========================
+            // REGLAS CLINICAS
+            // ========================
+            m.Entity<ReglaClinica>(e =>
+            {
+                e.ToTable("reglas_clinicas");
+                e.HasKey(r => r.Id);
+                e.Property(r => r.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(r => r.Codigo).HasColumnName("codigo").HasMaxLength(50).IsRequired();
+                e.Property(r => r.Nombre).HasColumnName("nombre").HasMaxLength(300).IsRequired();
+                e.Property(r => r.Tipo).HasColumnName("tipo").HasMaxLength(20).IsRequired();
+                e.Property(r => r.Prioridad).HasColumnName("prioridad").IsRequired();
+                e.Property(r => r.Severidad).HasColumnName("severidad").HasMaxLength(20);
+                e.Property(r => r.CondicionesJson).HasColumnName("condiciones_json").IsRequired();
+                e.Property(r => r.AccionJson).HasColumnName("accion_json").IsRequired();
+                e.Property(r => r.Version).HasColumnName("version").HasDefaultValue(1);
+                e.Property(r => r.Activo).HasColumnName("activo").HasDefaultValue(true);
+                e.Property(r => r.TenantId).HasColumnName("tenant_id");
+                e.Property(r => r.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(r => r.UpdatedAt).HasColumnName("updated_at");
+                e.Property(r => r.CreatedBy).HasColumnName("created_by");
+                // [NotMapped] properties are ignored automatically
+                e.Ignore(r => r.ParsedCondition);
+                e.Ignore(r => r.ParsedAction);
+                e.HasIndex(r => r.Codigo).IsUnique();
+                e.HasIndex(r => new { r.Activo, r.Prioridad });
             });
 
             // ========================

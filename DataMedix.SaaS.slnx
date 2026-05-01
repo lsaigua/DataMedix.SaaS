@@ -4,4 +4,5 @@
   <Project Path="DataMedix.Domain/DataMedix.Domain.csproj" Id="157340ba-1c3b-4f59-a82e-51def3e69200" />
   <Project Path="DataMedix.Infrastructure/DataMedix.Infrastructure.csproj" />
   <Project Path="DataMedix.Portal/DataMedix.Portal.csproj" />
+  <Project Path="DataMedix.Tests/DataMedix.Tests.csproj" />
 </Solution>

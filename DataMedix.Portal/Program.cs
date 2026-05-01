@@ -27,6 +27,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 // ── CAPAS DE APLICACIÓN E INFRAESTRUCTURA ─────────────────────────────────────
+builder.Services.AddMemoryCache();
 builder.Services
     .AddInfrastructure(builder.Configuration)
     .AddApplication();
@@ -77,6 +78,9 @@ var app = builder.Build();
 
 // Crear tabla data_protection_keys si no existe (primera vez / nuevos entornos)
 await app.Services.EnsureDataProtectionTableAsync();
+
+// Crear tabla reglas_clinicas y sembrar las 26 reglas clínicas por defecto (idempotente)
+await app.Services.EnsureReglasSeedAsync();
 
 // PRIMERO: leer los headers del proxy antes de cualquier redirect/auth
 app.UseForwardedHeaders();

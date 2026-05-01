@@ -39,6 +39,11 @@ namespace DataMedix.Application.Interfaces
         Task<List<SnapshotMensual>> GetHistorialAsync(Guid tenantId, Guid pacienteId, int meses = 12);
         Task<List<SnapshotMensual>> GetByPeriodoAsync(Guid tenantId, DateTime periodDate,
             string? busqueda = null, int pagina = 1, int tamano = 50, string? planSalud = null);
+        /// <summary>Para prescripción: carga todos los snapshots del período con Paciente y Detalles.</summary>
+        Task<List<SnapshotMensual>> GetByPeriodoConDetallesAsync(Guid tenantId, DateTime periodDate);
+        /// <summary>Historial batch: carga los últimos <paramref name="meses"/> meses para un conjunto de pacientes.</summary>
+        Task<Dictionary<Guid, List<SnapshotMensual>>> GetHistorialByPacientesAsync(
+            Guid tenantId, IEnumerable<Guid> pacienteIds, DateTime hasta, int meses = 6);
         Task<List<string>> GetPlanesSaludAsync(Guid tenantId, DateTime periodDate);
         Task UpsertAsync(SnapshotMensual snapshot);
         Task AddDetallesAsync(List<SnapshotMensualDetalle> detalles);
@@ -61,6 +66,15 @@ namespace DataMedix.Application.Interfaces
         Task UpdateFinalAsync(PrescripcionFinal prescripcion);
         Task<List<PrescripcionSugerida>> GetPendientesAsync(Guid tenantId, DateTime periodDate);
         Task<List<PrescripcionSugerida>> GetByPeriodoAsync(Guid tenantId, DateTime periodDate, string? busqueda = null);
+        /// <summary>Carga todas las prescripciones sugeridas de un período (para batch).</summary>
+        Task<List<PrescripcionSugerida>> GetByPeriodoBatchAsync(Guid tenantId, DateTime periodDate);
+        /// <summary>Pacientes que ya recibieron hierro EV en algún período anterior.</summary>
+        Task<HashSet<Guid>> GetPacientesConHierroPrevioAsync(Guid tenantId, DateTime hasta);
+        /// <summary>Última dosis de EPO (UI/sem) por paciente antes del período actual.</summary>
+        Task<Dictionary<Guid, decimal?>> GetEpoActualByPacientesAsync(
+            Guid tenantId, IEnumerable<Guid> pacienteIds, DateTime hasta);
+        /// <summary>Upsert masivo de prescripciones sugeridas usando BulkExtensions.</summary>
+        Task BulkUpsertSugeridaAsync(List<PrescripcionSugerida> prescripciones);
     }
 
     public interface IAuditoriaRepository
