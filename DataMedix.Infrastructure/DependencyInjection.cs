@@ -1,5 +1,6 @@
 using DataMedix.Application.Interfaces;
 using DataMedix.Application.RuleEngine;
+using DataMedix.Application.Services;
 using DataMedix.Infrastructure.Excel;
 using DataMedix.Infrastructure.Persistence;
 using DataMedix.Infrastructure.Repositories;
@@ -34,6 +35,7 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IPrescripcionRepository, PrescripcionRepository>();
             services.AddScoped<IAuditoriaRepository, AuditoriaRepository>();
             services.AddScoped<IReglaClinicaRepository, ReglaClinicaRepository>();
+            services.AddScoped<IReporteService, ReporteService>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
             services.AddScoped<IExcelReader, ExcelReader>();

@@ -1,0 +1,873 @@
+@page "/reportes"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs
+@using System.Security.Claims
+
+@inject IReporteService ReporteService
+@inject ISnapshotMensualRepository SnapshotRepo
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Reportes Clínicos | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Reportes Clínicos</h1>
+        <p class="dm-page-subtitle">Panorama del estado de salud del grupo de pacientes en hemodiálisis</p>
+    </div>
+    <div class="dm-page-actions">
+        <button class="dm-btn dm-btn-primary" @onclick="CargarAsync" disabled="@_cargando">
+            @if (_cargando) { <span class="dm-spinner-sm"></span> }
+            🔄 Actualizar
+        </button>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="dm-filters-bar">
+    <div class="dm-filter-group">
+        <label>Mes</label>
+        <select @bind="_filtroMes" class="dm-select">
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM"))</option>
+            }
+        </select>
+    </div>
+    <div class="dm-filter-group">
+        <label>Año</label>
+        <select @bind="_filtroAnio" class="dm-select">
+            @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 2; a--)
+            {
+                <option value="@a">@a</option>
+            }
+        </select>
+    </div>
+    @if (_planesSalud.Any())
+    {
+        <div class="dm-filter-group">
+            <label>Plan de salud</label>
+            <select @bind="_planSalud" class="dm-select">
+                <option value="">Todos los planes</option>
+                @foreach (var plan in _planesSalud)
+                {
+                    <option value="@plan">@plan</option>
+                }
+            </select>
+        </div>
+    }
+</div>
+
+@if (_errorMensaje != null)
+{
+    <div class="dm-error-banner"><span>⚠</span> @_errorMensaje</div>
+}
+
+@if (_cargando)
+{
+    <div class="dm-loading-container">
+        <div class="dm-spinner"></div>
+        <p>Generando reporte clínico...</p>
+    </div>
+}
+else if (_resumen == null || _resumen.TotalPrescripciones == 0)
+{
+    <div class="dm-empty-state">
+        <div class="dm-empty-icon">📊</div>
+        <h3 class="dm-empty-title">Sin datos para este período</h3>
+        <p class="dm-empty-desc">Importe resultados de laboratorio para generar el reporte clínico.</p>
+        <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar Resultados</a>
+    </div>
+}
+else
+{
+    var r = _resumen!;
+
+    <!-- ═══ KPIs ═══════════════════════════════════════════════════════════ -->
+    <div class="dm-section-title">Resumen del período — @r.Periodo.ToString("MMMM yyyy")</div>
+    <div class="dm-kpi-grid">
+        <div class="dm-kpi dm-kpi-blue">
+            <div class="dm-kpi-icon">👥</div>
+            <div>
+                <div class="dm-kpi-num">@r.TotalPacientesEvaluados</div>
+                <div class="dm-kpi-lbl">Pacientes evaluados</div>
+            </div>
+        </div>
+        <div class="dm-kpi dm-kpi-purple">
+            <div class="dm-kpi-icon">💉</div>
+            <div>
+                <div class="dm-kpi-num">@r.PacientesConEpo</div>
+                <div class="dm-kpi-lbl">Reciben EPO</div>
+                <div class="dm-kpi-sub">@(r.TotalPrescripciones > 0 ? $"{r.PacientesConEpo * 100 / r.TotalPrescripciones}% del grupo" : "—")</div>
+            </div>
+        </div>
+        <div class="dm-kpi dm-kpi-yellow">
+            <div class="dm-kpi-icon">🔬</div>
+            <div>
+                <div class="dm-kpi-num">@r.PacientesConHierro</div>
+                <div class="dm-kpi-lbl">Reciben Hierro IV</div>
+                <div class="dm-kpi-sub">@(r.TotalPrescripciones > 0 ? $"{r.PacientesConHierro * 100 / r.TotalPrescripciones}% del grupo" : "—")</div>
+            </div>
+        </div>
+        <div class="dm-kpi @(r.AlertasCriticas > 0 ? "dm-kpi-red" : "dm-kpi-green")">
+            <div class="dm-kpi-icon">@(r.AlertasCriticas > 0 ? "🚨" : "✅")</div>
+            <div>
+                <div class="dm-kpi-num">@r.AlertasCriticas</div>
+                <div class="dm-kpi-lbl">Alertas críticas</div>
+                @if (r.AlertasAltas > 0)
+                {
+                    <div class="dm-kpi-sub">+ @r.AlertasAltas alta prioridad</div>
+                }
+            </div>
+        </div>
+        <div class="dm-kpi @(r.PorcentajeAprobacion >= 80 ? "dm-kpi-green" : r.PorcentajeAprobacion >= 50 ? "dm-kpi-yellow" : "dm-kpi-red")">
+            <div class="dm-kpi-icon">@(r.PorcentajeAprobacion >= 80 ? "✅" : "⏳")</div>
+            <div>
+                <div class="dm-kpi-num">@r.PorcentajeAprobacion%</div>
+                <div class="dm-kpi-lbl">Prescripciones aprobadas</div>
+                <div class="dm-kpi-sub">@r.PrescripcionesPendientes pendientes</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ PANORAMA CLÍNICO ════════════════════════════════════════════════ -->
+    <div class="dm-two-col">
+
+        <!-- Zonas de hemoglobina -->
+        <div class="dm-card">
+            <div class="dm-card-header">
+                <h2 class="dm-card-title">🩸 Estado de Hemoglobina del grupo</h2>
+                <p class="dm-card-desc">¿Cómo está la hemoglobina de los pacientes?</p>
+            </div>
+
+            @{
+                int totalSnap = r.HbCritico + r.HbBajo + r.HbObjetivo + r.HbAlto + r.HbSinDato;
+                int totalConHb = r.HbCritico + r.HbBajo + r.HbObjetivo + r.HbAlto;
+                decimal pctCrit = totalSnap > 0 ? (decimal)r.HbCritico / totalSnap * 100 : 0;
+                decimal pctBajo = totalSnap > 0 ? (decimal)r.HbBajo / totalSnap * 100 : 0;
+                decimal pctObj  = totalSnap > 0 ? (decimal)r.HbObjetivo / totalSnap * 100 : 0;
+                decimal pctAlto = totalSnap > 0 ? (decimal)r.HbAlto / totalSnap * 100 : 0;
+            }
+
+            <div class="dm-zones">
+                <div class="dm-zone">
+                    <div class="dm-zone-dot dm-dot-critica"></div>
+                    <div class="dm-zone-info">
+                        <span class="dm-zone-lbl">Zona crítica — Hb &lt; 8 g/dL</span>
+                        <span class="dm-zone-hint">Requiere acción urgente</span>
+                    </div>
+                    <div class="dm-zone-bar-wrap">
+                        <div class="dm-zone-bar dm-bar-critica" style="width:@(Math.Max(pctCrit,1))%"></div>
+                    </div>
+                    <span class="dm-zone-count dm-count-critica">@r.HbCritico pac.</span>
+                </div>
+                <div class="dm-zone">
+                    <div class="dm-zone-dot dm-dot-baja"></div>
+                    <div class="dm-zone-info">
+                        <span class="dm-zone-lbl">Zona baja — Hb 8–10 g/dL</span>
+                        <span class="dm-zone-hint">Monitorear de cerca</span>
+                    </div>
+                    <div class="dm-zone-bar-wrap">
+                        <div class="dm-zone-bar dm-bar-baja" style="width:@(Math.Max(pctBajo,1))%"></div>
+                    </div>
+                    <span class="dm-zone-count dm-count-baja">@r.HbBajo pac.</span>
+                </div>
+                <div class="dm-zone">
+                    <div class="dm-zone-dot dm-dot-objetivo"></div>
+                    <div class="dm-zone-info">
+                        <span class="dm-zone-lbl">Zona objetivo — Hb 10–13 g/dL</span>
+                        <span class="dm-zone-hint">Rango clínico recomendado ✓</span>
+                    </div>
+                    <div class="dm-zone-bar-wrap">
+                        <div class="dm-zone-bar dm-bar-objetivo" style="width:@(Math.Max(pctObj,1))%"></div>
+                    </div>
+                    <span class="dm-zone-count dm-count-objetivo">@r.HbObjetivo pac.</span>
+                </div>
+                <div class="dm-zone">
+                    <div class="dm-zone-dot dm-dot-alto"></div>
+                    <div class="dm-zone-info">
+                        <span class="dm-zone-lbl">Zona alta — Hb &gt; 13 g/dL</span>
+                        <span class="dm-zone-hint">Puede reducirse EPO</span>
+                    </div>
+                    <div class="dm-zone-bar-wrap">
+                        <div class="dm-zone-bar dm-bar-alto" style="width:@(Math.Max(pctAlto,1))%"></div>
+                    </div>
+                    <span class="dm-zone-count dm-count-alto">@r.HbAlto pac.</span>
+                </div>
+                @if (r.HbSinDato > 0)
+                {
+                    <div class="dm-zone">
+                        <div class="dm-zone-dot dm-dot-neutro"></div>
+                        <div class="dm-zone-info">
+                            <span class="dm-zone-lbl">Sin dato de Hb</span>
+                            <span class="dm-zone-hint">Pendiente de resultado</span>
+                        </div>
+                        <div class="dm-zone-bar-wrap">
+                            <div class="dm-zone-bar dm-bar-neutro" style="width:@(Math.Max((decimal)r.HbSinDato/totalSnap*100,1))%"></div>
+                        </div>
+                        <span class="dm-zone-count">@r.HbSinDato pac.</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Estado de prescripciones -->
+        <div class="dm-card">
+            <div class="dm-card-header">
+                <h2 class="dm-card-title">📋 Estado de prescripciones</h2>
+                <p class="dm-card-desc">¿Cuántas han sido revisadas y aprobadas?</p>
+            </div>
+            @{
+                var estados = new[]
+                {
+                    ("Aprobadas", r.PrescripcionesAprobadas, "dm-estado-aprobado", "✅"),
+                    ("Revisadas", r.TotalPrescripciones - r.PrescripcionesAprobadas
+                        - r.PrescripcionesPendientes
+                        - _resumen!.TotalPrescripciones + _resumen!.PrescripcionesAprobadas + r.PrescripcionesPendientes
+                        + (_resumen.TotalPrescripciones - _resumen.PrescripcionesAprobadas - _resumen.PrescripcionesPendientes - 0), "dm-estado-revisado", "👁"),
+                    ("Pendientes", r.PrescripcionesPendientes, "dm-estado-pendiente", "⏳"),
+                };
+                // Re-compute correctly
+                int aprobadas   = r.PrescripcionesAprobadas;
+                int pendientes  = r.PrescripcionesPendientes;
+                int rechazadas  = r.TotalPrescripciones - aprobadas - pendientes - (r.TotalPrescripciones - aprobadas - pendientes); // placeholder
+            }
+            @* Simple approach: show each status as a progress bar *@
+            <div class="dm-presc-estados">
+                @{
+                    var estadosData = new (string Label, int Count, string Clase, string Icon)[]
+                    {
+                        ("Aprobadas",  r.PrescripcionesAprobadas, "dm-est-green", "✅"),
+                        ("Pendientes", r.PrescripcionesPendientes, "dm-est-orange", "⏳"),
+                        ("Revisadas",  r.TotalPrescripciones - r.PrescripcionesAprobadas - r.PrescripcionesPendientes > 0
+                            ? r.TotalPrescripciones - r.PrescripcionesAprobadas - r.PrescripcionesPendientes : 0,
+                            "dm-est-blue", "👁"),
+                    };
+                }
+                @foreach (var (label, count, clase, icon) in estadosData)
+                {
+                    if (count >= 0)
+                    {
+                        decimal pct = r.TotalPrescripciones > 0
+                            ? Math.Round((decimal)count / r.TotalPrescripciones * 100, 1) : 0;
+                        <div class="dm-est-row">
+                            <span class="dm-est-label">@icon @label</span>
+                            <div class="dm-est-track">
+                                <div class="dm-est-fill @clase" style="width:@(Math.Max(pct,count>0?2:0))%"></div>
+                            </div>
+                            <span class="dm-est-nums">@count <span class="dm-est-pct">(@pct%)</span></span>
+                        </div>
+                    }
+                }
+
+                @if (r.ResumenAlertas.Any())
+                {
+                    <div class="dm-alertas-resumen">
+                        <div class="dm-alertas-title">Alertas detectadas este período</div>
+                        @foreach (var alerta in r.ResumenAlertas.Take(5))
+                        {
+                            <div class="dm-alerta-row">
+                                <span class="dm-alerta-dot @SeveridadDotClase(alerta.Severidad)"></span>
+                                <span class="dm-alerta-desc">@alerta.Descripcion</span>
+                                <span class="dm-alerta-total @SeveridadNumClase(alerta.Severidad)">@alerta.Total</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ DISTRIBUCIÓN EPO ════════════════════════════════════════════════ -->
+    @if (r.DistribucionEpo.Any())
+    {
+        <div class="dm-card">
+            <div class="dm-card-header">
+                <h2 class="dm-card-title">💉 ¿Qué dosis de EPO recibe cada paciente?</h2>
+                <p class="dm-card-desc">
+                    Distribución por nivel de hemoglobina — @r.PacientesConEpo de @r.TotalPrescripciones pacientes reciben EPO
+                </p>
+            </div>
+            <div class="dm-dist-list">
+                @{
+                    int maxEpoPac = r.DistribucionEpo.Max(d => d.Pacientes);
+                }
+                @foreach (var d in r.DistribucionEpo)
+                {
+                    decimal barWidth = maxEpoPac > 0 ? (decimal)d.Pacientes / maxEpoPac * 100 : 0;
+                    <div class="dm-dist-row">
+                        <div class="dm-dist-label-col">
+                            <span class="dm-dist-codigo @ZonaClase(d.Zona)">@d.Codigo</span>
+                            <span class="dm-dist-desc">@TruncateDesc(d.Descripcion, 60)</span>
+                        </div>
+                        <div class="dm-dist-bar-col">
+                            <div class="dm-dist-track">
+                                <div class="dm-dist-fill @ZonaBarClase(d.Zona)"
+                                     style="width:@(Math.Max(barWidth,2))%">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="dm-dist-nums-col">
+                            <span class="dm-dist-count">@d.Pacientes pac.</span>
+                            @if (d.DosisPromedio.HasValue)
+                            {
+                                <span class="dm-dist-dosis">@d.DosisPromedio.Value.ToString("N0") UI/sem</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- ═══ DISTRIBUCIÓN HIERRO ══════════════════════════════════════════════ -->
+    @if (r.DistribucionHierro.Any())
+    {
+        <div class="dm-card">
+            <div class="dm-card-header">
+                <h2 class="dm-card-title">🔬 ¿Qué dosis de Hierro IV recibe cada paciente?</h2>
+                <p class="dm-card-desc">
+                    Distribución por perfil de hierro — @r.PacientesConHierro de @r.TotalPrescripciones pacientes reciben Hierro IV
+                </p>
+            </div>
+            <div class="dm-dist-list">
+                @{
+                    int maxHierroPac = r.DistribucionHierro.Max(d => d.Pacientes);
+                }
+                @foreach (var d in r.DistribucionHierro)
+                {
+                    decimal barWidth = maxHierroPac > 0 ? (decimal)d.Pacientes / maxHierroPac * 100 : 0;
+                    <div class="dm-dist-row">
+                        <div class="dm-dist-label-col">
+                            <span class="dm-dist-codigo dm-zona-objetivo">@d.Codigo</span>
+                            <span class="dm-dist-desc">@TruncateDesc(d.Descripcion, 60)</span>
+                        </div>
+                        <div class="dm-dist-bar-col">
+                            <div class="dm-dist-track">
+                                <div class="dm-dist-fill dm-bar-dist-objetivo"
+                                     style="width:@(Math.Max(barWidth,2))%">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="dm-dist-nums-col">
+                            <span class="dm-dist-count">@d.Pacientes pac.</span>
+                            @if (d.DosisPromedio.HasValue)
+                            {
+                                <span class="dm-dist-dosis">@d.DosisPromedio.Value.ToString("N0") mg/mes</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- ═══ PACIENTES QUE REQUIEREN ATENCIÓN ════════════════════════════════ -->
+    @if (r.PacientesAlerta.Any())
+    {
+        <div class="dm-card">
+            <div class="dm-card-header-row">
+                <div>
+                    <h2 class="dm-card-title">🚨 Pacientes que requieren atención</h2>
+                    <p class="dm-card-desc">Ordenados por prioridad — @r.PacientesAlerta.Count paciente(s) con alertas activas</p>
+                </div>
+                <div class="dm-alert-filters">
+                    @foreach (var sev in new[] { "TODAS", "CRITICA", "ALTA", "MEDIA" })
+                    {
+                        <button class="dm-filter-chip @(_filtroSeveridad == sev ? "dm-chip-active" : "")"
+                                @onclick="() => _filtroSeveridad = sev">
+                            @SevIcon(sev) @sev.ToLower()
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="dm-alert-table-wrap">
+                <table class="dm-alert-table">
+                    <thead>
+                        <tr>
+                            <th>Paciente</th>
+                            <th style="text-align:center">Hb</th>
+                            <th>Alertas</th>
+                            <th style="text-align:center">Estado Rx</th>
+                            <th style="text-align:center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in PacientesFiltrados)
+                        {
+                            <tr class="@(p.SeveridadMaxima == "CRITICA" ? "dm-row-critica" : p.SeveridadMaxima == "ALTA" ? "dm-row-alta" : "")">
+                                <td>
+                                    <div class="dm-pac-cell">
+                                        <div class="dm-avatar-sm @(p.SeveridadMaxima == "CRITICA" ? "dm-avatar-critica" : "")">
+                                            @(p.NombreCompleto.FirstOrDefault())
+                                        </div>
+                                        <div>
+                                            <div class="dm-pac-nombre">@p.NombreCompleto</div>
+                                            <div class="dm-pac-id">@p.Identificacion</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style="text-align:center">
+                                    @if (p.Hb.HasValue)
+                                    {
+                                        <span class="dm-hb-val @HbValClase(p.Hb)">@p.Hb.Value.ToString("F1")</span>
+                                        <span class="dm-hb-unit">g/dL</span>
+                                    }
+                                    else { <span class="dm-sin-dato">—</span> }
+                                </td>
+                                <td>
+                                    <div class="dm-badges-wrap">
+                                        @foreach (var alerta in p.Alertas)
+                                        {
+                                            <span class="dm-badge @BadgeClase(alerta.Severidad)"
+                                                  title="@alerta.Mensaje">
+                                                @alerta.Descripcion
+                                            </span>
+                                        }
+                                    </div>
+                                </td>
+                                <td style="text-align:center">
+                                    <span class="dm-rx-estado @EstadoClase(p.EstadoPrescripcion)">
+                                        @p.EstadoPrescripcion
+                                    </span>
+                                </td>
+                                <td style="text-align:center">
+                                    <a href="/prescripciones/@p.PacienteId"
+                                       class="dm-btn dm-btn-xs @(p.SeveridadMaxima == "CRITICA" ? "dm-btn-danger" : "dm-btn-outline")">
+                                        Ver Rx
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="dm-card dm-card-ok">
+            <span class="dm-ok-icon">✅</span>
+            <div>
+                <strong>Sin alertas activas este período</strong>
+                <p>Todos los pacientes están dentro de los rangos clínicos esperados.</p>
+            </div>
+        </div>
+    }
+
+    <!-- ═══ TENDENCIA HB ════════════════════════════════════════════════════ -->
+    @if (r.TendenciaHb.Count > 1)
+    {
+        <div class="dm-card">
+            <div class="dm-card-header">
+                <h2 class="dm-card-title">📈 Tendencia de Hemoglobina del grupo</h2>
+                <p class="dm-card-desc">Promedio de los últimos @r.TendenciaHb.Count meses — ¿está mejorando el grupo?</p>
+            </div>
+
+            @{
+                decimal hbMin = r.TendenciaHb.Min(t => t.HbPromedio);
+                decimal hbMax = r.TendenciaHb.Max(t => t.HbPromedio);
+                decimal hbRange = Math.Max(hbMax - hbMin, 1m);
+                decimal hbFirst = r.TendenciaHb.First().HbPromedio;
+                decimal hbLast  = r.TendenciaHb.Last().HbPromedio;
+                bool tendenciaPositiva = hbLast >= hbFirst;
+            }
+
+            <div class="dm-tendencia-header">
+                <div class="dm-tendencia-stat">
+                    <span class="dm-tend-val">@hbLast g/dL</span>
+                    <span class="dm-tend-lbl">promedio actual</span>
+                </div>
+                <div class="dm-tendencia-arrow @(tendenciaPositiva ? "dm-arrow-up" : "dm-arrow-down")">
+                    @(tendenciaPositiva ? "↑" : "↓")
+                    <span>@(tendenciaPositiva ? "mejorando" : "disminuyendo")</span>
+                </div>
+                <div class="dm-tendencia-stat">
+                    <span class="dm-tend-val">@(hbLast - hbFirst > 0 ? "+" : "")@((hbLast - hbFirst).ToString("F1")) g/dL</span>
+                    <span class="dm-tend-lbl">vs. hace @r.TendenciaHb.Count meses</span>
+                </div>
+            </div>
+
+            <div class="dm-trend-chart">
+                @foreach (var t in r.TendenciaHb)
+                {
+                    decimal heightPct = hbRange > 0
+                        ? Math.Min(Math.Max((t.HbPromedio - hbMin) / hbRange * 70 + 15, 10), 100)
+                        : 50;
+                    string barClase = t.HbPromedio < 10 ? "dm-trend-bar-baja"
+                        : t.HbPromedio > 13 ? "dm-trend-bar-alto"
+                        : "dm-trend-bar-ok";
+
+                    <div class="dm-trend-col">
+                        <div class="dm-trend-val">@t.HbPromedio</div>
+                        <div class="dm-trend-bar-wrap">
+                            <div class="dm-trend-bar @barClase"
+                                 style="height:@((int)heightPct)%"></div>
+                        </div>
+                        <div class="dm-trend-label">@t.PeriodoLabel</div>
+                        <div class="dm-trend-n">@t.Pacientes pac.</div>
+                    </div>
+                }
+            </div>
+
+            <div class="dm-hb-leyenda">
+                <span><span class="dm-dot dm-dot-objetivo"></span>Zona objetivo (10-13 g/dL)</span>
+                <span><span class="dm-dot dm-dot-baja"></span>Bajo (&lt;10 g/dL)</span>
+                <span><span class="dm-dot dm-dot-alto"></span>Alto (&gt;13 g/dL)</span>
+            </div>
+        </div>
+    }
+}
+
+<style>
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+    .dm-page-actions { display: flex; gap: 0.75rem; }
+
+    .dm-filters-bar { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: flex-end; }
+    .dm-filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .dm-filter-group label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.875rem;
+                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; }
+    .dm-select:focus { border-color: #0ea5e9; }
+
+    .dm-section-title { font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase;
+                        letter-spacing: 0.06em; margin-bottom: 0.75rem; margin-top: 0.25rem; }
+
+    /* ── KPI cards ── */
+    .dm-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                   gap: 1rem; margin-bottom: 1.5rem; }
+    .dm-kpi { background: white; border-radius: 12px; padding: 1.25rem; display: flex;
+              align-items: center; gap: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+              border-left: 4px solid; transition: box-shadow 0.15s; }
+    .dm-kpi:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .dm-kpi-blue   { border-color: #0ea5e9; }
+    .dm-kpi-purple { border-color: #8b5cf6; }
+    .dm-kpi-yellow { border-color: #f59e0b; }
+    .dm-kpi-green  { border-color: #059669; }
+    .dm-kpi-red    { border-color: #dc2626; }
+    .dm-kpi-icon { font-size: 2rem; flex-shrink: 0; }
+    .dm-kpi-num { font-size: 2rem; font-weight: 900; color: #1e293b; line-height: 1; }
+    .dm-kpi-lbl { font-size: 0.78rem; color: #64748b; font-weight: 600; margin-top: 0.15rem; }
+    .dm-kpi-sub { font-size: 0.7rem; color: #94a3b8; margin-top: 0.1rem; }
+
+    /* ── Cards ── */
+    .dm-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    @@media (max-width: 900px) { .dm-two-col { grid-template-columns: 1fr; } }
+
+    .dm-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0;
+               box-shadow: 0 1px 3px rgba(0,0,0,0.05); padding: 1.25rem; margin-bottom: 1rem; }
+    .dm-card-ok { display: flex; align-items: center; gap: 1rem; background: #f0fdf4;
+                  border-color: #86efac; color: #166534; }
+    .dm-ok-icon { font-size: 2rem; flex-shrink: 0; }
+    .dm-card-ok p { margin: 0.25rem 0 0; font-size: 0.875rem; color: #166534; }
+    .dm-card-header { margin-bottom: 1.25rem; }
+    .dm-card-header-row { display: flex; justify-content: space-between; align-items: flex-start;
+                           flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+    .dm-card-title { font-size: 1rem; font-weight: 800; color: #1e293b; margin: 0; }
+    .dm-card-desc { font-size: 0.8rem; color: #64748b; margin: 0.25rem 0 0; }
+
+    /* ── Zonas Hb ── */
+    .dm-zones { display: flex; flex-direction: column; gap: 0.75rem; }
+    .dm-zone { display: grid; grid-template-columns: 12px 1fr 3fr 80px; align-items: center;
+               gap: 0.75rem; }
+    .dm-zone-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .dm-dot-critica  { background: #dc2626; }
+    .dm-dot-baja     { background: #f59e0b; }
+    .dm-dot-objetivo { background: #059669; }
+    .dm-dot-alto     { background: #0ea5e9; }
+    .dm-dot-neutro   { background: #cbd5e1; }
+    .dm-zone-info { display: flex; flex-direction: column; }
+    .dm-zone-lbl  { font-size: 0.82rem; font-weight: 600; color: #374151; }
+    .dm-zone-hint { font-size: 0.7rem; color: #94a3b8; }
+    .dm-zone-bar-wrap { background: #f1f5f9; border-radius: 4px; height: 12px; overflow: hidden; }
+    .dm-zone-bar { height: 100%; border-radius: 4px; min-width: 2px; transition: width 0.6s ease; }
+    .dm-bar-critica  { background: #dc2626; }
+    .dm-bar-baja     { background: #f59e0b; }
+    .dm-bar-objetivo { background: #059669; }
+    .dm-bar-alto     { background: #0ea5e9; }
+    .dm-bar-neutro   { background: #cbd5e1; }
+    .dm-zone-count { font-size: 0.78rem; font-weight: 800; text-align: right; white-space: nowrap; }
+    .dm-count-critica { color: #dc2626; }
+    .dm-count-baja    { color: #d97706; }
+    .dm-count-objetivo { color: #059669; }
+    .dm-count-alto    { color: #0284c7; }
+
+    /* ── Estado prescripciones ── */
+    .dm-presc-estados { display: flex; flex-direction: column; gap: 0.75rem; }
+    .dm-est-row { display: grid; grid-template-columns: 120px 1fr 90px; align-items: center; gap: 0.75rem; }
+    .dm-est-label { font-size: 0.82rem; font-weight: 600; color: #374151; }
+    .dm-est-track { background: #f1f5f9; border-radius: 4px; height: 14px; overflow: hidden; }
+    .dm-est-fill { height: 100%; border-radius: 4px; min-width: 2px; transition: width 0.6s ease; }
+    .dm-est-green  { background: #059669; }
+    .dm-est-orange { background: #f59e0b; }
+    .dm-est-blue   { background: #0ea5e9; }
+    .dm-est-red    { background: #dc2626; }
+    .dm-est-nums { font-size: 0.82rem; font-weight: 700; color: #374151; text-align: right; }
+    .dm-est-pct { font-size: 0.7rem; color: #94a3b8; font-weight: 500; }
+
+    .dm-alertas-resumen { margin-top: 1rem; padding-top: 0.875rem; border-top: 1px solid #f1f5f9; }
+    .dm-alertas-title { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+                        letter-spacing: 0.04em; margin-bottom: 0.5rem; }
+    .dm-alerta-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0;
+                     font-size: 0.8rem; }
+    .dm-alerta-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dm-dot-sev-critica { background: #dc2626; }
+    .dm-dot-sev-alta    { background: #f59e0b; }
+    .dm-dot-sev-media   { background: #6b7280; }
+    .dm-alerta-desc { flex: 1; color: #374151; }
+    .dm-alerta-total { font-weight: 800; font-size: 0.82rem; }
+    .dm-num-critica { color: #dc2626; }
+    .dm-num-alta    { color: #d97706; }
+    .dm-num-media   { color: #475569; }
+
+    /* ── Distribución barras ── */
+    .dm-dist-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .dm-dist-row { display: grid; grid-template-columns: 2.5fr 3fr 150px; align-items: center;
+                   gap: 0.75rem; }
+    .dm-dist-label-col { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+    .dm-dist-codigo { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 800;
+                      font-family: monospace; white-space: nowrap; flex-shrink: 0; }
+    .dm-zona-critica  { background: #fee2e2; color: #991b1b; }
+    .dm-zona-baja     { background: #fef3c7; color: #92400e; }
+    .dm-zona-atencion { background: #fed7aa; color: #9a3412; }
+    .dm-zona-objetivo { background: #dcfce7; color: #166534; }
+    .dm-zona-alto     { background: #eff6ff; color: #1d4ed8; }
+    .dm-dist-desc { font-size: 0.78rem; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dm-dist-bar-col { }
+    .dm-dist-track { background: #f1f5f9; border-radius: 4px; height: 20px; overflow: hidden; }
+    .dm-dist-fill { height: 100%; border-radius: 4px; min-width: 3px; transition: width 0.6s ease; }
+    .dm-bar-dist-critica  { background: linear-gradient(90deg, #ef4444, #dc2626); }
+    .dm-bar-dist-baja     { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+    .dm-bar-dist-atencion { background: linear-gradient(90deg, #fb923c, #f97316); }
+    .dm-bar-dist-objetivo { background: linear-gradient(90deg, #34d399, #059669); }
+    .dm-bar-dist-alto     { background: linear-gradient(90deg, #38bdf8, #0ea5e9); }
+    .dm-dist-nums-col { display: flex; flex-direction: column; align-items: flex-end; }
+    .dm-dist-count { font-size: 0.82rem; font-weight: 800; color: #1e293b; }
+    .dm-dist-dosis { font-size: 0.7rem; color: #64748b; white-space: nowrap; }
+
+    /* ── Tabla de alertas ── */
+    .dm-alert-filters { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .dm-filter-chip { padding: 0.3rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+                      border: 1.5px solid #e2e8f0; background: white; color: #64748b; cursor: pointer;
+                      transition: all 0.15s; }
+    .dm-filter-chip:hover { border-color: #0ea5e9; color: #0ea5e9; }
+    .dm-chip-active { background: #0ea5e9; color: white; border-color: #0ea5e9; }
+
+    .dm-alert-table-wrap { overflow-x: auto; }
+    .dm-alert-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .dm-alert-table thead tr { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+    .dm-alert-table th { padding: 0.625rem 1rem; font-weight: 700; color: #64748b; font-size: 0.72rem;
+                          text-transform: uppercase; letter-spacing: 0.04em; text-align: left; }
+    .dm-alert-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+    .dm-alert-table tbody tr:hover { background: #f8fafc; }
+    .dm-alert-table td { padding: 0.75rem 1rem; vertical-align: middle; }
+    .dm-row-critica { background: #fff5f5; }
+    .dm-row-critica:hover { background: #fee2e2; }
+    .dm-row-alta { background: #fffbeb; }
+
+    .dm-pac-cell { display: flex; align-items: center; gap: 0.625rem; }
+    .dm-avatar-sm { width: 32px; height: 32px; background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+                    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                    color: white; font-weight: 700; font-size: 0.8rem; flex-shrink: 0; }
+    .dm-avatar-critica { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+    .dm-pac-nombre { font-weight: 700; color: #1e293b; font-size: 0.875rem; }
+    .dm-pac-id { font-size: 0.72rem; color: #94a3b8; font-family: monospace; }
+
+    .dm-hb-val { font-weight: 800; font-size: 0.95rem; }
+    .dm-hb-unit { font-size: 0.68rem; color: #94a3b8; margin-left: 0.15rem; }
+    .dm-hb-bajo { color: #dc2626; }
+    .dm-hb-ok   { color: #059669; }
+    .dm-hb-alto { color: #0284c7; }
+    .dm-sin-dato { color: #cbd5e1; font-size: 0.875rem; }
+
+    .dm-badges-wrap { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .dm-badge { padding: 0.2rem 0.5rem; border-radius: 20px; font-size: 0.68rem; font-weight: 700;
+                white-space: nowrap; cursor: default; }
+    .dm-badge-critica { background: #fecdd3; color: #881337; }
+    .dm-badge-alta    { background: #fed7aa; color: #9a3412; }
+    .dm-badge-media   { background: #fef3c7; color: #92400e; }
+
+    .dm-rx-estado { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.68rem; font-weight: 800;
+                    text-transform: uppercase; }
+    .dm-rx-pendiente  { background: #fef3c7; color: #92400e; }
+    .dm-rx-aprobado   { background: #dcfce7; color: #166534; }
+    .dm-rx-revisado   { background: #eff6ff; color: #1d4ed8; }
+    .dm-rx-rechazado  { background: #fee2e2; color: #991b1b; }
+
+    /* ── Tendencia Hb ── */
+    .dm-tendencia-header { display: flex; align-items: center; justify-content: center;
+                           gap: 2rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .dm-tendencia-stat { text-align: center; }
+    .dm-tend-val { display: block; font-size: 1.5rem; font-weight: 900; color: #1e293b; }
+    .dm-tend-lbl { font-size: 0.75rem; color: #64748b; }
+    .dm-tendencia-arrow { font-size: 1.75rem; font-weight: 900; display: flex;
+                          flex-direction: column; align-items: center; }
+    .dm-tendencia-arrow span { font-size: 0.72rem; font-weight: 600; }
+    .dm-arrow-up   { color: #059669; }
+    .dm-arrow-down { color: #dc2626; }
+
+    .dm-trend-chart { display: flex; align-items: flex-end; gap: 0.5rem; height: 140px;
+                       padding: 0 0.5rem; border-bottom: 2px solid #e2e8f0; margin-bottom: 0.5rem; }
+    .dm-trend-col { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; }
+    .dm-trend-val { font-size: 0.75rem; font-weight: 800; color: #374151; margin-bottom: auto; padding-top: 0; }
+    .dm-trend-bar-wrap { width: 100%; flex: 1; display: flex; align-items: flex-end; padding: 0 4px; }
+    .dm-trend-bar { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.6s ease; }
+    .dm-trend-bar-ok   { background: linear-gradient(0deg, #059669, #34d399); }
+    .dm-trend-bar-baja { background: linear-gradient(0deg, #f59e0b, #fbbf24); }
+    .dm-trend-bar-alto { background: linear-gradient(0deg, #0ea5e9, #38bdf8); }
+    .dm-trend-label { font-size: 0.68rem; color: #64748b; margin-top: 0.35rem;
+                       font-weight: 600; white-space: nowrap; }
+    .dm-trend-n { font-size: 0.6rem; color: #cbd5e1; }
+
+    .dm-hb-leyenda { display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap;
+                      font-size: 0.75rem; color: #64748b; padding-top: 0.5rem; }
+    .dm-hb-leyenda span { display: flex; align-items: center; gap: 0.35rem; }
+    .dm-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+    /* ── Compartidos ── */
+    .dm-btn { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
+              text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
+              cursor: pointer; border: none; transition: all 0.15s; }
+    .dm-btn-xs { padding: 0.25rem 0.7rem; font-size: 0.78rem; border-radius: 6px; }
+    .dm-btn-primary { background: #0ea5e9; color: white; }
+    .dm-btn-primary:hover { background: #0284c7; }
+    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .dm-btn-outline:hover { background: #f8fafc; }
+    .dm-btn-danger { background: #dc2626; color: white; }
+    .dm-btn-danger:hover { background: #b91c1c; }
+    .dm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                  border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .dm-spinner-sm { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white;
+                     border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .dm-loading-container { display: flex; flex-direction: column; align-items: center;
+                             padding: 4rem; color: #64748b; gap: 1rem; }
+    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
+    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .dm-empty-desc { margin-bottom: 1.5rem; font-size: 0.9rem; }
+    .dm-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
+                       padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
+                       align-items: center; font-size: 0.875rem; }
+</style>
+
+@code {
+    private ResumenClinicoDto? _resumen;
+    private List<string> _planesSalud = new();
+    private bool _cargando = true;
+    private string? _errorMensaje;
+    private int _filtroMes = DateTime.Now.Month;
+    private int _filtroAnio = DateTime.Now.Year;
+    private string _planSalud = "";
+    private string _filtroSeveridad = "TODAS";
+    private Guid _tenantId;
+
+    private IEnumerable<PacienteAlertaDto> PacientesFiltrados =>
+        _filtroSeveridad == "TODAS"
+            ? (_resumen?.PacientesAlerta ?? [])
+            : (_resumen?.PacientesAlerta.Where(p =>
+                p.Alertas.Any(a => a.Severidad == _filtroSeveridad)) ?? []);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        _tenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _errorMensaje = null;
+        StateHasChanged();
+
+        try
+        {
+            var periodDate = new DateTime(_filtroAnio, _filtroMes, 1, 0, 0, 0, DateTimeKind.Utc);
+
+            _planesSalud = await ReporteService.GetPlanesSaludAsync(_tenantId, periodDate);
+            _resumen = await ReporteService.GetResumenPeriodoAsync(
+                _tenantId, periodDate,
+                string.IsNullOrEmpty(_planSalud) ? null : _planSalud);
+        }
+        catch (Exception ex)
+        {
+            _errorMensaje = ex.Message;
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private static string ZonaClase(string zona) => zona switch
+    {
+        "critica"  => "dm-zona-critica",
+        "baja"     => "dm-zona-baja",
+        "atencion" => "dm-zona-atencion",
+        "objetivo" => "dm-zona-objetivo",
+        "alto"     => "dm-zona-alto",
+        _ => "dm-zona-objetivo"
+    };
+
+    private static string ZonaBarClase(string zona) => zona switch
+    {
+        "critica"  => "dm-bar-dist-critica",
+        "baja"     => "dm-bar-dist-baja",
+        "atencion" => "dm-bar-dist-atencion",
+        "objetivo" => "dm-bar-dist-objetivo",
+        "alto"     => "dm-bar-dist-alto",
+        _ => "dm-bar-dist-objetivo"
+    };
+
+    private static string SeveridadDotClase(string sev) => sev switch
+    {
+        "CRITICA" => "dm-alerta-dot dm-dot-sev-critica",
+        "ALTA"    => "dm-alerta-dot dm-dot-sev-alta",
+        _         => "dm-alerta-dot dm-dot-sev-media"
+    };
+
+    private static string SeveridadNumClase(string sev) => sev switch
+    {
+        "CRITICA" => "dm-alerta-total dm-num-critica",
+        "ALTA"    => "dm-alerta-total dm-num-alta",
+        _         => "dm-alerta-total dm-num-media"
+    };
+
+    private static string HbValClase(decimal? hb) =>
+        !hb.HasValue ? "" : hb < 10 ? "dm-hb-val dm-hb-bajo" : hb > 13 ? "dm-hb-val dm-hb-alto" : "dm-hb-val dm-hb-ok";
+
+    private static string BadgeClase(string sev) => sev switch
+    {
+        "CRITICA" => "dm-badge dm-badge-critica",
+        "ALTA"    => "dm-badge dm-badge-alta",
+        _         => "dm-badge dm-badge-media"
+    };
+
+    private static string EstadoClase(string estado) => estado switch
+    {
+        "PENDIENTE"  => "dm-rx-estado dm-rx-pendiente",
+        "APROBADO"   => "dm-rx-estado dm-rx-aprobado",
+        "REVISADO"   => "dm-rx-estado dm-rx-revisado",
+        "RECHAZADO"  => "dm-rx-estado dm-rx-rechazado",
+        _ => "dm-rx-estado"
+    };
+
+    private static string SevIcon(string sev) => sev switch
+    {
+        "CRITICA" => "🔴",
+        "ALTA"    => "🟠",
+        "MEDIA"   => "🟡",
+        _ => "📋"
+    };
+
+    private static string TruncateDesc(string s, int max) =>
+        s.Length <= max ? s : s[..max] + "…";
+}
