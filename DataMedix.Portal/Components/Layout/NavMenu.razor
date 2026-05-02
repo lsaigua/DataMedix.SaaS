@@ -6,12 +6,7 @@
 
     <!-- Brand -->
     <div class="dm-nav-brand">
-        <div class="dm-nav-icon-wrap">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                 stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-            </svg>
-        </div>
+        <img src="/images/icono.png" class="dm-nav-logo-img" alt="DataMedix" />
         <div>
             <div class="dm-nav-title">DataMedix</div>
             <div class="dm-nav-subtitle">Plataforma Clínica</div>
@@ -186,6 +181,39 @@
             <span>·</span>
             <a href="/cookies" target="_blank" rel="noopener noreferrer">Cookies</a>
         </div>
+
+        <!-- Pie de página: desarrollado por PetMac Labs -->
+        <div class="dm-nav-dev">
+            <div class="dm-nav-dev-label">Desarrollado por</div>
+            <div class="dm-nav-dev-brand">
+                <!-- Logo PetMac Labs (SVG) -->
+                <svg class="dm-nav-dev-icon" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Fondo azul marino -->
+                    <rect width="36" height="36" rx="8" fill="#12115c"/>
+                    <!-- Sombrero — copa -->
+                    <rect x="12" y="4" width="12" height="9" rx="2" fill="#1a1870"/>
+                    <!-- Sombrero — ala -->
+                    <rect x="7" y="12" width="22" height="3" rx="1.5" fill="#1a1870"/>
+                    <!-- Cara / máscara (dorado-naranja) -->
+                    <circle cx="18" cy="19" r="6.5" fill="#f59e0b"/>
+                    <!-- Ojos -->
+                    <ellipse cx="15.5" cy="17.5" rx="1.2" ry="1.8" fill="#12115c"/>
+                    <ellipse cx="20.5" cy="17.5" rx="1.2" ry="1.8" fill="#12115c"/>
+                    <!-- Sonrisa -->
+                    <path d="M 15 21 Q 18 23.5 21 21" stroke="#12115c" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+                    <!-- Cuerpo: diamante izquierdo (teal) -->
+                    <polygon points="18,26 7,35 18,35" fill="#0d9488"/>
+                    <!-- Cuerpo: diamante derecho (rojo) -->
+                    <polygon points="18,26 29,35 18,35" fill="#ef4444"/>
+                    <!-- Línea central del cuerpo -->
+                    <line x1="18" y1="26" x2="18" y2="35" stroke="#12115c" stroke-width="0.8"/>
+                </svg>
+                <div class="dm-nav-dev-text">
+                    <span class="dm-nav-dev-name">PetMac Labs</span>
+                    <span class="dm-nav-dev-sub">Soluciones Tecnológicas</span>
+                </div>
+            </div>
+        </div>
     </div>
 
 </div>
@@ -215,23 +243,6 @@
         padding: 1.25rem 1.25rem 1rem;
         border-bottom: 1px solid rgba(255,255,255,0.07);
         flex-shrink: 0;
-    }
-
-    .dm-nav-icon-wrap {
-        width: 36px;
-        height: 36px;
-        background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 100%);
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        box-shadow: 0 4px 12px rgba(14,165,233,0.35);
-    }
-
-    .dm-nav-icon-wrap svg {
-        width: 18px;
-        height: 18px;
     }
 
     .dm-nav-title {
@@ -374,6 +385,16 @@
         transition: all 0.15s;
     }
 
+    /* DataMedix logo en el brand */
+    .dm-nav-logo-img {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        flex-shrink: 0;
+        object-fit: cover;
+        box-shadow: 0 4px 12px rgba(14,165,233,0.35);
+    }
+
     .dm-nav-logout:hover {
         background: rgba(239,68,68,0.12);
         color: #f87171;
@@ -395,4 +416,61 @@
     }
     .dm-nav-legal a:hover { color: #94a3b8; text-decoration: underline; }
     .dm-nav-legal span { color: #1e293b; }
+
+    /* PetMac Labs — créditos de desarrollo */
+    .dm-nav-dev {
+        margin-top: 0.35rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .dm-nav-dev-label {
+        font-size: 0.55rem;
+        color: #1e293b;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 0.4rem;
+    }
+    .dm-nav-dev-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.5rem;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        transition: background 0.15s;
+    }
+    .dm-nav-dev-brand:hover {
+        background: rgba(255,255,255,0.07);
+    }
+    .dm-nav-dev-icon {
+        width: 30px;
+        height: 30px;
+        flex-shrink: 0;
+        border-radius: 7px;
+        overflow: hidden;
+    }
+    .dm-nav-dev-text {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+    .dm-nav-dev-name {
+        font-size: 0.72rem;
+        font-weight: 800;
+        color: #e2e8f0;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+    }
+    .dm-nav-dev-sub {
+        font-size: 0.55rem;
+        color: #334155;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 </style>
