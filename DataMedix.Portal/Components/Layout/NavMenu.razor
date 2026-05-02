@@ -181,6 +181,11 @@
             </svg>
             Cerrar sesión
         </a>
+        <div class="dm-nav-legal">
+            <a href="/privacidad" target="_blank" rel="noopener noreferrer">Privacidad</a>
+            <span>·</span>
+            <a href="/cookies" target="_blank" rel="noopener noreferrer">Cookies</a>
+        </div>
     </div>
 
 </div>
@@ -373,4 +378,21 @@
         background: rgba(239,68,68,0.12);
         color: #f87171;
     }
+
+    .dm-nav-legal {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0;
+        font-size: 0.62rem;
+        color: #1e293b;
+    }
+    .dm-nav-legal a {
+        color: #334155;
+        text-decoration: none;
+        font-weight: 500;
+    }
+    .dm-nav-legal a:hover { color: #94a3b8; text-decoration: underline; }
+    .dm-nav-legal span { color: #1e293b; }
 </style>

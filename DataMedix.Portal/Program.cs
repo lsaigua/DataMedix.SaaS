@@ -88,12 +88,32 @@ app.UseForwardedHeaders();
 // ── SECURITY HEADERS ──────────────────────────────────────────────────────────
 app.Use(async (ctx, next) =>
 {
+    // Clickjacking
     ctx.Response.Headers["X-Frame-Options"]           = "DENY";
+    // MIME sniffing
     ctx.Response.Headers["X-Content-Type-Options"]    = "nosniff";
+    // Legacy XSS filter
     ctx.Response.Headers["X-XSS-Protection"]          = "1; mode=block";
+    // Referrer
     ctx.Response.Headers["Referrer-Policy"]           = "strict-origin-when-cross-origin";
-    ctx.Response.Headers["Permissions-Policy"]        = "camera=(), microphone=(), geolocation=()";
+    // Permissions (desactiva sensores innecesarios)
+    ctx.Response.Headers["Permissions-Policy"]        = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
     ctx.Response.Headers["X-Permitted-Cross-Domain-Policies"] = "none";
+
+    // Content-Security-Policy — Blazor Server requiere 'unsafe-inline' (SignalR + inline handlers)
+    // connect-src wss: permite el WebSocket de SignalR detrás de proxy
+    ctx.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+        "img-src 'self' data:; " +
+        "font-src 'self' https://cdn.jsdelivr.net; " +
+        "connect-src 'self' wss: ws:; " +
+        "frame-ancestors 'none'; " +
+        "object-src 'none'; " +
+        "base-uri 'self'; " +
+        "form-action 'self';";
+
     await next();
 });
 

@@ -1,0 +1,457 @@
+@page "/privacidad"
+@using DataMedix.Portal.Components.Layout
+@layout EmptyLayout
+
+<PageTitle>Política de Privacidad | DataMedix</PageTitle>
+
+<div class="legal-shell">
+    <div class="legal-card">
+
+        <div class="legal-header">
+            <a href="/login" class="legal-back">← Volver</a>
+            <div class="legal-logo">
+                <div class="legal-logo-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                         stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                </div>
+                <span class="legal-logo-text">DataMedix</span>
+            </div>
+            <div class="legal-badge">Privacidad</div>
+        </div>
+
+        <h1 class="legal-title">Política de Privacidad y Protección de Datos</h1>
+        <p class="legal-meta">
+            Versión 1.0 · Última actualización: mayo de 2026 ·
+            De conformidad con el <strong>RGPD (UE) 2016/679</strong> y la
+            <strong>LOPD-GDD (LO 3/2018)</strong>
+        </p>
+
+        <div class="legal-toc">
+            <strong>Índice</strong>
+            <ol>
+                <li><a href="#art1">Responsable del Tratamiento</a></li>
+                <li><a href="#art2">Datos Personales que Tratamos</a></li>
+                <li><a href="#art3">Finalidades y Base Jurídica</a></li>
+                <li><a href="#art4">Datos Especialmente Protegidos (Salud)</a></li>
+                <li><a href="#art5">Plazo de Conservación</a></li>
+                <li><a href="#art6">Destinatarios y Transferencias</a></li>
+                <li><a href="#art7">Derechos de los Interesados (ARCO+)</a></li>
+                <li><a href="#art8">Medidas de Seguridad</a></li>
+                <li><a href="#art9">Cookies</a></li>
+                <li><a href="#art10">Contacto y Reclamaciones</a></li>
+            </ol>
+        </div>
+
+        <!-- Artículo 1 -->
+        <h2 id="art1">1. Responsable del Tratamiento</h2>
+        <div class="legal-table-wrap">
+            <table class="legal-table">
+                <tbody>
+                    <tr><th>Denominación</th><td>DataMedix S.A. (en adelante, «DataMedix» o «el Responsable»)</td></tr>
+                    <tr><th>Actividad</th><td>Plataforma SaaS de gestión clínica y resultados de laboratorio</td></tr>
+                    <tr><th>Correo de contacto</th><td>privacidad&#64;datamedix.com</td></tr>
+                    <tr><th>Delegado de Protección de Datos (DPO)</th><td>dpo&#64;datamedix.com</td></tr>
+                    <tr><th>Autoridad de control</th><td>Agencia Española de Protección de Datos (AEPD) — <a href="https://www.aepd.es" target="_blank" rel="noopener noreferrer">www.aepd.es</a></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Artículo 2 -->
+        <h2 id="art2">2. Datos Personales que Tratamos</h2>
+        <p>En función del rol del usuario dentro del sistema, tratamos las siguientes categorías de datos:</p>
+
+        <h3>2.1 Datos de usuarios de la plataforma (profesionales de la salud y operadores)</h3>
+        <ul>
+            <li>Nombre y apellidos</li>
+            <li>Número de identificación (DNI/cédula)</li>
+            <li>Dirección de correo electrónico</li>
+            <li>Número de teléfono</li>
+            <li>Credenciales de acceso (contraseña almacenada en forma de hash BCrypt — nunca en texto claro)</li>
+            <li>Rol y permisos asignados</li>
+            <li>Dirección IP y datos de sesión (con finalidad de seguridad y auditoría)</li>
+        </ul>
+
+        <h3>2.2 Datos de pacientes</h3>
+        <ul>
+            <li>Nombre y apellidos</li>
+            <li>Número de identificación</li>
+            <li>Fecha de nacimiento y género</li>
+            <li>Datos de contacto (email, teléfono)</li>
+            <li><strong>Datos de salud:</strong> resultados de laboratorio clínico, valores analíticos, historiales clínicos, prescripciones médicas (categoría especial — véase artículo 4)</li>
+        </ul>
+
+        <!-- Artículo 3 -->
+        <h2 id="art3">3. Finalidades y Base Jurídica del Tratamiento</h2>
+        <div class="legal-table-wrap">
+            <table class="legal-table">
+                <thead>
+                    <tr><th>Finalidad</th><th>Base jurídica (RGPD)</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Gestión de acceso y autenticación de usuarios</td>
+                        <td>Art. 6.1.b — Ejecución de contrato (SaaS)</td>
+                    </tr>
+                    <tr>
+                        <td>Gestión del historial clínico y resultados de laboratorio</td>
+                        <td>Art. 6.1.c — Obligación legal (normativa sanitaria); Art. 9.2.h — Asistencia sanitaria</td>
+                    </tr>
+                    <tr>
+                        <td>Prescripciones y seguimiento clínico</td>
+                        <td>Art. 9.2.h — Asistencia sanitaria; Art. 6.1.c — Obligación legal</td>
+                    </tr>
+                    <tr>
+                        <td>Auditoría y registro de actividad del sistema</td>
+                        <td>Art. 6.1.c — Obligación legal; Art. 6.1.f — Interés legítimo (seguridad)</td>
+                    </tr>
+                    <tr>
+                        <td>Detección de alertas clínicas mediante reglas automatizadas</td>
+                        <td>Art. 9.2.h — Asistencia sanitaria (supervisada por profesional)</td>
+                    </tr>
+                    <tr>
+                        <td>Generación de reportes estadísticos y analíticos</td>
+                        <td>Art. 6.1.b — Ejecución de contrato; Art. 9.2.j — Investigación (con anonimización)</td>
+                    </tr>
+                    <tr>
+                        <td>Comunicaciones de servicio y soporte técnico</td>
+                        <td>Art. 6.1.b — Ejecución de contrato</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Artículo 4 -->
+        <h2 id="art4">4. Datos Especialmente Protegidos — Datos de Salud</h2>
+        <div class="legal-callout legal-callout-warning">
+            <strong>⚕️ Categoría especial (Art. 9 RGPD)</strong>
+            Los datos clínicos y de laboratorio constituyen datos de salud, categoría especial de datos personales. Su tratamiento está sujeto a medidas de seguridad reforzadas y sólo se realiza cuando existe base jurídica explícita (asistencia sanitaria, obligación legal o consentimiento expreso).
+        </div>
+        <p>Los datos de salud tratados a través de DataMedix son accesibles únicamente por:</p>
+        <ul>
+            <li>El profesional sanitario responsable del paciente dentro del tenant</li>
+            <li>El personal administrativo autorizado por el tenant con rol ADMIN/OPERADOR</li>
+            <li>El sistema de reglas clínicas automatizadas (procesamiento interno, sin exposición externa)</li>
+        </ul>
+        <p>El acceso está controlado mediante autenticación multifactor de credenciales, control de acceso basado en roles (RBAC) y registro de auditoría completo de cada acceso.</p>
+
+        <!-- Artículo 5 -->
+        <h2 id="art5">5. Plazos de Conservación</h2>
+        <div class="legal-table-wrap">
+            <table class="legal-table">
+                <thead>
+                    <tr><th>Categoría de dato</th><th>Plazo de conservación</th><th>Fundamento</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Historial clínico y resultados de laboratorio</td>
+                        <td>Mínimo 5 años desde la última asistencia (o según normativa local aplicable)</td>
+                        <td>Ley de autonomía del paciente (Ley 41/2002)</td>
+                    </tr>
+                    <tr>
+                        <td>Datos de usuarios del sistema</td>
+                        <td>Durante la vigencia del contrato + 1 año tras la baja</td>
+                        <td>Obligación contractual y fiscal</td>
+                    </tr>
+                    <tr>
+                        <td>Registros de auditoría</td>
+                        <td>2 años desde su generación</td>
+                        <td>Art. 6.1.c RGPD; seguridad del sistema</td>
+                    </tr>
+                    <tr>
+                        <td>Logs de acceso (IP, sesión)</td>
+                        <td>12 meses</td>
+                        <td>Ley 34/2002 (LSSI); interés legítimo</td>
+                    </tr>
+                    <tr>
+                        <td>Prescripciones médicas</td>
+                        <td>Mínimo 5 años</td>
+                        <td>Normativa sanitaria y farmacéutica</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>Transcurridos los plazos indicados, los datos serán eliminados o anonimizados de forma segura.</p>
+
+        <!-- Artículo 6 -->
+        <h2 id="art6">6. Destinatarios y Transferencias Internacionales</h2>
+        <p>Los datos personales <strong>no se ceden a terceros</strong> salvo en los siguientes supuestos:</p>
+        <ul>
+            <li><strong>Obligación legal:</strong> cuando una autoridad sanitaria, judicial o administrativa así lo requiera.</li>
+            <li><strong>Proveedores de servicios (encargados del tratamiento):</strong> infraestructura cloud (Railway/Render), base de datos (PostgreSQL en AWS/Supabase). Todos operan bajo Acuerdo de Encargo de Tratamiento (DPA) conforme al Art. 28 RGPD.</li>
+        </ul>
+        <div class="legal-callout legal-callout-info">
+            <strong>ℹ️ Transferencias internacionales</strong>
+            El servicio de hospedaje puede operar en servidores fuera del Espacio Económico Europeo (EEE). En tal caso, las transferencias se amparan en las Cláusulas Contractuales Tipo (CCT) aprobadas por la Comisión Europea, o en la decisión de adecuación correspondiente.
+        </div>
+
+        <!-- Artículo 7 -->
+        <h2 id="art7">7. Derechos de los Interesados (ARCO+)</h2>
+        <p>De conformidad con el RGPD y la LOPD-GDD, usted tiene derecho a:</p>
+        <div class="legal-rights-grid">
+            <div class="legal-right-card">
+                <div class="legal-right-icon">👁</div>
+                <div class="legal-right-title">Acceso (Art. 15)</div>
+                <div class="legal-right-desc">Obtener confirmación de si sus datos son tratados y acceder a ellos.</div>
+            </div>
+            <div class="legal-right-card">
+                <div class="legal-right-icon">✏️</div>
+                <div class="legal-right-title">Rectificación (Art. 16)</div>
+                <div class="legal-right-desc">Corregir datos inexactos o incompletos.</div>
+            </div>
+            <div class="legal-right-card">
+                <div class="legal-right-icon">🗑</div>
+                <div class="legal-right-title">Supresión (Art. 17)</div>
+                <div class="legal-right-desc">Solicitar la eliminación de sus datos cuando ya no sean necesarios o retire el consentimiento.</div>
+            </div>
+            <div class="legal-right-card">
+                <div class="legal-right-icon">⏸</div>
+                <div class="legal-right-title">Limitación (Art. 18)</div>
+                <div class="legal-right-desc">Solicitar que se limite el tratamiento en determinadas circunstancias.</div>
+            </div>
+            <div class="legal-right-card">
+                <div class="legal-right-icon">📦</div>
+                <div class="legal-right-title">Portabilidad (Art. 20)</div>
+                <div class="legal-right-desc">Recibir sus datos en formato estructurado y de uso común.</div>
+            </div>
+            <div class="legal-right-card">
+                <div class="legal-right-icon">🚫</div>
+                <div class="legal-right-title">Oposición (Art. 21)</div>
+                <div class="legal-right-desc">Oponerse al tratamiento basado en interés legítimo.</div>
+            </div>
+        </div>
+        <p style="margin-top:1rem;">
+            Para ejercer cualquiera de estos derechos, envíe una solicitud por escrito a
+            <strong>privacidad&#64;datamedix.com</strong> incluyendo su nombre, número de identificación y
+            descripción clara de la solicitud. Responderemos en el plazo máximo de <strong>30 días</strong>.
+        </p>
+        <p>
+            Si no queda satisfecho con nuestra respuesta, puede presentar reclamación ante la
+            <strong>Agencia Española de Protección de Datos (AEPD)</strong> en
+            <a href="https://www.aepd.es" target="_blank" rel="noopener noreferrer">www.aepd.es</a>.
+        </p>
+
+        <!-- Artículo 8 -->
+        <h2 id="art8">8. Medidas de Seguridad</h2>
+        <p>DataMedix aplica medidas técnicas y organizativas apropiadas conforme al Art. 32 RGPD:</p>
+        <ul>
+            <li><strong>Cifrado en tránsito:</strong> TLS 1.2+ obligatorio en todos los accesos (HTTPS).</li>
+            <li><strong>Cifrado en reposo:</strong> Cifrado de base de datos gestionado por el proveedor cloud.</li>
+            <li><strong>Contraseñas:</strong> Hash BCrypt con salt único; nunca almacenadas en texto claro.</li>
+            <li><strong>Control de acceso:</strong> Autenticación por credenciales + roles RBAC + segmentación multi-tenant.</li>
+            <li><strong>Auditoría:</strong> Registro inmutable de toda acción con usuario, IP y marca temporal UTC.</li>
+            <li><strong>Cabeceras de seguridad:</strong> Content-Security-Policy, HSTS, X-Frame-Options DENY, X-Content-Type-Options nosniff.</li>
+            <li><strong>Protección CSRF:</strong> Tokens anti-falsificación en todos los formularios.</li>
+            <li><strong>Aislamiento de tenants:</strong> Separación lógica estricta de datos entre organizaciones.</li>
+            <li><strong>Gestión de vulnerabilidades:</strong> Actualizaciones periódicas de dependencias y revisiones de seguridad.</li>
+        </ul>
+
+        <!-- Artículo 9 -->
+        <h2 id="art9">9. Política de Cookies</h2>
+        <p>DataMedix utiliza exclusivamente una <strong>cookie de sesión estrictamente necesaria</strong>:</p>
+        <div class="legal-table-wrap">
+            <table class="legal-table">
+                <thead>
+                    <tr><th>Nombre</th><th>Tipo</th><th>Finalidad</th><th>Duración</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>DataMedix.Auth</code></td>
+                        <td>Sesión / Autenticación</td>
+                        <td>Mantiene la sesión autenticada del usuario. Sin ella, no es posible acceder al sistema.</td>
+                        <td>8 horas (renovable con actividad) / Se elimina al cerrar sesión</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="legal-callout legal-callout-info">
+            <strong>Sin cookies de seguimiento ni publicidad</strong>
+            DataMedix <strong>no</strong> utiliza cookies analíticas, de marketing, de seguimiento (tracking) ni de terceros. La única cookie presente es técnicamente necesaria para el funcionamiento de la plataforma y está exenta de consentimiento previo conforme a la Directiva ePrivacy (2002/58/CE) y la LSSI.
+        </div>
+        <p>La cookie está configurada con los atributos de seguridad <code>HttpOnly</code>, <code>SameSite=Lax</code> y <code>Secure</code> (en producción), lo que impide su acceso desde JavaScript y su uso en ataques CSRF.</p>
+
+        <!-- Artículo 10 -->
+        <h2 id="art10">10. Contacto, DPO y Reclamaciones</h2>
+        <div class="legal-contact-grid">
+            <div class="legal-contact-card">
+                <div class="legal-contact-title">Consultas de privacidad</div>
+                <div class="legal-contact-email">privacidad&#64;datamedix.com</div>
+                <div class="legal-contact-note">Tiempo de respuesta: máximo 30 días hábiles</div>
+            </div>
+            <div class="legal-contact-card">
+                <div class="legal-contact-title">Delegado de Protección de Datos (DPO)</div>
+                <div class="legal-contact-email">dpo&#64;datamedix.com</div>
+                <div class="legal-contact-note">Para ejercicio de derechos ARCO y consultas técnicas</div>
+            </div>
+            <div class="legal-contact-card">
+                <div class="legal-contact-title">Autoridad de control</div>
+                <div class="legal-contact-email">www.aepd.es</div>
+                <div class="legal-contact-note">Agencia Española de Protección de Datos</div>
+            </div>
+        </div>
+
+        <div class="legal-footer">
+            <p>© @DateTime.Now.Year DataMedix · <a href="/login">Volver al inicio de sesión</a> · <a href="/cookies">Política de Cookies</a></p>
+            <p style="font-size:0.78rem;color:#94a3b8;margin-top:0.25rem;">
+                Este documento puede ser modificado para reflejar cambios normativos o en el servicio. La versión vigente siempre estará disponible en esta URL.
+            </p>
+        </div>
+
+    </div>
+</div>
+
+<style>
+    .legal-shell {
+        min-height: 100vh;
+        background: #f8fafc;
+        display: flex;
+        justify-content: center;
+        padding: 2rem 1rem 4rem;
+    }
+    .legal-card {
+        background: white;
+        border-radius: 16px;
+        padding: 2.5rem 3rem;
+        max-width: 840px;
+        width: 100%;
+        box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+        border: 1px solid #e2e8f0;
+    }
+    .legal-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid #f1f5f9;
+        flex-wrap: wrap;
+    }
+    .legal-back {
+        font-size: 0.82rem;
+        color: #64748b;
+        text-decoration: none;
+        margin-right: auto;
+    }
+    .legal-back:hover { color: #0ea5e9; }
+    .legal-logo { display: flex; align-items: center; gap: 0.5rem; }
+    .legal-logo-icon {
+        width: 30px; height: 30px;
+        background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .legal-logo-icon svg { width: 15px; height: 15px; }
+    .legal-logo-text { font-size: 0.95rem; font-weight: 800; color: #0f172a; }
+    .legal-badge {
+        background: #f0fdf4; color: #15803d;
+        border: 1px solid #bbf7d0;
+        border-radius: 999px; padding: 0.2rem 0.75rem;
+        font-size: 0.72rem; font-weight: 700;
+    }
+    .legal-title {
+        font-size: 1.6rem; font-weight: 900; color: #0f172a;
+        margin-bottom: 0.5rem; line-height: 1.25;
+    }
+    .legal-meta {
+        font-size: 0.82rem; color: #64748b;
+        margin-bottom: 1.75rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .legal-toc {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 2rem;
+        font-size: 0.875rem;
+    }
+    .legal-toc strong { display: block; margin-bottom: 0.5rem; color: #0f172a; }
+    .legal-toc ol { margin: 0; padding-left: 1.25rem; }
+    .legal-toc li { margin-bottom: 0.25rem; }
+    .legal-toc a { color: #0ea5e9; text-decoration: none; }
+    .legal-toc a:hover { text-decoration: underline; }
+    h2 {
+        font-size: 1.15rem; font-weight: 800; color: #0f172a;
+        margin: 2rem 0 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #f1f5f9;
+        scroll-margin-top: 1rem;
+    }
+    h3 { font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 1.25rem 0 0.5rem; }
+    p { font-size: 0.9rem; color: #374151; line-height: 1.7; margin-bottom: 0.75rem; }
+    ul, ol { font-size: 0.9rem; color: #374151; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+    li { margin-bottom: 0.35rem; line-height: 1.6; }
+    code { font-family: monospace; background: #f1f5f9; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+    a { color: #0ea5e9; }
+
+    .legal-table-wrap { overflow-x: auto; margin: 0.75rem 0 1.25rem; }
+    .legal-table {
+        width: 100%; border-collapse: collapse;
+        border-radius: 10px; overflow: hidden;
+        border: 1px solid #e2e8f0; font-size: 0.855rem;
+    }
+    .legal-table th {
+        background: #f8fafc; color: #374151;
+        font-weight: 700; padding: 0.6rem 0.875rem;
+        text-align: left; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap; vertical-align: top;
+    }
+    .legal-table td {
+        padding: 0.6rem 0.875rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #4b5563; vertical-align: top;
+    }
+    .legal-table thead th { background: #0f172a; color: white; }
+    .legal-table tr:last-child td { border-bottom: none; }
+
+    .legal-callout {
+        border-radius: 10px; padding: 0.875rem 1rem;
+        margin: 1rem 0; font-size: 0.875rem; line-height: 1.6;
+    }
+    .legal-callout strong { display: block; margin-bottom: 0.3rem; }
+    .legal-callout-warning { background: #fffbeb; border-left: 3px solid #f59e0b; color: #92400e; }
+    .legal-callout-info    { background: #eff6ff; border-left: 3px solid #3b82f6; color: #1e40af; }
+
+    .legal-rights-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+        margin: 1rem 0;
+    }
+    .legal-right-card {
+        background: #f8fafc; border: 1px solid #e2e8f0;
+        border-radius: 10px; padding: 0.875rem;
+    }
+    .legal-right-icon { font-size: 1.2rem; margin-bottom: 0.3rem; }
+    .legal-right-title { font-size: 0.8rem; font-weight: 700; color: #0f172a; margin-bottom: 0.2rem; }
+    .legal-right-desc { font-size: 0.78rem; color: #64748b; line-height: 1.5; }
+
+    .legal-contact-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 1rem 0;
+    }
+    .legal-contact-card {
+        background: #f8fafc; border: 1px solid #e2e8f0;
+        border-radius: 10px; padding: 0.875rem;
+    }
+    .legal-contact-title { font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 0.35rem; }
+    .legal-contact-email { font-size: 0.82rem; color: #0ea5e9; font-weight: 600; margin-bottom: 0.2rem; }
+    .legal-contact-note { font-size: 0.72rem; color: #94a3b8; }
+
+    .legal-footer {
+        margin-top: 2.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid #f1f5f9;
+        text-align: center;
+        font-size: 0.82rem;
+        color: #94a3b8;
+    }
+    .legal-footer a { color: #64748b; }
+
+    @@media (max-width: 640px) {
+        .legal-card { padding: 1.5rem 1.25rem; }
+        .legal-title { font-size: 1.25rem; }
+        .legal-rights-grid, .legal-contact-grid { grid-template-columns: 1fr; }
+    }
+</style>

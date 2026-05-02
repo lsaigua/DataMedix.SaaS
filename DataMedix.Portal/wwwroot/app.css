@@ -51,8 +51,21 @@ a {
         cursor: not-allowed;
     }
 
+.privacy-notice {
+    margin-top: 14px;
+    font-size: 11.5px;
+    color: #94a3b8;
+    text-align: center;
+    line-height: 1.5;
+}
+.privacy-notice a {
+    color: #64748b;
+    text-decoration: underline;
+}
+.privacy-notice a:hover { color: #0ea5e9; }
+
 .footer-text {
-    margin-top: 22px;
+    margin-top: 10px;
     font-size: 12px;
     color: #64748b;
     text-align: center;

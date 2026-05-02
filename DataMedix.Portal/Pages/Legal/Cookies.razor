@@ -1,0 +1,230 @@
+@page "/cookies"
+@using DataMedix.Portal.Components.Layout
+@layout EmptyLayout
+
+<PageTitle>Política de Cookies | DataMedix</PageTitle>
+
+<div class="legal-shell">
+    <div class="legal-card">
+
+        <div class="legal-header">
+            <a href="/login" class="legal-back">← Volver</a>
+            <div class="legal-logo">
+                <div class="legal-logo-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                         stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                </div>
+                <span class="legal-logo-text">DataMedix</span>
+            </div>
+            <div class="legal-badge">Cookies</div>
+        </div>
+
+        <h1 class="legal-title">Política de Cookies</h1>
+        <p class="legal-meta">
+            Versión 1.0 · Última actualización: mayo de 2026 ·
+            De conformidad con la <strong>Directiva ePrivacy (2002/58/CE)</strong> y la
+            <strong>LSSI-CE (Ley 34/2002)</strong>
+        </p>
+
+        <div class="cookie-highlight">
+            <div class="cookie-highlight-icon">🍪</div>
+            <div>
+                <strong>Resumen</strong>
+                DataMedix únicamente usa <strong>una cookie estrictamente necesaria</strong> para la autenticación de sesión.
+                No existen cookies de seguimiento, analítica ni publicidad.
+            </div>
+        </div>
+
+        <h2>¿Qué es una cookie?</h2>
+        <p>Una cookie es un pequeño archivo de texto que un sitio web almacena en su navegador cuando lo visita. Las cookies pueden ser necesarias para el funcionamiento del servicio o pueden utilizarse con fines de análisis y publicidad.</p>
+
+        <h2>Cookies que utilizamos</h2>
+        <div class="legal-table-wrap">
+            <table class="legal-table">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Finalidad</th>
+                        <th>Duración</th>
+                        <th>Propia / Terceros</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>DataMedix.Auth</code></td>
+                        <td>
+                            <span class="cookie-type-badge">Técnica / Necesaria</span>
+                        </td>
+                        <td>
+                            Mantiene la sesión autenticada del usuario. Almacena el token de sesión cifrado.
+                            Sin esta cookie, el sistema no puede identificar al usuario y cada petición
+                            requeriría volver a iniciar sesión.
+                        </td>
+                        <td>8 horas (se renueva con actividad). Se elimina al cerrar sesión o el navegador.</td>
+                        <td>Propia (dominio DataMedix)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h2>¿Por qué no necesitamos su consentimiento?</h2>
+        <p>
+            La cookie <code>DataMedix.Auth</code> está clasificada como <strong>cookie estrictamente necesaria</strong>
+            para la prestación del servicio solicitado por el usuario (acceso a la plataforma clínica).
+            Conforme al Art. 22.2 de la <strong>LSSI-CE</strong> y la <strong>Directiva ePrivacy</strong>,
+            las cookies técnicas imprescindibles para el funcionamiento del servicio están
+            <strong>exentas de consentimiento previo</strong>. Sin embargo, informamos de su existencia
+            en cumplimiento del deber de transparencia (Art. 13 RGPD).
+        </p>
+
+        <h2>Atributos de seguridad de la cookie</h2>
+        <p>La cookie de sesión está protegida con los siguientes atributos de seguridad:</p>
+        <div class="cookie-security-grid">
+            <div class="cookie-sec-item">
+                <div class="cookie-sec-badge">HttpOnly</div>
+                <p>La cookie no es accesible desde JavaScript. Previene el robo de sesión mediante ataques XSS.</p>
+            </div>
+            <div class="cookie-sec-item">
+                <div class="cookie-sec-badge">Secure</div>
+                <p>Solo se transmite por conexiones HTTPS cifradas. Nunca en texto claro.</p>
+            </div>
+            <div class="cookie-sec-item">
+                <div class="cookie-sec-badge">SameSite=Lax</div>
+                <p>Restringe el envío en contextos cross-site. Protege contra ataques CSRF.</p>
+            </div>
+        </div>
+
+        <h2>Cómo gestionar o eliminar las cookies</h2>
+        <p>
+            Puede eliminar la cookie de sesión en cualquier momento a través de la opción
+            <strong>"Cerrar sesión"</strong> en la barra lateral de la plataforma, o directamente
+            desde la configuración de su navegador:
+        </p>
+        <ul>
+            <li><strong>Chrome:</strong> Ajustes → Privacidad y seguridad → Cookies y otros datos de sitios</li>
+            <li><strong>Firefox:</strong> Ajustes → Privacidad y Seguridad → Cookies y datos del sitio</li>
+            <li><strong>Edge:</strong> Configuración → Cookies y permisos del sitio</li>
+            <li><strong>Safari:</strong> Preferencias → Privacidad → Gestionar datos del sitio web</li>
+        </ul>
+        <div class="cookie-warning">
+            ⚠️ Si elimina o bloquea la cookie de sesión mientras está usando el sistema, perderá
+            el acceso y deberá iniciar sesión de nuevo.
+        </div>
+
+        <h2>Cambios en esta política</h2>
+        <p>
+            DataMedix puede actualizar esta política de cookies para reflejar cambios en la plataforma
+            o en la normativa aplicable. La versión vigente siempre estará disponible en esta URL.
+            Le notificaremos de cambios significativos a través del aviso en la pantalla de inicio de sesión.
+        </p>
+
+        <div class="legal-footer">
+            <p>
+                © @DateTime.Now.Year DataMedix ·
+                <a href="/login">Inicio de sesión</a> ·
+                <a href="/privacidad">Política de Privacidad</a>
+            </p>
+        </div>
+
+    </div>
+</div>
+
+<style>
+    .legal-shell {
+        min-height: 100vh; background: #f8fafc;
+        display: flex; justify-content: center;
+        padding: 2rem 1rem 4rem;
+    }
+    .legal-card {
+        background: white; border-radius: 16px;
+        padding: 2.5rem 3rem; max-width: 840px; width: 100%;
+        box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+        border: 1px solid #e2e8f0;
+    }
+    .legal-header {
+        display: flex; align-items: center; gap: 1rem;
+        margin-bottom: 2rem; padding-bottom: 1.25rem;
+        border-bottom: 1px solid #f1f5f9; flex-wrap: wrap;
+    }
+    .legal-back { font-size: 0.82rem; color: #64748b; text-decoration: none; margin-right: auto; }
+    .legal-back:hover { color: #0ea5e9; }
+    .legal-logo { display: flex; align-items: center; gap: 0.5rem; }
+    .legal-logo-icon {
+        width: 30px; height: 30px;
+        background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+        border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    }
+    .legal-logo-icon svg { width: 15px; height: 15px; }
+    .legal-logo-text { font-size: 0.95rem; font-weight: 800; color: #0f172a; }
+    .legal-badge {
+        background: #fff7ed; color: #c2410c;
+        border: 1px solid #fed7aa;
+        border-radius: 999px; padding: 0.2rem 0.75rem;
+        font-size: 0.72rem; font-weight: 700;
+    }
+    .legal-title { font-size: 1.6rem; font-weight: 900; color: #0f172a; margin-bottom: 0.5rem; }
+    .legal-meta { font-size: 0.82rem; color: #64748b; margin-bottom: 1.75rem; padding-bottom: 1.5rem; border-bottom: 1px solid #f1f5f9; }
+    h2 { font-size: 1.1rem; font-weight: 800; color: #0f172a; margin: 1.75rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 2px solid #f1f5f9; }
+    p { font-size: 0.9rem; color: #374151; line-height: 1.7; margin-bottom: 0.75rem; }
+    ul { font-size: 0.9rem; color: #374151; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+    li { margin-bottom: 0.35rem; line-height: 1.6; }
+    code { font-family: monospace; background: #f1f5f9; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+    a { color: #0ea5e9; }
+
+    .cookie-highlight {
+        display: flex; align-items: flex-start; gap: 1rem;
+        background: #f0fdf4; border: 1px solid #bbf7d0;
+        border-radius: 10px; padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem; font-size: 0.875rem; color: #166534;
+    }
+    .cookie-highlight-icon { font-size: 1.5rem; flex-shrink: 0; }
+    .cookie-highlight strong { display: block; margin-bottom: 0.2rem; }
+
+    .legal-table-wrap { overflow-x: auto; margin: 0.75rem 0 1.25rem; }
+    .legal-table { width: 100%; border-collapse: collapse; border: 1px solid #e2e8f0; font-size: 0.855rem; border-radius: 10px; overflow: hidden; }
+    .legal-table th { background: #0f172a; color: white; font-weight: 700; padding: 0.6rem 0.875rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    .legal-table td { padding: 0.6rem 0.875rem; border-bottom: 1px solid #f1f5f9; color: #4b5563; vertical-align: top; }
+    .legal-table tr:last-child td { border-bottom: none; }
+
+    .cookie-type-badge {
+        display: inline-flex; align-items: center;
+        background: #f0fdf4; color: #15803d;
+        border: 1px solid #bbf7d0; border-radius: 999px;
+        padding: 0.15rem 0.6rem; font-size: 0.72rem; font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .cookie-security-grid {
+        display: grid; grid-template-columns: repeat(3,1fr); gap: 0.75rem; margin: 0.75rem 0 1.25rem;
+    }
+    .cookie-sec-item {
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.875rem;
+    }
+    .cookie-sec-badge {
+        display: inline-block; background: #0f172a; color: white;
+        border-radius: 6px; padding: 0.2rem 0.65rem; font-size: 0.72rem;
+        font-weight: 700; font-family: monospace; margin-bottom: 0.5rem;
+    }
+    .cookie-sec-item p { font-size: 0.8rem; color: #64748b; margin: 0; line-height: 1.5; }
+
+    .cookie-warning {
+        background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+        padding: 0.75rem 1rem; font-size: 0.85rem; color: #92400e; margin: 0.75rem 0 1.25rem;
+    }
+
+    .legal-footer {
+        margin-top: 2.5rem; padding-top: 1.25rem;
+        border-top: 1px solid #f1f5f9; text-align: center;
+        font-size: 0.82rem; color: #94a3b8;
+    }
+    .legal-footer a { color: #64748b; }
+
+    @@media (max-width: 640px) {
+        .legal-card { padding: 1.5rem 1.25rem; }
+        .legal-title { font-size: 1.25rem; }
+        .cookie-security-grid { grid-template-columns: 1fr; }
+    }
+</style>
