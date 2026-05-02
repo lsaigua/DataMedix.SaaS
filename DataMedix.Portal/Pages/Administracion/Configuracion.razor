@@ -13,131 +13,212 @@
 
 <PageTitle>Configuración | DataMedix</PageTitle>
 
-<div class="dm-page-header">
+<!-- Header -->
+<div class="cfg-header">
+    <div class="cfg-header-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
+        </svg>
+    </div>
     <div>
-        <h1 class="dm-page-title">Configuración</h1>
-        <p class="dm-page-subtitle">Información y ajustes del centro de diálisis</p>
+        <h1 class="cfg-title">Configuración</h1>
+        <p class="cfg-subtitle">Información y ajustes del centro de diálisis</p>
     </div>
 </div>
 
+<!-- Banners -->
 @if (!string.IsNullOrEmpty(_error))
 {
-    <div class="dm-error-banner">@_error</div>
+    <div class="cfg-banner cfg-banner-error">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        @_error
+    </div>
 }
 @if (!string.IsNullOrEmpty(_exito))
 {
-    <div class="dm-success-banner">@_exito</div>
+    <div class="cfg-banner cfg-banner-success">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        @_exito
+    </div>
 }
 
 @if (_cargando)
 {
-    <div class="dm-loading-container">
-        <div class="dm-spinner"></div>
+    <div class="cfg-loading">
+        <div class="cfg-spinner"></div>
         <p>Cargando configuración...</p>
     </div>
 }
 else if (_tenant != null)
 {
-    <div class="dm-config-grid">
+    <div class="cfg-grid">
 
-        <!-- Tarjeta: Info del centro -->
-        <div class="dm-card dm-config-card">
-            <div class="dm-card-header">
-                <span class="dm-card-icon">🏥</span>
-                <h2 class="dm-card-title">Información del Centro</h2>
+        <!-- ── Info del centro ── -->
+        <div class="cfg-card">
+            <div class="cfg-card-head">
+                <div class="cfg-card-head-icon cfg-icon-blue">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        <polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                </div>
+                <h2 class="cfg-card-title">Información del Centro</h2>
             </div>
-            <div class="dm-card-body">
-                <div class="dm-form-group">
-                    <label class="dm-label">Nombre del Centro *</label>
-                    <input class="dm-input" @bind="_nombreEdit"
-                           placeholder="Ej: Clínica de Diálisis XYZ" />
-                    <p class="dm-field-hint">Nombre que aparece en reportes y documentos.</p>
+            <div class="cfg-card-body">
+
+                <div class="cfg-field">
+                    <label class="cfg-label">Nombre del Centro <span class="cfg-required">*</span></label>
+                    <input class="cfg-input" @bind="_nombreEdit" placeholder="Ej: Clínica de Diálisis XYZ" />
+                    <p class="cfg-hint">Nombre que aparece en reportes y documentos.</p>
                 </div>
-                <div class="dm-form-group">
-                    <label class="dm-label">Subdominio</label>
-                    <div class="dm-input-readonly">
-                        <span>@_tenant.Subdomain</span>
-                        <span class="dm-badge dm-badge-neutral">.datamedix.app</span>
+
+                <div class="cfg-field">
+                    <label class="cfg-label">Subdominio</label>
+                    <div class="cfg-input-readonly">
+                        <span class="cfg-subdomain-slug">@_tenant.Subdomain</span>
+                        <span class="cfg-subdomain-suffix">.datamedix.app</span>
                     </div>
-                    <p class="dm-field-hint">El subdominio no puede cambiarse. Contacte soporte si necesita modificarlo.</p>
+                    <p class="cfg-hint">El subdominio no puede cambiarse. Contacte soporte si necesita modificarlo.</p>
                 </div>
-                <div class="dm-form-group">
-                    <label class="dm-label">Estado</label>
-                    <div>
-                        @if (_tenant.Activo)
+
+                <div class="cfg-field">
+                    <label class="cfg-label">Estado</label>
+                    @if (_tenant.Activo)
+                    {
+                        <div class="cfg-status cfg-status-active">
+                            <span class="cfg-status-dot cfg-dot-active"></span>
+                            Activo
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="cfg-status cfg-status-inactive">
+                            <span class="cfg-status-dot cfg-dot-inactive"></span>
+                            Inactivo
+                        </div>
+                    }
+                </div>
+
+                <div class="cfg-actions">
+                    <button class="cfg-btn-save" @onclick="GuardarNombreAsync" disabled="@_guardando">
+                        @if (_guardando)
                         {
-                            <span class="dm-badge dm-badge-success">Activo</span>
+                            <span class="cfg-btn-spinner"></span>
+                            <span>Guardando...</span>
                         }
                         else
                         {
-                            <span class="dm-badge dm-badge-danger">Inactivo</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            <span>Guardar Cambios</span>
                         }
-                    </div>
-                </div>
-                <div class="dm-card-actions">
-                    <button class="dm-btn dm-btn-primary" @onclick="GuardarNombreAsync" disabled="@_guardando">
-                        @(_guardando ? "Guardando..." : "Guardar Cambios")
                     </button>
                 </div>
+
             </div>
         </div>
 
-        <!-- Tarjeta: Estadísticas del sistema -->
-        <div class="dm-card dm-config-card">
-            <div class="dm-card-header">
-                <span class="dm-card-icon">📊</span>
-                <h2 class="dm-card-title">Estadísticas del Sistema</h2>
+        <!-- ── Estadísticas ── -->
+        <div class="cfg-card">
+            <div class="cfg-card-head">
+                <div class="cfg-card-head-icon cfg-icon-purple">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                </div>
+                <h2 class="cfg-card-title">Estadísticas del Sistema</h2>
             </div>
-            <div class="dm-card-body">
-                <div class="dm-stat-list">
-                    <div class="dm-stat-item">
-                        <div class="dm-stat-icon dm-stat-blue">👥</div>
-                        <div class="dm-stat-info">
-                            <div class="dm-stat-value">@_totalUsuarios</div>
-                            <div class="dm-stat-label">Usuarios activos</div>
+            <div class="cfg-card-body">
+                <div class="cfg-stats">
+
+                    <div class="cfg-stat">
+                        <div class="cfg-stat-icon" style="background:#eff6ff;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
                         </div>
-                    </div>
-                    <div class="dm-stat-item">
-                        <div class="dm-stat-icon dm-stat-green">🩺</div>
-                        <div class="dm-stat-info">
-                            <div class="dm-stat-value">@_totalPacientes</div>
-                            <div class="dm-stat-label">Pacientes registrados</div>
+                        <div class="cfg-stat-body">
+                            <div class="cfg-stat-value">@_totalUsuarios</div>
+                            <div class="cfg-stat-label">Usuarios activos</div>
                         </div>
+                        <div class="cfg-stat-bar" style="background:linear-gradient(135deg,#3b82f6,#60a5fa)"></div>
                     </div>
-                    <div class="dm-stat-item">
-                        <div class="dm-stat-icon dm-stat-purple">📋</div>
-                        <div class="dm-stat-info">
-                            <div class="dm-stat-value">@_totalEventosAuditoria</div>
-                            <div class="dm-stat-label">Eventos de auditoría (últimos 30 días)</div>
+
+                    <div class="cfg-stat">
+                        <div class="cfg-stat-icon" style="background:#f0fdf4;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
                         </div>
+                        <div class="cfg-stat-body">
+                            <div class="cfg-stat-value">@_totalPacientes</div>
+                            <div class="cfg-stat-label">Pacientes registrados</div>
+                        </div>
+                        <div class="cfg-stat-bar" style="background:linear-gradient(135deg,#22c55e,#4ade80)"></div>
                     </div>
+
+                    <div class="cfg-stat">
+                        <div class="cfg-stat-icon" style="background:#f5f3ff;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                            </svg>
+                        </div>
+                        <div class="cfg-stat-body">
+                            <div class="cfg-stat-value">@_totalEventosAuditoria</div>
+                            <div class="cfg-stat-label">Eventos auditoría (30 días)</div>
+                        </div>
+                        <div class="cfg-stat-bar" style="background:linear-gradient(135deg,#8b5cf6,#a78bfa)"></div>
+                    </div>
+
                 </div>
             </div>
         </div>
 
-        <!-- Tarjeta: Información de la plataforma -->
-        <div class="dm-card dm-config-card dm-config-card-full">
-            <div class="dm-card-header">
-                <span class="dm-card-icon">⚙️</span>
-                <h2 class="dm-card-title">Plataforma DataMedix</h2>
+        <!-- ── Plataforma (full width) ── -->
+        <div class="cfg-card cfg-card-full">
+            <div class="cfg-card-head">
+                <div class="cfg-card-head-icon cfg-icon-teal">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
+                    </svg>
+                </div>
+                <h2 class="cfg-card-title">Plataforma DataMedix</h2>
             </div>
-            <div class="dm-card-body">
-                <div class="dm-platform-info">
-                    <div class="dm-platform-item">
-                        <span class="dm-platform-label">Versión</span>
-                        <span class="dm-platform-value dm-badge dm-badge-info">v2.0 — Motor de Reglas</span>
+            <div class="cfg-card-body">
+                <div class="cfg-platform">
+                    <div class="cfg-platform-row">
+                        <span class="cfg-platform-key">Versión</span>
+                        <span class="cfg-platform-val">
+                            <span class="cfg-badge cfg-badge-blue">v2.0 — Motor de Reglas</span>
+                        </span>
                     </div>
-                    <div class="dm-platform-item">
-                        <span class="dm-platform-label">Motor clínico</span>
-                        <span class="dm-platform-value">26 reglas configurables (EPO · Hierro · Alertas · Modificadores)</span>
+                    <div class="cfg-platform-row">
+                        <span class="cfg-platform-key">Motor clínico</span>
+                        <span class="cfg-platform-val">26 reglas configurables (EPO · Hierro · Alertas · Modificadores)</span>
                     </div>
-                    <div class="dm-platform-item">
-                        <span class="dm-platform-label">Protocolo</span>
-                        <span class="dm-platform-value">Guías KDIGO · Fórmula de Ganzoni · Zonas Hb g/dL</span>
+                    <div class="cfg-platform-row">
+                        <span class="cfg-platform-key">Protocolo</span>
+                        <span class="cfg-platform-val">Guías KDIGO · Fórmula de Ganzoni · Zonas Hb g/dL</span>
                     </div>
-                    <div class="dm-platform-item">
-                        <span class="dm-platform-label">Soporte</span>
-                        <span class="dm-platform-value"><a href="mailto:soporte@datamedix.app" class="dm-link">soporte@datamedix.app</a></span>
+                    <div class="cfg-platform-row">
+                        <span class="cfg-platform-key">Entorno</span>
+                        <span class="cfg-platform-val">
+                            <span class="cfg-badge cfg-badge-green">Production</span>
+                        </span>
+                    </div>
+                    <div class="cfg-platform-row">
+                        <span class="cfg-platform-key">Soporte</span>
+                        <span class="cfg-platform-val">
+                            <a href="mailto:soporte@datamedix.app" class="cfg-link">soporte&#64;datamedix.app</a>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -156,7 +237,6 @@ else if (_tenant != null)
     private string _error = "";
     private string _exito = "";
 
-    // Estadísticas
     private int _totalUsuarios;
     private int _totalPacientes;
     private int _totalEventosAuditoria;
@@ -188,11 +268,10 @@ else if (_tenant != null)
             if (_tenant != null)
                 _nombreEdit = _tenant.Nombre ?? "";
 
-            // Estadísticas
             _totalUsuarios = await UsuarioRepo.CountAsync(_tenantId, null);
             _totalPacientes = await PacienteRepo.CountAsync(_tenantId);
             _totalEventosAuditoria = await AuditoriaRepo.CountAsync(
-                _tenantId, DateTime.Today.AddDays(-30), DateTime.Today, null, null);
+                _tenantId, DateTime.UtcNow.Date.AddDays(-30), DateTime.UtcNow.Date, null, null);
         }
         catch (Exception ex)
         {
@@ -243,74 +322,207 @@ else if (_tenant != null)
 }
 
 <style>
-    .dm-config-grid {
+    /* ── Layout ── */
+    .cfg-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.75rem;
+    }
+    .cfg-header-icon {
+        width: 44px; height: 44px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 14px rgba(14,165,233,0.35);
+    }
+    .cfg-header-icon svg { width: 22px; height: 22px; }
+    .cfg-title { font-size: 1.6rem; font-weight: 900; color: #0f172a; margin: 0; line-height: 1.2; }
+    .cfg-subtitle { font-size: 0.875rem; color: #94a3b8; margin: 0.15rem 0 0; }
+
+    /* ── Banners ── */
+    .cfg-banner {
+        display: flex; align-items: center; gap: 0.625rem;
+        border-radius: 10px; padding: 0.75rem 1rem;
+        font-size: 0.875rem; font-weight: 500; margin-bottom: 1rem;
+    }
+    .cfg-banner-error  { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .cfg-banner-success{ background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+
+    /* ── Loading ── */
+    .cfg-loading {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 4rem 0; gap: 1rem; color: #94a3b8;
+    }
+    .cfg-spinner {
+        width: 36px; height: 36px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #0ea5e9;
+        border-radius: 50%;
+        animation: cfg-spin 0.75s linear infinite;
+    }
+    @@keyframes cfg-spin { to { transform: rotate(360deg); } }
+
+    /* ── Grid ── */
+    .cfg-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 1.25rem;
     }
-    .dm-config-card { display: flex; flex-direction: column; }
-    .dm-config-card-full { grid-column: 1 / -1; }
-    .dm-card {
+    .cfg-card-full { grid-column: 1 / -1; }
+
+    /* ── Card ── */
+    .cfg-card {
         background: white;
         border: 1px solid #e2e8f0;
-        border-radius: 12px;
+        border-radius: 14px;
         overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        display: flex; flex-direction: column;
     }
-    .dm-card-header {
-        display: flex;
-        align-items: center;
-        gap: 0.625rem;
+    .cfg-card-head {
+        display: flex; align-items: center; gap: 0.75rem;
         padding: 1rem 1.25rem;
         border-bottom: 1px solid #f1f5f9;
         background: #f8fafc;
     }
-    .dm-card-icon { font-size: 1.2rem; }
-    .dm-card-title { font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0; }
-    .dm-card-body { padding: 1.25rem; flex: 1; }
-    .dm-card-actions { padding-top: 0.75rem; border-top: 1px solid #f1f5f9; margin-top: 0.5rem; }
+    .cfg-card-head-icon {
+        width: 32px; height: 32px; border-radius: 9px;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .cfg-card-head-icon svg { width: 16px; height: 16px; }
+    .cfg-icon-blue   { background: linear-gradient(135deg, #0ea5e9, #38bdf8); }
+    .cfg-icon-purple { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
+    .cfg-icon-teal   { background: linear-gradient(135deg, #0d9488, #2dd4bf); }
+    .cfg-card-title { font-size: 0.92rem; font-weight: 700; color: #0f172a; margin: 0; }
+    .cfg-card-body { padding: 1.25rem; flex: 1; }
 
-    .dm-form-group { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 1rem; }
-    .dm-label { font-size: 0.8rem; font-weight: 600; color: #374151; }
-    .dm-field-hint { font-size: 0.75rem; color: #94a3b8; margin: 0.15rem 0 0; }
-    .dm-input-readonly {
-        display: flex; align-items: center; gap: 0.5rem;
-        padding: 0.5rem 0.75rem;
-        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-        font-size: 0.875rem; color: #64748b;
+    /* ── Form ── */
+    .cfg-field { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 1.1rem; }
+    .cfg-label { font-size: 0.8rem; font-weight: 700; color: #374151; }
+    .cfg-required { color: #ef4444; margin-left: 0.15rem; }
+    .cfg-hint { font-size: 0.75rem; color: #94a3b8; margin: 0; }
+    .cfg-input {
+        width: 100%;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 9px;
+        padding: 0.575rem 0.875rem;
+        font-size: 0.875rem;
+        color: #0f172a;
+        background: white;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .cfg-input:focus {
+        border-color: #0ea5e9;
+        box-shadow: 0 0 0 3px rgba(14,165,233,0.12);
+    }
+    .cfg-input-readonly {
+        display: flex; align-items: center; gap: 0;
+        border: 1.5px solid #e2e8f0; border-radius: 9px;
+        overflow: hidden; background: #f8fafc;
+    }
+    .cfg-subdomain-slug {
+        padding: 0.575rem 0.875rem;
+        font-size: 0.875rem; color: #374151; font-weight: 600;
+        font-family: monospace;
+    }
+    .cfg-subdomain-suffix {
+        padding: 0.575rem 0.875rem;
+        font-size: 0.875rem; color: #94a3b8;
+        background: #f1f5f9; border-left: 1px solid #e2e8f0;
+        font-family: monospace;
+    }
+    .cfg-status {
+        display: inline-flex; align-items: center; gap: 0.45rem;
+        font-size: 0.875rem; font-weight: 600;
+        padding: 0.35rem 0.75rem;
+        border-radius: 8px;
+    }
+    .cfg-status-active   { background: #f0fdf4; color: #15803d; }
+    .cfg-status-inactive { background: #f8fafc; color: #64748b; }
+    .cfg-status-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+    }
+    .cfg-dot-active   { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.2); animation: cfg-pulse 2s infinite; }
+    .cfg-dot-inactive { background: #94a3b8; }
+    @@keyframes cfg-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+        50%       { box-shadow: 0 0 0 5px rgba(34,197,94,0); }
+    }
+    .cfg-actions { padding-top: 1rem; border-top: 1px solid #f1f5f9; margin-top: 0.5rem; }
+    .cfg-btn-save {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        background: linear-gradient(135deg, #0ea5e9, #0284c7);
+        color: white; border: none; border-radius: 9px;
+        padding: 0.6rem 1.25rem;
+        font-size: 0.875rem; font-weight: 700;
+        cursor: pointer; transition: all 0.15s;
+        box-shadow: 0 2px 8px rgba(14,165,233,0.3);
+    }
+    .cfg-btn-save:hover:not(:disabled) {
+        background: linear-gradient(135deg, #0284c7, #0369a1);
+        box-shadow: 0 4px 14px rgba(14,165,233,0.4);
+        transform: translateY(-1px);
+    }
+    .cfg-btn-save:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+    .cfg-btn-spinner {
+        width: 14px; height: 14px;
+        border: 2px solid rgba(255,255,255,0.4);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: cfg-spin 0.75s linear infinite;
     }
 
-    /* Estadísticas */
-    .dm-stat-list { display: flex; flex-direction: column; gap: 1rem; }
-    .dm-stat-item { display: flex; align-items: center; gap: 0.875rem; }
-    .dm-stat-icon {
-        width: 42px; height: 42px;
-        border-radius: 10px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 1.2rem; flex-shrink: 0;
+    /* ── Stats ── */
+    .cfg-stats { display: flex; flex-direction: column; gap: 0.875rem; }
+    .cfg-stat {
+        display: flex; align-items: center; gap: 0.875rem;
+        padding: 0.875rem;
+        background: #f8fafc; border: 1px solid #f1f5f9;
+        border-radius: 10px; position: relative; overflow: hidden;
     }
-    .dm-stat-blue { background: #eff6ff; }
-    .dm-stat-green { background: #f0fdf4; }
-    .dm-stat-purple { background: #f5f3ff; }
-    .dm-stat-info { display: flex; flex-direction: column; }
-    .dm-stat-value { font-size: 1.35rem; font-weight: 800; color: #0f172a; line-height: 1.2; }
-    .dm-stat-label { font-size: 0.78rem; color: #64748b; }
-
-    /* Info plataforma */
-    .dm-platform-info { display: flex; flex-direction: column; gap: 0.875rem; }
-    .dm-platform-item { display: flex; align-items: center; gap: 1rem; padding: 0.625rem 0; border-bottom: 1px solid #f1f5f9; }
-    .dm-platform-item:last-child { border-bottom: none; }
-    .dm-platform-label { font-size: 0.8rem; font-weight: 600; color: #64748b; width: 140px; flex-shrink: 0; }
-    .dm-platform-value { font-size: 0.875rem; color: #0f172a; }
-    .dm-link { color: #0ea5e9; text-decoration: none; }
-    .dm-link:hover { text-decoration: underline; }
-
-    .dm-success-banner {
-        background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
-        padding: 0.75rem 1rem; color: #15803d; margin-bottom: 1rem; font-size: 0.875rem;
+    .cfg-stat-icon {
+        width: 44px; height: 44px; border-radius: 11px;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
+    .cfg-stat-body { flex: 1; min-width: 0; }
+    .cfg-stat-value { font-size: 1.5rem; font-weight: 900; color: #0f172a; line-height: 1.1; }
+    .cfg-stat-label { font-size: 0.78rem; color: #64748b; margin-top: 0.1rem; }
+    .cfg-stat-bar {
+        position: absolute; right: 0; top: 0; bottom: 0;
+        width: 4px; border-radius: 0 10px 10px 0;
+    }
+
+    /* ── Platform ── */
+    .cfg-platform { display: flex; flex-direction: column; }
+    .cfg-platform-row {
+        display: flex; align-items: center; gap: 1.5rem;
+        padding: 0.75rem 0; border-bottom: 1px solid #f8fafc;
+    }
+    .cfg-platform-row:last-child { border-bottom: none; }
+    .cfg-platform-key {
+        font-size: 0.8rem; font-weight: 700; color: #64748b;
+        width: 130px; flex-shrink: 0;
+    }
+    .cfg-platform-val { font-size: 0.875rem; color: #0f172a; }
+
+    /* ── Badges ── */
+    .cfg-badge {
+        display: inline-flex; align-items: center;
+        padding: 0.2rem 0.65rem; border-radius: 999px;
+        font-size: 0.72rem; font-weight: 700;
+    }
+    .cfg-badge-blue  { background: #eff6ff; color: #1d4ed8; }
+    .cfg-badge-green { background: #f0fdf4; color: #15803d; }
+    .cfg-link { color: #0ea5e9; text-decoration: none; }
+    .cfg-link:hover { text-decoration: underline; }
 
     @@media (max-width: 768px) {
-        .dm-config-grid { grid-template-columns: 1fr; }
-        .dm-config-card-full { grid-column: 1; }
+        .cfg-grid { grid-template-columns: 1fr; }
+        .cfg-card-full { grid-column: 1; }
+        .cfg-platform-row { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+        .cfg-platform-key { width: auto; }
     }
 </style>
