@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Manual de Usuario — DataMedix Plataforma Clínica</title>
+<style>
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0f172a;
+    --navy2: #1e293b;
+    --blue: #0ea5e9;
+    --purple: #8b5cf6;
+    --green: #22c55e;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --gray50: #f8fafc;
+    --gray100: #f1f5f9;
+    --gray200: #e2e8f0;
+    --gray400: #94a3b8;
+    --gray600: #475569;
+    --gray800: #1e293b;
+    --text: #0f172a;
+    --sidebar-w: 260px;
+    --content-max: 860px;
+  }
+  html { scroll-behavior: smooth; font-size: 15px; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--text);
+    background: var(--gray50);
+    line-height: 1.65;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Layout ── */
+  .shell { display: flex; min-height: 100vh; }
+
+  /* ── Sidebar TOC ── */
+  .toc {
+    width: var(--sidebar-w);
+    background: var(--navy);
+    color: #cbd5e1;
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+    scrollbar-color: #1e293b transparent;
+    z-index: 100;
+  }
+  .toc-brand {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .toc-logo {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 100%);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(14,165,233,0.35);
+  }
+  .toc-logo svg { width: 18px; height: 18px; }
+  .toc-brand-text .name { font-size: 0.95rem; font-weight: 800; color: #f1f5f9; }
+  .toc-brand-text .sub { font-size: 0.62rem; color: #475569; font-weight: 600; letter-spacing: 0.06em; }
+  .toc-version {
+    font-size: 0.62rem; color: #334155; background: rgba(255,255,255,0.04);
+    padding: 0.25rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .toc-section-title {
+    font-size: 0.58rem; font-weight: 800; color: #334155;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 0.875rem 1.25rem 0.3rem;
+  }
+  .toc a {
+    display: block; padding: 0.42rem 1.25rem;
+    font-size: 0.8rem; color: #94a3b8;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+  }
+  .toc a:hover, .toc a.active {
+    color: #38bdf8;
+    background: rgba(14,165,233,0.08);
+    border-left-color: #0ea5e9;
+    text-decoration: none;
+  }
+  .toc a.sub { padding-left: 2rem; font-size: 0.77rem; color: #64748b; }
+  .toc a.sub:hover, .toc a.sub.active { color: #38bdf8; background: rgba(14,165,233,0.05); }
+
+  /* ── Main ── */
+  .main {
+    margin-left: var(--sidebar-w);
+    flex: 1;
+    min-width: 0;
+    padding: 0 0 4rem;
+  }
+
+  /* ── Cover ── */
+  .cover {
+    background: linear-gradient(135deg, var(--navy) 0%, #0f2444 60%, #1a103a 100%);
+    color: white;
+    padding: 4rem 3rem 3.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 80% 50%, rgba(14,165,233,0.12) 0%, transparent 60%),
+                radial-gradient(circle at 20% 80%, rgba(139,92,246,0.10) 0%, transparent 50%);
+  }
+  .cover-inner { position: relative; z-index: 1; max-width: var(--content-max); }
+  .cover-badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: rgba(14,165,233,0.15); border: 1px solid rgba(14,165,233,0.3);
+    color: #38bdf8; border-radius: 999px; padding: 0.3rem 0.9rem;
+    font-size: 0.73rem; font-weight: 700; letter-spacing: 0.06em;
+    margin-bottom: 1.25rem;
+  }
+  .cover h1 { font-size: 2.4rem; font-weight: 900; line-height: 1.15; margin-bottom: 0.75rem; }
+  .cover h1 span { color: #38bdf8; }
+  .cover .subtitle { color: #94a3b8; font-size: 1rem; max-width: 520px; margin-bottom: 2rem; }
+  .cover-meta { display: flex; flex-wrap: wrap; gap: 2rem; }
+  .cover-meta-item { display: flex; flex-direction: column; }
+  .cover-meta-item .label { font-size: 0.65rem; color: #475569; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+  .cover-meta-item .value { font-size: 0.9rem; color: #e2e8f0; font-weight: 600; }
+
+  /* ── Content area ── */
+  .content { max-width: var(--content-max); padding: 2.5rem 3rem; margin: 0 auto; }
+
+  /* ── Section headers ── */
+  .section-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+    color: white; font-size: 0.75rem; font-weight: 800;
+    margin-right: 0.6rem; flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(14,165,233,0.3);
+  }
+  h2 {
+    font-size: 1.45rem; font-weight: 800; color: var(--navy);
+    display: flex; align-items: center;
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--gray200);
+  }
+  h2:first-child { margin-top: 0; }
+  h3 {
+    font-size: 1.05rem; font-weight: 700; color: var(--navy2);
+    margin: 1.75rem 0 0.75rem;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  h3::before {
+    content: '';
+    display: inline-block; width: 3px; height: 16px;
+    background: linear-gradient(180deg, #0ea5e9, #8b5cf6);
+    border-radius: 2px; flex-shrink: 0;
+  }
+  p { margin-bottom: 0.75rem; color: #374151; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
+  li { margin-bottom: 0.35rem; color: #374151; }
+  strong { color: var(--navy); }
+
+  /* ── Callout boxes ── */
+  .callout {
+    display: flex; gap: 0.75rem; align-items: flex-start;
+    border-radius: 10px; padding: 0.9rem 1rem;
+    margin: 1rem 0; font-size: 0.875rem;
+  }
+  .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.05rem; }
+  .callout.info    { background: #eff6ff; border-left: 3px solid #3b82f6; }
+  .callout.warning { background: #fffbeb; border-left: 3px solid #f59e0b; }
+  .callout.danger  { background: #fef2f2; border-left: 3px solid #ef4444; }
+  .callout.success { background: #f0fdf4; border-left: 3px solid #22c55e; }
+  .callout.tip     { background: #f5f3ff; border-left: 3px solid #8b5cf6; }
+  .callout-body strong { display: block; margin-bottom: 0.2rem; }
+
+  /* ── Steps ── */
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+  .steps li {
+    counter-increment: step;
+    display: flex; gap: 1rem; align-items: flex-start;
+    margin-bottom: 1rem; padding: 0.9rem 1rem;
+    background: white; border: 1px solid var(--gray200);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .steps li::before {
+    content: counter(step);
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+    color: white; font-size: 0.75rem; font-weight: 800;
+    flex-shrink: 0; margin-top: 0.1rem;
+  }
+  .steps li .step-content { flex: 1; }
+  .steps li .step-title { font-weight: 700; color: var(--navy); margin-bottom: 0.2rem; font-size: 0.9rem; }
+  .steps li .step-desc { font-size: 0.85rem; color: #4b5563; }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 0.2rem 0.65rem; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+  }
+  .badge-blue   { background: #eff6ff; color: #1d4ed8; }
+  .badge-green  { background: #f0fdf4; color: #15803d; }
+  .badge-red    { background: #fef2f2; color: #dc2626; }
+  .badge-amber  { background: #fffbeb; color: #b45309; }
+  .badge-purple { background: #f5f3ff; color: #7c3aed; }
+  .badge-gray   { background: #f1f5f9; color: #475569; }
+
+  /* ── Role table ── */
+  table {
+    width: 100%; border-collapse: collapse;
+    border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--gray200);
+    margin: 1rem 0; font-size: 0.875rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+  th {
+    background: var(--gray100); color: var(--navy2);
+    font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 0.7rem 1rem; text-align: left;
+    border-bottom: 2px solid var(--gray200);
+  }
+  td { padding: 0.65rem 1rem; border-bottom: 1px solid var(--gray100); color: #374151; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--gray50); }
+
+  /* ── Screen mockups ── */
+  .mockup {
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
+    margin: 1.5rem 0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  .mockup-bar {
+    background: #1a1a2e; padding: 0.7rem 1rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .mockup-bar .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .mockup-bar .dot-r { background: #ff5f57; }
+  .mockup-bar .dot-y { background: #febc2e; }
+  .mockup-bar .dot-g { background: #28c840; }
+  .mockup-bar .url {
+    flex: 1; background: rgba(255,255,255,0.07); border-radius: 6px;
+    padding: 0.25rem 0.75rem; font-size: 0.75rem; color: #94a3b8;
+    margin-left: 0.5rem; font-family: monospace;
+  }
+  .mockup-body { background: white; }
+
+  /* APP SHELL INSIDE MOCKUP */
+  .app-shell { display: flex; height: 340px; overflow: hidden; }
+  .app-shell.tall { height: 400px; }
+  .app-shell.taller { height: 460px; }
+
+  .app-nav {
+    width: 190px; background: #0f172a; flex-shrink: 0;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .app-nav-brand {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.875rem 0.875rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    flex-shrink: 0;
+  }
+  .app-nav-logo {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(14,165,233,0.35);
+  }
+  .app-nav-logo svg { width: 13px; height: 13px; }
+  .app-nav-brand-t .n { font-size: 0.72rem; font-weight: 800; color: #f1f5f9; }
+  .app-nav-brand-t .s { font-size: 0.5rem; color: #475569; font-weight: 600; }
+  .app-nav-section {
+    font-size: 0.5rem; font-weight: 800; color: #334155;
+    letter-spacing: 0.1em; padding: 0.6rem 0.875rem 0.25rem;
+    text-transform: uppercase;
+  }
+  .app-nav-item {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 0.875rem; border-radius: 6px; margin: 0 0.4rem 0.05rem;
+    color: #94a3b8; font-size: 0.72rem; font-weight: 500; cursor: pointer;
+    border-left: 2px solid transparent;
+  }
+  .app-nav-item:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
+  .app-nav-item.active {
+    background: rgba(14,165,233,0.15); color: #38bdf8; font-weight: 600;
+    border-left-color: #0ea5e9;
+  }
+  .app-nav-item svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .app-nav-menu { flex: 1; overflow-y: auto; padding: 0.5rem 0; scrollbar-width: none; }
+  .app-nav-footer {
+    padding: 0.6rem 0.875rem;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    font-size: 0.65rem; color: #475569;
+  }
+  .app-nav-user { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }
+  .app-nav-avatar {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.55rem; font-weight: 800; color: white;
+  }
+  .app-nav-user-info .uname { font-size: 0.65rem; font-weight: 600; color: #e2e8f0; }
+  .app-nav-user-info .urole { font-size: 0.55rem; color: #475569; text-transform: uppercase; font-weight: 700; }
+
+  .app-content { flex: 1; background: #f8fafc; overflow-y: auto; padding: 1rem 1.25rem; }
+
+  /* KPI cards mockup */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.6rem; margin-bottom: 0.75rem; }
+  .kpi-card {
+    background: white; border-radius: 10px; padding: 0.875rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    position: relative; overflow: hidden;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .kpi-card.k1::before { background: linear-gradient(90deg,#0ea5e9,#38bdf8); }
+  .kpi-card.k2::before { background: linear-gradient(90deg,#22c55e,#4ade80); }
+  .kpi-card.k3::before { background: linear-gradient(90deg,#f59e0b,#fbbf24); }
+  .kpi-card.k4::before { background: linear-gradient(90deg,#8b5cf6,#a78bfa); }
+  .kpi-label { font-size: 0.58rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.35rem; }
+  .kpi-value { font-size: 1.3rem; font-weight: 900; color: #0f172a; line-height: 1; margin-bottom: 0.25rem; }
+  .kpi-sub { font-size: 0.58rem; color: #94a3b8; }
+
+  .quick-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.5rem; }
+  .quick-card {
+    background: white; border-radius: 8px; padding: 0.65rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.65rem; font-weight: 600; color: #374151;
+    cursor: pointer;
+  }
+  .quick-icon {
+    width: 28px; height: 28px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .quick-icon svg { width: 14px; height: 14px; }
+  .qi-blue   { background: #eff6ff; color: #3b82f6; }
+  .qi-green  { background: #f0fdf4; color: #22c55e; }
+  .qi-purple { background: #f5f3ff; color: #8b5cf6; }
+
+  /* Login form mockup */
+  .login-mock {
+    min-height: 320px; background: linear-gradient(135deg, #0f172a, #1a1a3e);
+    display: flex; align-items: center; justify-content: center; padding: 2rem;
+  }
+  .login-card {
+    background: white; border-radius: 16px; padding: 2rem;
+    width: 100%; max-width: 340px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  }
+  .login-logo-wrap {
+    display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.5rem;
+  }
+  .login-logo {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg,#0ea5e9,#8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .login-logo svg { width: 18px; height: 18px; }
+  .login-title-grp .lt { font-size: 1rem; font-weight: 800; color: #0f172a; }
+  .login-title-grp .ls { font-size: 0.65rem; color: #94a3b8; }
+  .login-heading { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem; }
+  .login-sub { font-size: 0.78rem; color: #94a3b8; margin-bottom: 1.25rem; }
+  .mock-label { font-size: 0.72rem; font-weight: 600; color: #374151; display: block; margin-bottom: 0.3rem; }
+  .mock-input {
+    width: 100%; border: 1.5px solid #e2e8f0; border-radius: 8px;
+    padding: 0.55rem 0.75rem; font-size: 0.82rem; color: #374151;
+    margin-bottom: 0.875rem; background: white;
+  }
+  .mock-input.focused { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
+  .mock-btn {
+    width: 100%; background: linear-gradient(135deg,#0ea5e9,#0284c7);
+    color: white; border: none; border-radius: 8px;
+    padding: 0.65rem; font-size: 0.85rem; font-weight: 700;
+    cursor: pointer; text-align: center;
+  }
+  .mock-link { font-size: 0.72rem; color: #94a3b8; text-align: center; margin-top: 0.75rem; }
+
+  /* Table mockup */
+  .mock-table-card {
+    background: white; border-radius: 12px; overflow: hidden;
+    border: 1px solid #e2e8f0; font-size: 0.72rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .mock-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.7rem 1rem; border-bottom: 1px solid #f1f5f9; gap: 0.5rem;
+  }
+  .mock-search {
+    display: flex; align-items: center; gap: 0.35rem;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 0.35rem 0.65rem; font-size: 0.72rem; color: #94a3b8; flex: 1;
+  }
+  .mock-search svg { width: 12px; height: 12px; color: #94a3b8; flex-shrink: 0; }
+  .mock-add-btn {
+    display: flex; align-items: center; gap: 0.3rem;
+    background: linear-gradient(135deg,#0ea5e9,#0284c7);
+    color: white; border-radius: 7px; padding: 0.35rem 0.7rem;
+    font-size: 0.68rem; font-weight: 700; white-space: nowrap;
+  }
+  .mock-th {
+    display: grid; padding: 0.5rem 1rem;
+    background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+    color: #94a3b8; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .mock-tr {
+    display: grid; padding: 0.55rem 1rem;
+    border-bottom: 1px solid #f1f5f9; align-items: center;
+    font-size: 0.7rem; color: #374151;
+  }
+  .mock-tr:last-child { border-bottom: none; }
+  .mock-tr:hover { background: #f8fafc; }
+  .mock-role-badge {
+    display: inline-flex; align-items: center; padding: 0.15rem 0.5rem;
+    border-radius: 5px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .rb-admin  { background: #fef2f2; color: #dc2626; }
+  .rb-medico { background: #eff6ff; color: #1d4ed8; }
+  .rb-oper   { background: #f0fdf4; color: #15803d; }
+  .rb-super  { background: #fdf4ff; color: #7c3aed; }
+  .mock-status-dot {
+    display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.65rem;
+  }
+  .dot-active { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+  .dot-inactive { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
+
+  /* Audit table mockup */
+  .audit-filters {
+    display: flex; align-items: flex-end; gap: 0.5rem; flex-wrap: wrap;
+    padding: 0.6rem 0.875rem; background: white;
+    border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 0.625rem;
+    font-size: 0.65rem;
+  }
+  .af-group { display: flex; flex-direction: column; gap: 0.15rem; }
+  .af-label { font-size: 0.6rem; font-weight: 600; color: #374151; }
+  .af-input {
+    border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.3rem 0.5rem;
+    font-size: 0.65rem; color: #374151; background: white; width: 100px;
+  }
+  .af-btn {
+    padding: 0.3rem 0.65rem; border-radius: 6px; font-size: 0.65rem;
+    font-weight: 700; cursor: pointer; align-self: flex-end;
+  }
+  .af-btn-primary { background: #0ea5e9; color: white; border: none; }
+  .af-btn-ghost { background: white; color: #64748b; border: 1px solid #e2e8f0; }
+  .mock-accion-badge {
+    display: inline-block; padding: 0.15rem 0.4rem; border-radius: 4px;
+    font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .ab-login   { background: #eff6ff; color: #1d4ed8; }
+  .ab-import  { background: #f0fdf4; color: #15803d; }
+  .ab-create  { background: #f0fdf4; color: #16a34a; }
+  .ab-update  { background: #fffbeb; color: #b45309; }
+  .ab-delete  { background: #fef2f2; color: #dc2626; }
+  .ab-export  { background: #f0f9ff; color: #0369a1; }
+
+  /* Import mockup */
+  .import-zone {
+    border: 2px dashed #e2e8f0; border-radius: 12px;
+    padding: 1.5rem 1rem; text-align: center;
+    background: #f8fafc; margin: 0.5rem 0;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .import-zone:hover { border-color: #0ea5e9; background: #eff6ff; }
+  .import-zone svg { width: 28px; height: 28px; color: #94a3b8; margin-bottom: 0.4rem; }
+  .import-zone .iz-title { font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 0.2rem; }
+  .import-zone .iz-sub { font-size: 0.65rem; color: #94a3b8; }
+  .progress-bar { background: #e2e8f0; border-radius: 999px; height: 6px; margin: 0.5rem 0; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg,#0ea5e9,#8b5cf6); }
+
+  /* Page header mockup */
+  .mock-page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+  .mock-page-title { font-size: 0.95rem; font-weight: 800; color: #0f172a; }
+  .mock-page-sub { font-size: 0.65rem; color: #94a3b8; margin-top: 0.1rem; }
+
+  /* Config cards */
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .config-card {
+    background: white; border-radius: 10px; padding: 0.875rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .config-card-title { font-size: 0.72rem; font-weight: 700; color: #0f172a; margin-bottom: 0.5rem; }
+  .config-field-label { font-size: 0.6rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+  .config-field-value { font-size: 0.78rem; color: #374151; font-weight: 500; }
+
+  /* modal mockup */
+  .modal-overlay {
+    position: absolute; inset: 0;
+    background: rgba(15,23,42,0.6); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 0 0 13px 13px;
+  }
+  .modal-card {
+    background: white; border-radius: 14px; width: 320px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.2);
+    overflow: hidden;
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.875rem 1rem; border-bottom: 1px solid #f1f5f9;
+  }
+  .modal-header h4 { font-size: 0.85rem; font-weight: 700; color: #0f172a; }
+  .modal-close { width: 22px; height: 22px; border-radius: 6px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: #64748b; cursor: pointer; }
+  .modal-body { padding: 0.875rem 1rem; }
+  .modal-field { margin-bottom: 0.6rem; }
+  .modal-field label { font-size: 0.65rem; font-weight: 600; color: #374151; display: block; margin-bottom: 0.2rem; }
+  .modal-field input, .modal-field select {
+    width: 100%; border: 1.5px solid #e2e8f0; border-radius: 7px;
+    padding: 0.4rem 0.6rem; font-size: 0.75rem; color: #374151; background: white;
+  }
+  .modal-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+  .modal-footer {
+    display: flex; justify-content: flex-end; gap: 0.5rem;
+    padding: 0.75rem 1rem; border-top: 1px solid #f1f5f9;
+  }
+  .modal-btn-cancel { padding: 0.4rem 0.875rem; border-radius: 7px; border: 1px solid #e2e8f0; background: white; font-size: 0.75rem; font-weight: 600; color: #64748b; cursor: pointer; }
+  .modal-btn-save { padding: 0.4rem 0.875rem; border-radius: 7px; border: none; background: linear-gradient(135deg,#0ea5e9,#0284c7); color: white; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+
+  /* Caption */
+  .img-caption {
+    text-align: center; font-size: 0.78rem; color: #64748b;
+    margin-top: -0.75rem; margin-bottom: 1.25rem;
+    font-style: italic;
+  }
+
+  /* ── Keyboard shortcut ── */
+  kbd {
+    display: inline-block; padding: 0.15rem 0.45rem;
+    background: var(--gray100); border: 1px solid var(--gray200);
+    border-bottom-width: 2px; border-radius: 5px;
+    font-size: 0.75rem; font-family: monospace; color: var(--navy);
+  }
+
+  /* ── Divider ── */
+  .divider { height: 1px; background: var(--gray200); margin: 2rem 0; }
+
+  /* ── Scroll top btn ── */
+  .back-to-top {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.78rem; color: var(--gray400); padding: 0.35rem 0.75rem;
+    border: 1px solid var(--gray200); border-radius: 8px;
+    background: white; margin-top: 1.5rem; cursor: pointer;
+    text-decoration: none;
+  }
+  .back-to-top:hover { color: var(--blue); border-color: var(--blue); text-decoration: none; }
+
+  /* ── Print ── */
+  @media print {
+    .toc { display: none; }
+    .main { margin-left: 0; }
+    .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .mockup { page-break-inside: avoid; }
+    h2 { page-break-before: always; }
+    h2:first-child { page-break-before: auto; }
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .toc { display: none; }
+    .main { margin-left: 0; }
+    .content { padding: 1.5rem 1.25rem; }
+    .cover { padding: 2rem 1.25rem; }
+    .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    .config-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ───────── SIDEBAR TOC ───────── -->
+<nav class="toc" id="toc">
+  <div class="toc-brand">
+    <div class="toc-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+    </div>
+    <div class="toc-brand-text">
+      <div class="name">DataMedix</div>
+      <div class="sub">Manual de Usuario</div>
+    </div>
+  </div>
+  <div class="toc-version">v1.0 · Mayo 2026</div>
+
+  <div class="toc-section-title">Contenido</div>
+  <a href="#sec-intro">1. Introducción</a>
+  <a href="#sec-acceso">2. Acceso al Sistema</a>
+  <a href="#sec-login" class="sub">2.1 Inicio de Sesión</a>
+  <a href="#sec-roles" class="sub">2.2 Roles de Usuario</a>
+  <a href="#sec-dashboard">3. Dashboard</a>
+  <a href="#sec-laboratorio">4. Laboratorio</a>
+  <a href="#sec-importar" class="sub">4.1 Cargar Resultados</a>
+  <a href="#sec-historial" class="sub">4.2 Historial Clínico</a>
+  <a href="#sec-crudos" class="sub">4.3 Resultados Crudos</a>
+  <a href="#sec-clinico">5. Módulo Clínico</a>
+  <a href="#sec-pacientes" class="sub">5.1 Pacientes</a>
+  <a href="#sec-prescripciones" class="sub">5.2 Prescripciones</a>
+  <a href="#sec-reglas" class="sub">5.3 Reglas Clínicas</a>
+  <a href="#sec-admin">6. Administración</a>
+  <a href="#sec-lotes" class="sub">6.1 Lotes de Carga</a>
+  <a href="#sec-reportes" class="sub">6.2 Reportes</a>
+  <a href="#sec-usuarios" class="sub">6.3 Gestión de Usuarios</a>
+  <a href="#sec-configuracion" class="sub">6.4 Configuración</a>
+  <a href="#sec-auditoria" class="sub">6.5 Auditoría</a>
+  <a href="#sec-seguridad">7. Seguridad</a>
+  <a href="#sec-troubleshooting">8. Solución de Problemas</a>
+  <a href="#sec-glosario">9. Glosario</a>
+</nav>
+
+<!-- ───────── MAIN CONTENT ───────── -->
+<main class="main">
+
+  <!-- COVER -->
+  <div class="cover" id="top">
+    <div class="cover-inner">
+      <div class="cover-badge">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Plataforma Clínica SaaS
+      </div>
+      <h1>Manual de Usuario<br><span>DataMedix</span></h1>
+      <p class="subtitle">Guía completa de uso del sistema — desde el inicio de sesión hasta la administración avanzada del tenant.</p>
+      <div class="cover-meta">
+        <div class="cover-meta-item"><span class="label">Versión</span><span class="value">1.0.0</span></div>
+        <div class="cover-meta-item"><span class="label">Fecha</span><span class="value">Mayo 2026</span></div>
+        <div class="cover-meta-item"><span class="label">Audiencia</span><span class="value">Todos los usuarios</span></div>
+        <div class="cover-meta-item"><span class="label">Clasificación</span><span class="value">Confidencial</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+
+  <!-- ═══════════════════════════════════════════
+       1. INTRODUCCIÓN
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-intro"><span class="section-number">1</span>Introducción</h2>
+
+  <p><strong>DataMedix</strong> es una plataforma clínica SaaS multi-tenant diseñada para la gestión integral de resultados de laboratorio, historial clínico de pacientes, prescripciones médicas y administración del personal de salud.</p>
+
+  <p>Este manual cubre todas las funcionalidades disponibles. Cada sección incluye capturas de pantalla de la interfaz, pasos detallados y notas importantes sobre restricciones o permisos requeridos.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>Acceso basado en roles</strong>
+      Algunas secciones (Administración) sólo están disponibles para usuarios con rol <span class="badge badge-red">ADMIN</span> o <span class="badge badge-purple">SUPERADMIN</span>. Los menús correspondientes se ocultan automáticamente para roles sin permiso.
+    </div>
+  </div>
+
+  <h3>Requisitos del sistema</h3>
+  <table>
+    <thead><tr><th>Componente</th><th>Requisito mínimo</th></tr></thead>
+    <tbody>
+      <tr><td>Navegador</td><td>Chrome 110+, Edge 110+, Firefox 115+, Safari 16+</td></tr>
+      <tr><td>Conexión</td><td>Internet estable (≥ 5 Mbps para carga de archivos Excel)</td></tr>
+      <tr><td>Resolución</td><td>1280 × 720 px o superior (responsive hasta 375 px)</td></tr>
+      <tr><td>JavaScript</td><td>Habilitado (requerido para SignalR/Blazor Server)</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ═══════════════════════════════════════════
+       2. ACCESO AL SISTEMA
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-acceso"><span class="section-number">2</span>Acceso al Sistema</h2>
+
+  <h3 id="sec-login">2.1 Inicio de Sesión</h3>
+
+  <p>Acceda a la URL de la plataforma proporcionada por su administrador. Si intenta navegar directamente a cualquier página protegida sin sesión activa, el sistema lo redirigirá automáticamente a la pantalla de login.</p>
+
+  <!-- MOCKUP: LOGIN -->
+  <div class="mockup">
+    <div class="mockup-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <div class="url">https://app.datamedix.com/login</div>
+    </div>
+    <div class="mockup-body">
+      <div class="login-mock">
+        <div class="login-card">
+          <div class="login-logo-wrap">
+            <div class="login-logo">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </div>
+            <div class="login-title-grp"><div class="lt">DataMedix</div><div class="ls">Plataforma Clínica</div></div>
+          </div>
+          <div class="login-heading">Iniciar sesión</div>
+          <div class="login-sub">Ingrese sus credenciales para continuar</div>
+          <label class="mock-label">Correo electrónico</label>
+          <input class="mock-input focused" type="email" value="medico@clinica.com" readonly/>
+          <label class="mock-label">Contraseña</label>
+          <input class="mock-input" type="password" value="••••••••" readonly/>
+          <div class="mock-btn">Iniciar sesión</div>
+          <div class="mock-link">¿Problemas para acceder? Contacte al administrador</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="img-caption">Figura 1 — Pantalla de inicio de sesión</p>
+
+  <ol class="steps">
+    <li>
+      <div class="step-content">
+        <div class="step-title">Abra el navegador y acceda a la URL</div>
+        <div class="step-desc">Escriba la dirección de DataMedix en la barra de su navegador (p. ej. <code>https://app.datamedix.com</code>). Si ya existe una sesión activa, será redirigido al Dashboard automáticamente.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Ingrese su correo electrónico</div>
+        <div class="step-desc">Use el correo registrado por el administrador del sistema. Es sensible a mayúsculas y debe ser una dirección válida.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Ingrese su contraseña</div>
+        <div class="step-desc">La contraseña es sensible a mayúsculas. Si es su primer acceso, utilice la contraseña temporal proporcionada por el administrador.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Haga clic en "Iniciar sesión"</div>
+        <div class="step-desc">Si las credenciales son correctas será redirigido al Dashboard. La sesión expira automáticamente tras 8 horas de inactividad.</div>
+      </div>
+    </li>
+  </ol>
+
+  <div class="callout warning">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <strong>Sesión segura</strong>
+      No comparta sus credenciales ni use equipos públicos sin cerrar sesión al finalizar. La sesión persiste durante 8 horas con actividad continua.
+    </div>
+  </div>
+
+  <h3 id="sec-roles">2.2 Roles de Usuario</h3>
+  <p>Cada usuario tiene un rol que determina las funcionalidades disponibles:</p>
+  <table>
+    <thead><tr><th>Rol</th><th>Acceso</th><th>Puede gestionar usuarios</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-purple">SUPERADMIN</span></td>
+        <td>Acceso total a todas las funcionalidades y todos los tenants</td>
+        <td>✅ Sí</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-red">ADMIN</span></td>
+        <td>Acceso total al tenant propio: laboratorio, clínico y administración</td>
+        <td>✅ Sí</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">MÉDICO</span></td>
+        <td>Laboratorio, historial clínico, pacientes, prescripciones, reglas</td>
+        <td>❌ No</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-green">OPERADOR</span></td>
+        <td>Cargar resultados, historial clínico, resultados crudos</td>
+        <td>❌ No</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <strong>¿No ve el menú de Administración?</strong>
+      El menú de Administración (Usuarios, Configuración, Auditoría, etc.) sólo es visible para roles ADMIN y SUPERADMIN. Si necesita acceso, contacte a su administrador.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       3. DASHBOARD
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-dashboard"><span class="section-number">3</span>Dashboard</h2>
+
+  <p>El Dashboard es la pantalla principal tras el inicio de sesión. Muestra un resumen en tiempo real del estado del sistema: indicadores clave (KPIs), accesos rápidos y actividad reciente.</p>
+
+  <!-- MOCKUP: DASHBOARD -->
+  <div class="mockup">
+    <div class="mockup-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <div class="url">https://app.datamedix.com/dashboard</div>
+    </div>
+    <div class="mockup-body">
+      <div class="app-shell">
+        <!-- Sidebar -->
+        <div class="app-nav">
+          <div class="app-nav-brand">
+            <div class="app-nav-logo">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </div>
+            <div class="app-nav-brand-t"><div class="n">DataMedix</div><div class="s">Plataforma Clínica</div></div>
+          </div>
+          <div class="app-nav-menu">
+            <div class="app-nav-section">General</div>
+            <div class="app-nav-item active">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              Dashboard
+            </div>
+            <div class="app-nav-section">Laboratorio</div>
+            <div class="app-nav-item">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Cargar Resultados
+            </div>
+            <div class="app-nav-item">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Historial Clínico
+            </div>
+            <div class="app-nav-section">Clínico</div>
+            <div class="app-nav-item">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              Pacientes
+            </div>
+          </div>
+          <div class="app-nav-footer">
+            <div class="app-nav-user">
+              <div class="app-nav-avatar">D</div>
+              <div class="app-nav-user-info">
+                <div class="uname">Dr. García</div>
+                <div class="urole">Médico</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Content -->
+        <div class="app-content">
+          <div class="mock-page-header">
+            <div>
+              <div class="mock-page-title">Dashboard</div>
+              <div class="mock-page-sub">Resumen general de la plataforma</div>
+            </div>
+          </div>
+          <div class="kpi-grid">
+            <div class="kpi-card k1"><div class="kpi-label">Pacientes Totales</div><div class="kpi-value">1,284</div><div class="kpi-sub">↑ 12 este mes</div></div>
+            <div class="kpi-card k2"><div class="kpi-label">Resultados Hoy</div><div class="kpi-value">48</div><div class="kpi-sub">3 lotes procesados</div></div>
+            <div class="kpi-card k3"><div class="kpi-label">Alertas Activas</div><div class="kpi-value">7</div><div class="kpi-sub">Requieren revisión</div></div>
+            <div class="kpi-card k4"><div class="kpi-label">Prescripciones</div><div class="kpi-value">203</div><div class="kpi-sub">Este mes</div></div>
+          </div>
+          <div class="quick-grid">
+            <div class="quick-card"><div class="quick-icon qi-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/></svg></div>Cargar Excel</div>
+            <div class="quick-card"><div class="quick-icon qi-green"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>Nuevo Paciente</div>
+            <div class="quick-card"><div class="quick-icon qi-purple"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>Ver Historial</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="img-caption">Figura 2 — Dashboard principal con KPIs y accesos rápidos</p>
+
+  <h3>Descripción de los KPI</h3>
+  <table>
+    <thead><tr><th>Indicador</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Pacientes Totales</strong></td><td>Total de pacientes registrados en el tenant</td></tr>
+      <tr><td><strong>Resultados Hoy</strong></td><td>Exámenes procesados durante la jornada actual</td></tr>
+      <tr><td><strong>Alertas Activas</strong></td><td>Resultados fuera de rango que requieren revisión clínica</td></tr>
+      <tr><td><strong>Prescripciones</strong></td><td>Total de prescripciones emitidas en el mes en curso</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>Accesos rápidos</strong>
+      Los tres botones en la parte inferior del dashboard son atajos directos a: <em>Cargar Excel</em>, <em>Nuevo Paciente</em> y <em>Ver Historial</em>. Son equivalentes a usar el menú lateral.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       4. LABORATORIO
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-laboratorio"><span class="section-number">4</span>Laboratorio</h2>
+
+  <h3 id="sec-importar">4.1 Cargar Resultados (Importar Excel)</h3>
+  <p>Permite importar archivos Excel con resultados de exámenes de laboratorio. El sistema procesa el archivo, valida las columnas requeridas y aplica las reglas clínicas activas.</p>
+
+  <!-- MOCKUP: IMPORTAR -->
+  <div class="mockup">
+    <div class="mockup-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <div class="url">https://app.datamedix.com/laboratorio/importar</div>
+    </div>
+    <div class="mockup-body">
+      <div class="app-shell tall">
+        <div class="app-nav">
+          <div class="app-nav-brand">
+            <div class="app-nav-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div class="app-nav-brand-t"><div class="n">DataMedix</div><div class="s">Plataforma Clínica</div></div>
+          </div>
+          <div class="app-nav-menu">
+            <div class="app-nav-section">Laboratorio</div>
+            <div class="app-nav-item active">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Cargar Resultados
+            </div>
+            <div class="app-nav-item">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Historial Clínico
+            </div>
+          </div>
+        </div>
+        <div class="app-content">
+          <div class="mock-page-header">
+            <div><div class="mock-page-title">Cargar Resultados</div><div class="mock-page-sub">Importar Excel de laboratorio</div></div>
+          </div>
+          <div class="import-zone">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div class="iz-title">Arrastre aquí su archivo Excel o haga clic para seleccionar</div>
+            <div class="iz-sub">Formatos aceptados: .xlsx · Tamaño máximo: 50 MB</div>
+          </div>
+          <div style="background:white;border-radius:10px;padding:0.875rem;border:1px solid #e2e8f0;margin-top:0.5rem;">
+            <div style="font-size:0.7rem;font-weight:700;color:#0f172a;margin-bottom:0.5rem;">📊 resultados_mayo_2026.xlsx</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:72%"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:0.62rem;color:#94a3b8;margin-top:0.25rem;">
+              <span>Procesando fila 360 de 500…</span><span>72%</span>
+            </div>
+          </div>
+          <div style="margin-top:0.5rem;display:flex;gap:0.4rem;">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:0.5rem 0.75rem;font-size:0.65rem;color:#15803d;font-weight:600;">✓ 342 registros válidos</div>
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:0.5rem 0.75rem;font-size:0.65rem;color:#b45309;font-weight:600;">⚠ 18 con advertencia</div>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:0.5rem 0.75rem;font-size:0.65rem;color:#dc2626;font-weight:600;">✕ 0 errores</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="img-caption">Figura 3 — Pantalla de importación con barra de progreso y resumen de validación</p>
+
+  <ol class="steps">
+    <li>
+      <div class="step-content">
+        <div class="step-title">Prepare el archivo Excel</div>
+        <div class="step-desc">El archivo debe seguir la plantilla estándar del laboratorio. Verifique que las columnas de identificación del paciente, nombre del examen y resultado numérico estén presentes.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Arrastre el archivo a la zona de carga o haga clic en ella</div>
+        <div class="step-desc">Se acepta formato <strong>.xlsx</strong> con un tamaño máximo de <strong>50 MB</strong>. Al hacer clic se abrirá el explorador de archivos del sistema operativo.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Espere a que el sistema procese el archivo</div>
+        <div class="step-desc">La barra de progreso indica el avance fila por fila. El tiempo varía según el tamaño del archivo (≈ 1 000 filas/seg).</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Revise el resumen de validación</div>
+        <div class="step-desc">Al finalizar verá: registros válidos (verde), con advertencia (amarillo) y con errores (rojo). Los registros con advertencia se importan; los de error, no.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Confirme la importación</div>
+        <div class="step-desc">Haga clic en <strong>Importar</strong> para confirmar. El lote quedará registrado en "Lotes de Carga" con estado <span class="badge badge-green">Aprobado</span> o <span class="badge badge-amber">Pendiente</span> según la configuración del tenant.</div>
+      </div>
+    </li>
+  </ol>
+
+  <div class="callout danger">
+    <span class="callout-icon">🚫</span>
+    <div class="callout-body">
+      <strong>Archivos .xls no son aceptados</strong>
+      El sistema sólo acepta el formato moderno <code>.xlsx</code> (Excel 2007+). Si tiene archivos más antiguos, ábralos en Excel y guarde como <em>Libro de Excel (.xlsx)</em>.
+    </div>
+  </div>
+
+  <h3 id="sec-historial">4.2 Historial Clínico</h3>
+  <p>Vista consolidada de todos los resultados de laboratorio de un paciente a lo largo del tiempo. Permite filtrar por rango de fechas, tipo de examen y comparar tendencias.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      Use el campo de búsqueda para localizar un paciente por nombre o número de identificación. El historial muestra los resultados ordenados del más reciente al más antiguo.
+    </div>
+  </div>
+
+  <h3 id="sec-crudos">4.3 Resultados Crudos</h3>
+  <p>Lista de todos los registros importados sin procesamiento clínico. Útil para auditoría técnica de las importaciones. Permite filtrar por lote, fecha y parámetro de laboratorio.</p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      Si detecta un registro incorrecto en Resultados Crudos, contacte a un usuario ADMIN para que gestione la corrección o la eliminación del lote correspondiente.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       5. MÓDULO CLÍNICO
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-clinico"><span class="section-number">5</span>Módulo Clínico</h2>
+
+  <h3 id="sec-pacientes">5.1 Pacientes</h3>
+  <p>Gestión del directorio de pacientes del tenant: registro, búsqueda, edición y visualización del historial clínico individual.</p>
+
+  <ol class="steps">
+    <li><div class="step-content"><div class="step-title">Buscar un paciente</div><div class="step-desc">Use la barra de búsqueda en la parte superior para filtrar por nombre, apellido o número de identificación.</div></div></li>
+    <li><div class="step-content"><div class="step-title">Ver detalle del paciente</div><div class="step-desc">Haga clic sobre cualquier fila de la tabla para abrir la ficha completa del paciente.</div></div></li>
+    <li><div class="step-content"><div class="step-title">Editar datos</div><div class="step-desc">Dentro de la ficha, haga clic en el botón <strong>Editar</strong> (ícono de lápiz). Complete los campos y guarde.</div></div></li>
+    <li><div class="step-content"><div class="step-title">Ver historial clínico desde la ficha</div><div class="step-desc">En la ficha del paciente encontrará la pestaña <strong>Historial</strong> con todos sus resultados de laboratorio cronológicos.</div></div></li>
+  </ol>
+
+  <h3 id="sec-prescripciones">5.2 Prescripciones</h3>
+  <p>Registro y consulta de prescripciones médicas vinculadas a pacientes. Cada prescripción queda registrada con fecha, médico responsable y medicamentos.</p>
+
+  <h3 id="sec-reglas">5.3 Reglas Clínicas</h3>
+  <p>Las reglas clínicas son criterios automáticos que el sistema aplica al importar resultados para detectar valores fuera de rango y generar alertas. DataMedix incluye <strong>26 reglas preconfiguradas</strong> para los parámetros de laboratorio más comunes.</p>
+
+  <table>
+    <thead><tr><th>Estado</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-green">Activa</span></td><td>La regla se evalúa en cada importación</td></tr>
+      <tr><td><span class="badge badge-gray">Inactiva</span></td><td>La regla existe pero no se aplica</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warning">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <strong>Cambios con precaución</strong>
+      Modificar umbrales de reglas clínicas puede afectar la generación de alertas. Valide cualquier cambio con el responsable clínico antes de guardarlo.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       6. ADMINISTRACIÓN
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-admin"><span class="section-number">6</span>Administración</h2>
+
+  <div class="callout danger">
+    <span class="callout-icon">🔒</span>
+    <div class="callout-body">
+      <strong>Acceso restringido</strong>
+      Todas las páginas de esta sección requieren rol <span class="badge badge-red">ADMIN</span> o <span class="badge badge-purple">SUPERADMIN</span>. Intentar acceder con otro rol redirige a la página de acceso denegado.
+    </div>
+  </div>
+
+  <h3 id="sec-lotes">6.1 Lotes de Carga</h3>
+  <p>Historial de todos los archivos Excel importados. Permite revisar el estado de cada lote, ver detalles de validación y aprobar o rechazar lotes pendientes.</p>
+
+  <table>
+    <thead><tr><th>Estado del lote</th><th>Significado</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-amber">Pendiente</span></td><td>Importado pero pendiente de aprobación por un ADMIN</td></tr>
+      <tr><td><span class="badge badge-green">Aprobado</span></td><td>Resultados disponibles en el historial clínico</td></tr>
+      <tr><td><span class="badge badge-red">Rechazado</span></td><td>Lote descartado; los resultados no afectan el historial</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="sec-reportes">6.2 Reportes</h3>
+  <p>Generación de reportes analíticos por período. Incluye exportación en formatos PDF y Excel. Los reportes disponibles dependen de la configuración del tenant.</p>
+
+  <!-- ─── USUARIOS ─── -->
+  <h3 id="sec-usuarios">6.3 Gestión de Usuarios</h3>
+  <p>Permite crear, editar y desactivar usuarios del tenant. También permite cambiar contraseñas y asignar roles.</p>
+
+  <!-- MOCKUP: USUARIOS -->
+  <div class="mockup">
+    <div class="mockup-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <div class="url">https://app.datamedix.com/usuarios</div>
+    </div>
+    <div class="mockup-body">
+      <div class="app-shell taller">
+        <div class="app-nav">
+          <div class="app-nav-brand">
+            <div class="app-nav-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div class="app-nav-brand-t"><div class="n">DataMedix</div><div class="s">Plataforma Clínica</div></div>
+          </div>
+          <div class="app-nav-menu">
+            <div class="app-nav-section">Admin</div>
+            <div class="app-nav-item"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8"/></svg>Lotes de Carga</div>
+            <div class="app-nav-item active">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Usuarios
+            </div>
+            <div class="app-nav-item"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41"/></svg>Configuración</div>
+            <div class="app-nav-item"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16"/></svg>Auditoría</div>
+          </div>
+        </div>
+        <div class="app-content" style="position:relative;">
+          <div class="mock-page-header">
+            <div><div class="mock-page-title">Usuarios</div><div class="mock-page-sub">3 usuario(s)</div></div>
+          </div>
+          <div class="mock-table-card">
+            <div class="mock-toolbar">
+              <div class="mock-search">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Buscar usuario…
+              </div>
+              <div class="mock-add-btn">+ Nuevo usuario</div>
+            </div>
+            <div class="mock-th" style="grid-template-columns:2fr 2fr 1.2fr 0.8fr 0.6fr;">
+              <span>Nombre</span><span>Email</span><span>Rol</span><span>Estado</span><span>Acción</span>
+            </div>
+            <div class="mock-tr" style="grid-template-columns:2fr 2fr 1.2fr 0.8fr 0.6fr;">
+              <span style="font-weight:600">García, Roberto</span>
+              <span style="color:#64748b">rgarcia@clinica.com</span>
+              <span><span class="mock-role-badge rb-admin">ADMIN</span></span>
+              <span><span class="mock-status-dot"><span class="dot-active"></span>Activo</span></span>
+              <span style="display:flex;gap:0.3rem;">
+                <span style="width:22px;height:22px;background:#f0f9ff;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </span>
+                <span style="width:22px;height:22px;background:#fff7ed;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+              </span>
+            </div>
+            <div class="mock-tr" style="grid-template-columns:2fr 2fr 1.2fr 0.8fr 0.6fr;">
+              <span style="font-weight:600">Martínez, Ana</span>
+              <span style="color:#64748b">amartinez@clinica.com</span>
+              <span><span class="mock-role-badge rb-medico">MÉDICO</span></span>
+              <span><span class="mock-status-dot"><span class="dot-active"></span>Activo</span></span>
+              <span style="display:flex;gap:0.3rem;">
+                <span style="width:22px;height:22px;background:#f0f9ff;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
+                <span style="width:22px;height:22px;background:#fff7ed;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+              </span>
+            </div>
+            <div class="mock-tr" style="grid-template-columns:2fr 2fr 1.2fr 0.8fr 0.6fr;">
+              <span style="font-weight:600;color:#94a3b8">López, Carlos</span>
+              <span style="color:#94a3b8">clopez@clinica.com</span>
+              <span><span class="mock-role-badge rb-oper">OPERADOR</span></span>
+              <span><span class="mock-status-dot"><span class="dot-inactive"></span><span style="color:#94a3b8">Inactivo</span></span></span>
+              <span style="display:flex;gap:0.3rem;">
+                <span style="width:22px;height:22px;background:#f0f9ff;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
+                <span style="width:22px;height:22px;background:#fff7ed;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Modal overlay -->
+          <div class="modal-overlay">
+            <div class="modal-card">
+              <div class="modal-header">
+                <h4>Editar usuario</h4>
+                <div class="modal-close">✕</div>
+              </div>
+              <div class="modal-body">
+                <div class="modal-field-row">
+                  <div class="modal-field"><label>Primer nombre</label><input type="text" value="Ana" readonly/></div>
+                  <div class="modal-field"><label>Segundo nombre</label><input type="text" value="" readonly/></div>
+                </div>
+                <div class="modal-field-row">
+                  <div class="modal-field"><label>Primer apellido</label><input type="text" value="Martínez" readonly/></div>
+                  <div class="modal-field"><label>Segundo apellido</label><input type="text" value="Ruiz" readonly/></div>
+                </div>
+                <div class="modal-field"><label>Correo electrónico</label><input type="email" value="amartinez@clinica.com" readonly/></div>
+                <div class="modal-field-row">
+                  <div class="modal-field"><label>Rol</label><select readonly><option>MÉDICO</option></select></div>
+                  <div class="modal-field"><label>Estado</label><select readonly><option>Activo</option></select></div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <div class="modal-btn-cancel">Cancelar</div>
+                <div class="modal-btn-save">Guardar cambios</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="img-caption">Figura 4 — Pantalla de Usuarios con modal de edición abierto</p>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;">Crear nuevo usuario</h4>
+  <ol class="steps">
+    <li><div class="step-content"><div class="step-title">Haga clic en "+ Nuevo usuario"</div><div class="step-desc">Se abre el modal de creación con todos los campos vacíos.</div></div></li>
+    <li><div class="step-content"><div class="step-title">Complete los datos personales</div><div class="step-desc">Primer nombre y primer apellido son obligatorios. Correo electrónico debe ser único dentro del tenant.</div></div></li>
+    <li><div class="step-content"><div class="step-title">Asigne un rol</div><div class="step-desc">Seleccione entre MÉDICO, OPERADOR, ADMIN (o SUPERADMIN si su rol lo permite).</div></div></li>
+    <li><div class="step-content"><div class="step-title">Ingrese la contraseña inicial</div><div class="step-desc">La contraseña debe tener mínimo 8 caracteres. El usuario podrá cambiarla en su próximo inicio de sesión.</div></div></li>
+    <li><div class="step-content"><div class="step-title">Haga clic en "Guardar"</div><div class="step-desc">El usuario aparecerá en la tabla con estado <strong>Activo</strong>. Notifique las credenciales al nuevo usuario por canal seguro.</div></div></li>
+  </ol>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;">Editar usuario</h4>
+  <p>Haga clic en el ícono de lápiz (<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2" style="vertical-align:middle"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>) de la fila correspondiente. Modifique los campos necesarios y haga clic en <strong>Guardar cambios</strong>.</p>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;">Cambiar contraseña</h4>
+  <p>Haga clic en el ícono de candado (<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" style="vertical-align:middle"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>) para restablecer la contraseña de un usuario. Ingrese la nueva contraseña y confírmela. El cambio es inmediato.</p>
+
+  <div class="callout warning">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <strong>Desactivar en lugar de eliminar</strong>
+      No es posible eliminar usuarios permanentemente para preservar la integridad del historial de auditoría. Use el campo <strong>Estado = Inactivo</strong> para revocar acceso sin borrar el historial del usuario.
+    </div>
+  </div>
+
+  <!-- ─── CONFIGURACIÓN ─── -->
+  <h3 id="sec-configuracion">6.4 Configuración del Tenant</h3>
+  <p>Permite ver y editar los datos básicos de la organización (tenant), así como consultar estadísticas de uso del sistema.</p>
+
+  <!-- MOCKUP: CONFIGURACIÓN -->
+  <div class="mockup">
+    <div class="mockup-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <div class="url">https://app.datamedix.com/configuracion</div>
+    </div>
+    <div class="mockup-body">
+      <div class="app-shell tall">
+        <div class="app-nav">
+          <div class="app-nav-brand">
+            <div class="app-nav-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div class="app-nav-brand-t"><div class="n">DataMedix</div><div class="s">Plataforma Clínica</div></div>
+          </div>
+          <div class="app-nav-menu">
+            <div class="app-nav-section">Admin</div>
+            <div class="app-nav-item"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Usuarios</div>
+            <div class="app-nav-item active">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41"/></svg>
+              Configuración
+            </div>
+          </div>
+        </div>
+        <div class="app-content">
+          <div class="mock-page-header">
+            <div><div class="mock-page-title">Configuración</div><div class="mock-page-sub">Datos y preferencias del tenant</div></div>
+          </div>
+          <div class="config-grid">
+            <div class="config-card" style="grid-column:1/-1">
+              <div class="config-card-title">🏥 Información de la Organización</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-top:0.5rem;">
+                <div>
+                  <div class="config-field-label">Nombre</div>
+                  <div style="display:flex;align-items:center;gap:0.35rem;margin-top:0.2rem;">
+                    <input style="flex:1;border:1.5px solid #e2e8f0;border-radius:7px;padding:0.35rem 0.5rem;font-size:0.72rem;color:#374151;" value="Clínica del Norte S.A." readonly/>
+                    <span style="background:#0ea5e9;color:white;border-radius:6px;padding:0.3rem 0.5rem;font-size:0.62rem;font-weight:700;cursor:pointer;">Guardar</span>
+                  </div>
+                </div>
+                <div><div class="config-field-label">Subdominio</div><div class="config-field-value" style="margin-top:0.3rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:0.35rem 0.5rem;font-size:0.72rem;color:#94a3b8;font-family:monospace;">clinica-norte</div></div>
+                <div><div class="config-field-label">Estado</div><div style="margin-top:0.3rem;"><span class="badge badge-green">✓ Activo</span></div></div>
+              </div>
+            </div>
+            <div class="config-card">
+              <div class="config-card-title">📊 Estadísticas de Uso</div>
+              <div style="display:flex;flex-direction:column;gap:0.4rem;margin-top:0.4rem;">
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#94a3b8">Usuarios activos</span><span style="font-weight:700;color:#0f172a;">8</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#94a3b8">Pacientes registrados</span><span style="font-weight:700;color:#0f172a;">1,284</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#94a3b8">Eventos auditoría (30d)</span><span style="font-weight:700;color:#0f172a;">2,341</span></div>
+              </div>
+            </div>
+            <div class="config-card">
+              <div class="config-card-title">⚙️ Plataforma</div>
+              <div style="display:flex;flex-direction:column;gap:0.4rem;margin-top:0.4rem;">
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#94a3b8">Versión</span><span style="font-weight:700;color:#0f172a;">1.0.0</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#94a3b8">Entorno</span><span class="badge badge-green" style="font-size:0.6rem;">Production</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#94a3b8">Base de datos</span><span style="font-weight:700;color:#0f172a;">PostgreSQL</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="img-caption">Figura 5 — Pantalla de Configuración con datos del tenant y estadísticas</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      El campo <strong>Subdominio</strong> es de solo lectura. Para solicitar un cambio de subdominio contacte al soporte de DataMedix.
+    </div>
+  </div>
+
+  <!-- ─── AUDITORÍA ─── -->
+  <h3 id="sec-auditoria">6.5 Auditoría</h3>
+  <p>Registro completo e inmutable de toda la actividad del sistema: inicios de sesión, importaciones, creaciones, ediciones y eliminaciones. Permite filtrar por fecha, tipo de acción y usuario.</p>
+
+  <!-- MOCKUP: AUDITORÍA -->
+  <div class="mockup">
+    <div class="mockup-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <div class="url">https://app.datamedix.com/auditoria</div>
+    </div>
+    <div class="mockup-body">
+      <div class="app-shell taller">
+        <div class="app-nav">
+          <div class="app-nav-brand">
+            <div class="app-nav-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div class="app-nav-brand-t"><div class="n">DataMedix</div><div class="s">Plataforma Clínica</div></div>
+          </div>
+          <div class="app-nav-menu">
+            <div class="app-nav-section">Admin</div>
+            <div class="app-nav-item"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Usuarios</div>
+            <div class="app-nav-item"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>Configuración</div>
+            <div class="app-nav-item active"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Auditoría</div>
+          </div>
+        </div>
+        <div class="app-content">
+          <div class="mock-page-header">
+            <div><div class="mock-page-title">Auditoría</div><div class="mock-page-sub">2,341 evento(s)</div></div>
+          </div>
+          <div class="audit-filters">
+            <div class="af-group"><span class="af-label">Desde</span><input class="af-input" type="date" value="2026-04-01" readonly/></div>
+            <div class="af-group"><span class="af-label">Hasta</span><input class="af-input" type="date" value="2026-05-01" readonly/></div>
+            <div class="af-group">
+              <span class="af-label">Acción</span>
+              <select class="af-input" style="width:90px;">
+                <option>Todas</option><option>LOGIN</option><option>IMPORT</option><option>CREATE</option>
+              </select>
+            </div>
+            <button class="af-btn af-btn-primary">Aplicar</button>
+            <button class="af-btn af-btn-ghost">Limpiar</button>
+          </div>
+          <div class="mock-table-card">
+            <div class="mock-th" style="grid-template-columns:1.2fr 0.8fr 0.8fr 2fr 0.6fr 0.9fr;">
+              <span>Fecha/Hora</span><span>Acción</span><span>Entidad</span><span>Descripción</span><span>Resultado</span><span>IP</span>
+            </div>
+            <div class="mock-tr" style="grid-template-columns:1.2fr 0.8fr 0.8fr 2fr 0.6fr 0.9fr;font-size:0.65rem;">
+              <div><div style="font-weight:600">01/05/2026</div><div style="color:#94a3b8">09:42:17</div></div>
+              <span><span class="mock-accion-badge ab-import">IMPORT</span></span>
+              <span><span class="badge badge-gray" style="font-size:0.58rem;">Lote</span></span>
+              <span>Importación Excel: resultados_mayo.xlsx — 360 registros</span>
+              <span><span class="badge badge-green" style="font-size:0.6rem;">OK</span></span>
+              <span style="font-family:monospace;color:#94a3b8;font-size:0.62rem;">192.168.1.45</span>
+            </div>
+            <div class="mock-tr" style="grid-template-columns:1.2fr 0.8fr 0.8fr 2fr 0.6fr 0.9fr;font-size:0.65rem;">
+              <div><div style="font-weight:600">01/05/2026</div><div style="color:#94a3b8">08:30:05</div></div>
+              <span><span class="mock-accion-badge ab-login">LOGIN</span></span>
+              <span></span>
+              <span>Inicio de sesión: rgarcia@clinica.com</span>
+              <span><span class="badge badge-green" style="font-size:0.6rem;">OK</span></span>
+              <span style="font-family:monospace;color:#94a3b8;font-size:0.62rem;">192.168.1.45</span>
+            </div>
+            <div class="mock-tr" style="grid-template-columns:1.2fr 0.8fr 0.8fr 2fr 0.6fr 0.9fr;font-size:0.65rem;">
+              <div><div style="font-weight:600">30/04/2026</div><div style="color:#94a3b8">16:15:33</div></div>
+              <span><span class="mock-accion-badge ab-create">CREATE</span></span>
+              <span><span class="badge badge-gray" style="font-size:0.58rem;">Usuario</span></span>
+              <span>Nuevo usuario creado: López, Carlos (OPERADOR)</span>
+              <span><span class="badge badge-green" style="font-size:0.6rem;">OK</span></span>
+              <span style="font-family:monospace;color:#94a3b8;font-size:0.62rem;">10.0.0.12</span>
+            </div>
+            <div class="mock-tr" style="grid-template-columns:1.2fr 0.8fr 0.8fr 2fr 0.6fr 0.9fr;font-size:0.65rem;">
+              <div><div style="font-weight:600">29/04/2026</div><div style="color:#94a3b8">11:02:48</div></div>
+              <span><span class="mock-accion-badge ab-update">UPDATE</span></span>
+              <span><span class="badge badge-gray" style="font-size:0.58rem;">Paciente</span></span>
+              <span>Datos actualizados: González, María (ID 00112233)</span>
+              <span><span class="badge badge-green" style="font-size:0.6rem;">OK</span></span>
+              <span style="font-family:monospace;color:#94a3b8;font-size:0.62rem;">192.168.1.22</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:0.75rem;padding:0.75rem 0;font-size:0.7rem;color:#64748b;">
+            <span style="background:white;border:1px solid #e2e8f0;border-radius:7px;padding:0.3rem 0.6rem;cursor:pointer;">← Anterior</span>
+            <span>Página 1 de 79</span>
+            <span style="background:white;border:1px solid #e2e8f0;border-radius:7px;padding:0.3rem 0.6rem;cursor:pointer;">Siguiente →</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="img-caption">Figura 6 — Pantalla de Auditoría con filtros y tabla de eventos paginada</p>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;">Tipos de acción registrados</h4>
+  <table>
+    <thead><tr><th>Acción</th><th>Cuándo se registra</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-blue">LOGIN</span></td><td>Cada inicio de sesión exitoso o fallido</td></tr>
+      <tr><td><span class="badge badge-gray">LOGOUT</span></td><td>Cierre de sesión manual</td></tr>
+      <tr><td><span class="badge badge-green">IMPORT</span></td><td>Carga de archivo Excel de laboratorio</td></tr>
+      <tr><td><span class="badge badge-green">CREATE</span></td><td>Creación de cualquier entidad (usuario, paciente, etc.)</td></tr>
+      <tr><td><span class="badge badge-amber">UPDATE</span></td><td>Modificación de datos existentes</td></tr>
+      <tr><td><span class="badge badge-red">DELETE</span></td><td>Eliminación o desactivación de registros</td></tr>
+      <tr><td><span class="badge badge-purple">APPROVE</span></td><td>Aprobación de un lote de resultados</td></tr>
+      <tr><td><span class="badge badge-blue">EXPORT</span></td><td>Generación y descarga de reportes</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <strong>Consejo de uso</strong>
+      Para investigar un incidente, filtre por la fecha del evento y combine el filtro de Acción (ej. <em>LOGIN</em> + <em>Resultado: ERROR</em>) para identificar intentos de acceso fallidos.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       7. SEGURIDAD
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-seguridad"><span class="section-number">7</span>Seguridad</h2>
+
+  <h3>7.1 Medidas implementadas en la plataforma</h3>
+  <table>
+    <thead><tr><th>Medida</th><th>Detalle</th></tr></thead>
+    <tbody>
+      <tr><td>Autenticación por cookie segura</td><td>HttpOnly, SameSite=Lax, SecurePolicy=Always en producción</td></tr>
+      <tr><td>Sesión con expiración</td><td>8 horas con renovación automática por actividad</td></tr>
+      <tr><td>HTTPS obligatorio</td><td>Redirige todo el tráfico HTTP a HTTPS en producción</td></tr>
+      <tr><td>Cabeceras de seguridad</td><td>X-Frame-Options DENY, CSP, HSTS, X-Content-Type-Options</td></tr>
+      <tr><td>Contraseñas con hash</td><td>BCrypt con salt único por usuario (factor 11)</td></tr>
+      <tr><td>Control de acceso por rol</td><td>AuthorizeRouteView + [Authorize(Roles=...)] en cada página</td></tr>
+      <tr><td>Auditoría completa</td><td>Todo evento queda registrado con IP, usuario y timestamp UTC</td></tr>
+      <tr><td>Protección CSRF</td><td>AntiForgery habilitado en todas las peticiones de formulario</td></tr>
+    </tbody>
+  </table>
+
+  <h3>7.2 Buenas prácticas para el usuario</h3>
+  <ul>
+    <li>Use contraseñas de <strong>mínimo 12 caracteres</strong> combinando letras, números y símbolos.</li>
+    <li><strong>No comparta</strong> sus credenciales con otros usuarios del sistema.</li>
+    <li>Cierre sesión (<em>Cerrar sesión</em> en la barra lateral) cuando se aleje del equipo.</li>
+    <li>No use DataMedix desde redes Wi-Fi públicas o equipos compartidos sin VPN.</li>
+    <li>Si sospecha que su contraseña fue comprometida, cámbiela inmediatamente y notifique al ADMIN.</li>
+    <li>El ADMIN debe <strong>desactivar</strong> los usuarios que se desvinculen de la organización el mismo día.</li>
+  </ul>
+
+  <div class="callout danger">
+    <span class="callout-icon">🚫</span>
+    <div class="callout-body">
+      <strong>Acceso no autorizado</strong>
+      El sistema registra todos los intentos de acceso. Cualquier intento de acceder a páginas sin los permisos correctos queda registrado en Auditoría y puede derivar en la suspensión de la cuenta.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       8. SOLUCIÓN DE PROBLEMAS
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-troubleshooting"><span class="section-number">8</span>Solución de Problemas</h2>
+
+  <table>
+    <thead><tr><th>Síntoma</th><th>Causa probable</th><th>Solución</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>No puedo iniciar sesión</td>
+        <td>Contraseña incorrecta o usuario inactivo</td>
+        <td>Verifique que el email sea correcto. Si el problema persiste, contacte al ADMIN para verificar el estado de la cuenta.</td>
+      </tr>
+      <tr>
+        <td>La página de inicio me redirige siempre al login</td>
+        <td>Sesión expirada o cookies bloqueadas</td>
+        <td>Revise que su navegador acepte cookies del dominio. Active las cookies de terceros si las ha deshabilitado.</td>
+      </tr>
+      <tr>
+        <td>El archivo Excel no se importa</td>
+        <td>Formato incorrecto o columnas faltantes</td>
+        <td>Verifique que el archivo sea .xlsx y que las columnas requeridas estén presentes. Revise el mensaje de error detallado en la pantalla.</td>
+      </tr>
+      <tr>
+        <td>No veo el menú de Administración</td>
+        <td>Rol sin permiso</td>
+        <td>El menú sólo aparece para ADMIN y SUPERADMIN. Solicite al administrador que le asigne el rol adecuado si corresponde.</td>
+      </tr>
+      <tr>
+        <td>La pantalla se queda en "Cargando"</td>
+        <td>Conexión lenta o pérdida de la conexión SignalR</td>
+        <td>Recargue la página (<kbd>F5</kbd>). Si el problema persiste, verifique su conexión a internet.</td>
+      </tr>
+      <tr>
+        <td>Error "Acceso denegado"</td>
+        <td>Intentó acceder a una URL sin el rol requerido</td>
+        <td>Regrese al Dashboard y use el menú de navegación. Si necesita acceso a esa funcionalidad, solicítelo al ADMIN.</td>
+      </tr>
+      <tr>
+        <td>Los datos del dashboard no se actualizan</td>
+        <td>Caché del navegador</td>
+        <td>Use <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> para forzar recarga sin caché.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>¿Necesita soporte adicional?</strong>
+      Si el problema no se resuelve con los pasos anteriores, contacte al equipo de soporte de DataMedix e incluya: la descripción del error, la pantalla donde ocurrió, su rol en el sistema y la hora aproximada del incidente.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       9. GLOSARIO
+  ═══════════════════════════════════════════ -->
+  <h2 id="sec-glosario"><span class="section-number">9</span>Glosario</h2>
+
+  <table>
+    <thead><tr><th>Término</th><th>Definición</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Tenant</strong></td><td>Organización o clínica que usa la plataforma de forma aislada. Cada tenant tiene sus propios usuarios, pacientes y datos.</td></tr>
+      <tr><td><strong>Lote de carga</strong></td><td>Conjunto de resultados de laboratorio importados en una sola operación de carga de archivo Excel.</td></tr>
+      <tr><td><strong>Regla clínica</strong></td><td>Criterio automático que evalúa si un resultado de laboratorio está dentro o fuera del rango normal esperado.</td></tr>
+      <tr><td><strong>Alerta activa</strong></td><td>Resultado de laboratorio que disparó una regla clínica y requiere revisión médica.</td></tr>
+      <tr><td><strong>Historial clínico</strong></td><td>Registro cronológico de todos los resultados de laboratorio de un paciente.</td></tr>
+      <tr><td><strong>Auditoría</strong></td><td>Registro inmutable de todas las acciones realizadas en el sistema, con usuario, fecha, IP y resultado.</td></tr>
+      <tr><td><strong>KPI</strong></td><td>Key Performance Indicator — indicador clave de rendimiento mostrado en el Dashboard.</td></tr>
+      <tr><td><strong>SignalR</strong></td><td>Tecnología de comunicación en tiempo real usada por Blazor Server para actualizar la UI sin recargar la página.</td></tr>
+      <tr><td><strong>HTTPS</strong></td><td>Protocolo seguro de transferencia de datos. Toda la comunicación con DataMedix está cifrada mediante TLS.</td></tr>
+      <tr><td><strong>BCrypt</strong></td><td>Algoritmo de hash seguro utilizado para almacenar contraseñas. Nunca se guarda la contraseña en texto plano.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="divider"></div>
+
+  <div style="text-align:center;color:#94a3b8;font-size:0.8rem;padding-bottom:1rem;">
+    <p><strong>DataMedix Plataforma Clínica</strong> · Manual de Usuario v1.0 · Mayo 2026</p>
+    <p>Documento de uso interno. Distribución restringida al personal autorizado.</p>
+    <a href="#top" class="back-to-top">↑ Volver al inicio</a>
+  </div>
+
+  </div><!-- /content -->
+</main>
+</div><!-- /shell -->
+
+<script>
+  // Highlight active TOC link on scroll
+  const headings = document.querySelectorAll('h2[id], h3[id]');
+  const links = document.querySelectorAll('.toc a[href^="#"]');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.toc a[href="#${e.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -75% 0px' });
+  headings.forEach(h => observer.observe(h));
+</script>
+</body>
+</html>
