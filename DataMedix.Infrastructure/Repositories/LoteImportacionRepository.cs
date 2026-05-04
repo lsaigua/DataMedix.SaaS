@@ -115,7 +115,14 @@ namespace DataMedix.Infrastructure.Repositories
         public async Task BulkInsertAsync(List<ResultadoLaboratorio> resultados)
         {
             if (!resultados.Any()) return;
-            await _db.BulkInsertAsync(resultados, new BulkConfig { SetOutputIdentity = false });
+            // Excluir navigation properties explícitamente: BulkExtensions v10 las incluye
+            // en el COPY de Npgsql causando "25 column(s) but 26 value(s)" si alguna está cargada.
+            var config = new BulkConfig
+            {
+                SetOutputIdentity = false,
+                PropertiesToExclude = ["Paciente", "Lote", "ParametroClinico"]
+            };
+            await _db.BulkInsertAsync(resultados, config);
         }
 
         public async Task<List<ResultadoLaboratorio>> GetByPacienteYPeriodoAsync(
@@ -482,10 +489,15 @@ namespace DataMedix.Infrastructure.Repositories
             var toInsert = prescripciones.Where(p => !existingSet.Contains(p.Id)).ToList();
             var toUpdate = prescripciones.Where(p => existingSet.Contains(p.Id)).ToList();
 
+            var prescConfig = new BulkConfig
+            {
+                SetOutputIdentity = false,
+                PropertiesToExclude = ["Paciente", "Snapshot", "EpoRango", "HierroRango", "PrescripcionFinal"]
+            };
             if (toInsert.Any())
-                await _db.BulkInsertAsync(toInsert, new BulkConfig { SetOutputIdentity = false });
+                await _db.BulkInsertAsync(toInsert, prescConfig);
             if (toUpdate.Any())
-                await _db.BulkUpdateAsync(toUpdate);
+                await _db.BulkUpdateAsync(toUpdate, prescConfig);
         }
     }
 
