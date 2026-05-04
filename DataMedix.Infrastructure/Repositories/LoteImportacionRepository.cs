@@ -115,12 +115,21 @@ namespace DataMedix.Infrastructure.Repositories
         public async Task BulkInsertAsync(List<ResultadoLaboratorio> resultados)
         {
             if (!resultados.Any()) return;
-            // Excluir navigation properties explícitamente: BulkExtensions v10 las incluye
-            // en el COPY de Npgsql causando "25 column(s) but 26 value(s)" si alguna está cargada.
+            // PropertiesToInclude whitelist: BulkExtensions v10 rejects navigation property names
+            // in PropertiesToExclude; using an explicit scalar whitelist avoids the column mismatch.
             var config = new BulkConfig
             {
                 SetOutputIdentity = false,
-                PropertiesToExclude = ["Paciente", "Lote", "ParametroClinico"]
+                PropertiesToInclude =
+                [
+                    "Id", "TenantId", "PacienteId", "LoteId", "ParametroClinicoId",
+                    "PeriodDate", "PeriodoAnio", "PeriodoMes",
+                    "PlanSalud", "TipoAtencion", "FechaOrden",
+                    "ExamenRaw", "ParametroRaw", "ResultadoTexto",
+                    "ValorNumerico", "UnidadMedida",
+                    "ValorMinReferencia", "ValorMaxReferencia",
+                    "EsPatologico", "Activo", "CreatedAt", "CreatedBy"
+                ]
             };
             await _db.BulkInsertAsync(resultados, config);
         }
@@ -492,7 +501,16 @@ namespace DataMedix.Infrastructure.Repositories
             var prescConfig = new BulkConfig
             {
                 SetOutputIdentity = false,
-                PropertiesToExclude = ["Paciente", "Snapshot", "EpoRango", "HierroRango", "PrescripcionFinal"]
+                PropertiesToInclude =
+                [
+                    "Id", "TenantId", "PacienteId", "SnapshotId", "PeriodDate",
+                    "EpoAccion", "EpoDosisSugerida", "EpoObservacion", "EpoRangoId",
+                    "HierroAccion", "HierroDosisSugerida", "HierroObservacion", "HierroRangoId",
+                    "ReglaEpoCodigo", "ReglaHierroCodigo",
+                    "EpoUiSemana", "HierroMgMes", "HierroGanzoniMg",
+                    "AlertasJson", "ContextoJson", "ObservacionesGenerales",
+                    "Estado", "RevisadoPor", "RevisadoAt", "Activo", "CreatedAt"
+                ]
             };
             if (toInsert.Any())
                 await _db.BulkInsertAsync(toInsert, prescConfig);
