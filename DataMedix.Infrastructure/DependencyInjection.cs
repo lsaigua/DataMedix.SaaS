@@ -21,7 +21,11 @@ namespace DataMedix.Infrastructure
         {
             services.AddDbContext<DataMedixDbContext>(options =>
                 options.UseNpgsql(configuration.GetConnectionString("DatabasePostgres"),
-                    npgsql => npgsql.CommandTimeout(60)));
+                    npgsql =>
+                    {
+                        npgsql.CommandTimeout(120);
+                        npgsql.MaxBatchSize(50);   // Evita lotes masivos que detonan el bug MRES de Npgsql
+                    }));
 
             // ── Repositorios (Scoped) ──────────────────────────────────────────
             services.AddScoped<IUsuarioRepository, UsuarioRepository>();
