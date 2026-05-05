@@ -2,7 +2,6 @@ using DataMedix.Application.DTOs;
 using DataMedix.Application.Interfaces;
 using DataMedix.Domain.Entities;
 using DataMedix.Infrastructure.Persistence;
-using EFCore.BulkExtensions;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -46,7 +45,8 @@ namespace DataMedix.Infrastructure.Repositories
                 PeriodDate = d.PeriodDate, PacienteId = d.PacienteId,
                 ParametroClinicoId = d.ParametroClinicoId, Estado = d.Estado, CreatedAt = d.CreatedAt
             }).ToList();
-            await _db.BulkInsertAsync(clean, new BulkConfig { SetOutputIdentity = false });
+            await _db.ImportacionDetalles.AddRangeAsync(clean);
+            await _db.SaveChangesAsync();
         }
 
         public async Task AddErroresAsync(List<ImportacionError> errores)
@@ -59,7 +59,8 @@ namespace DataMedix.Infrastructure.Repositories
                 Mensaje = e.Mensaje, ValorRecibido = e.ValorRecibido,
                 EsIgnorado = e.EsIgnorado, CreatedAt = e.CreatedAt
             }).ToList();
-            await _db.BulkInsertAsync(clean, new BulkConfig { SetOutputIdentity = false });
+            await _db.ImportacionErrores.AddRangeAsync(clean);
+            await _db.SaveChangesAsync();
         }
 
         public async Task<List<ImportacionError>> GetErroresByLoteAsync(Guid loteId) =>
@@ -133,10 +134,8 @@ namespace DataMedix.Infrastructure.Repositories
         {
             if (!resultados.Any()) return;
 
-            // Fresh copies with only scalar properties: EFCore change tracker auto-fixes navigation
-            // properties from the identity map (even unset ones like Paciente/Lote), causing
-            // BulkExtensions Npgsql binary COPY to emit 26 values against a 25-column header.
-            // New instances that were never tracked are immune to fixup.
+            // Scalar-only copies so EFCore doesn't try to re-insert Paciente/Lote/ParametroClinico
+            // that are already tracked. Original list stays intact for GenerarSnapshotsAsync.
             var clean = resultados.Select(r => new ResultadoLaboratorio
             {
                 Id = r.Id, TenantId = r.TenantId, PacienteId = r.PacienteId,
@@ -149,8 +148,8 @@ namespace DataMedix.Infrastructure.Repositories
                 EsPatologico = r.EsPatologico, Activo = r.Activo, CreatedAt = r.CreatedAt, CreatedBy = r.CreatedBy
             }).ToList();
 
-            await _db.BulkInsertAsync(clean, new BulkConfig { SetOutputIdentity = false });
-            // Original list (with nav props) is untouched for GenerarSnapshotsAsync
+            await _db.ResultadosLaboratorio.AddRangeAsync(clean);
+            await _db.SaveChangesAsync();
         }
 
         public async Task<List<ResultadoLaboratorio>> GetByPacienteYPeriodoAsync(
@@ -517,10 +516,6 @@ namespace DataMedix.Infrastructure.Repositories
             var toInsert = prescripciones.Where(p => !existingSet.Contains(p.Id)).ToList();
             var toUpdate = prescripciones.Where(p => existingSet.Contains(p.Id)).ToList();
 
-            var cfg = new BulkConfig { SetOutputIdentity = false };
-
-            // Fresh scalar-only copies — same reason as ResultadoLaboratorio: EFCore identity map
-            // fixes up nav properties (Paciente, Snapshot, EpoRango, etc.) causing COPY column mismatch.
             static PrescripcionSugerida ScalarCopy(PrescripcionSugerida p) => new()
             {
                 Id = p.Id, TenantId = p.TenantId, PacienteId = p.PacienteId,
@@ -538,9 +533,15 @@ namespace DataMedix.Infrastructure.Repositories
             };
 
             if (toInsert.Any())
-                await _db.BulkInsertAsync(toInsert.Select(ScalarCopy).ToList(), cfg);
+            {
+                await _db.PrescripcionesSugeridas.AddRangeAsync(toInsert.Select(ScalarCopy).ToList());
+            }
             if (toUpdate.Any())
-                await _db.BulkUpdateAsync(toUpdate.Select(ScalarCopy).ToList(), cfg);
+            {
+                foreach (var copy in toUpdate.Select(ScalarCopy))
+                    _db.PrescripcionesSugeridas.Update(copy);
+            }
+            await _db.SaveChangesAsync();
         }
     }
 
