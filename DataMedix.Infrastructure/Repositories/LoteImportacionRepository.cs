@@ -36,13 +36,30 @@ namespace DataMedix.Infrastructure.Repositories
         public async Task AddDetallesAsync(List<ImportacionDetalle> detalles)
         {
             if (!detalles.Any()) return;
-            await _db.BulkInsertAsync(detalles, new BulkConfig { SetOutputIdentity = false });
+            var clean = detalles.Select(d => new ImportacionDetalle
+            {
+                Id = d.Id, LoteId = d.LoteId, TenantId = d.TenantId, NumeroFila = d.NumeroFila,
+                FechaOrdenRaw = d.FechaOrdenRaw, PlanSaludRaw = d.PlanSaludRaw,
+                TipoAtencionRaw = d.TipoAtencionRaw, IdentificacionRaw = d.IdentificacionRaw,
+                PacienteRaw = d.PacienteRaw, ExamenRaw = d.ExamenRaw, ParametroRaw = d.ParametroRaw,
+                ResultadoRaw = d.ResultadoRaw, UnidadMedidaRaw = d.UnidadMedidaRaw,
+                PeriodDate = d.PeriodDate, PacienteId = d.PacienteId,
+                ParametroClinicoId = d.ParametroClinicoId, Estado = d.Estado, CreatedAt = d.CreatedAt
+            }).ToList();
+            await _db.BulkInsertAsync(clean, new BulkConfig { SetOutputIdentity = false });
         }
 
         public async Task AddErroresAsync(List<ImportacionError> errores)
         {
             if (!errores.Any()) return;
-            await _db.BulkInsertAsync(errores, new BulkConfig { SetOutputIdentity = false });
+            var clean = errores.Select(e => new ImportacionError
+            {
+                Id = e.Id, LoteId = e.LoteId, ImportacionDetalleId = e.ImportacionDetalleId,
+                NumeroFila = e.NumeroFila, Campo = e.Campo, TipoError = e.TipoError,
+                Mensaje = e.Mensaje, ValorRecibido = e.ValorRecibido,
+                EsIgnorado = e.EsIgnorado, CreatedAt = e.CreatedAt
+            }).ToList();
+            await _db.BulkInsertAsync(clean, new BulkConfig { SetOutputIdentity = false });
         }
 
         public async Task<List<ImportacionError>> GetErroresByLoteAsync(Guid loteId) =>
@@ -116,21 +133,24 @@ namespace DataMedix.Infrastructure.Repositories
         {
             if (!resultados.Any()) return;
 
-            // BulkExtensions v10 Npgsql binary COPY includes non-null navigation properties
-            // as extra values, causing "25 column(s) but 26 value(s)" mismatch.
-            // Null them before COPY and restore after so GenerarSnapshotsAsync can still read them.
-            var savedParametros = resultados.Select(r => r.ParametroClinico).ToList();
-            foreach (var r in resultados) r.ParametroClinico = null;
+            // Fresh copies with only scalar properties: EFCore change tracker auto-fixes navigation
+            // properties from the identity map (even unset ones like Paciente/Lote), causing
+            // BulkExtensions Npgsql binary COPY to emit 26 values against a 25-column header.
+            // New instances that were never tracked are immune to fixup.
+            var clean = resultados.Select(r => new ResultadoLaboratorio
+            {
+                Id = r.Id, TenantId = r.TenantId, PacienteId = r.PacienteId,
+                LoteId = r.LoteId, ParametroClinicoId = r.ParametroClinicoId,
+                PeriodDate = r.PeriodDate, PeriodoAnio = r.PeriodoAnio, PeriodoMes = r.PeriodoMes,
+                PlanSalud = r.PlanSalud, TipoAtencion = r.TipoAtencion, FechaOrden = r.FechaOrden,
+                ExamenRaw = r.ExamenRaw, ParametroRaw = r.ParametroRaw, ResultadoTexto = r.ResultadoTexto,
+                ValorNumerico = r.ValorNumerico, UnidadMedida = r.UnidadMedida,
+                ValorMinReferencia = r.ValorMinReferencia, ValorMaxReferencia = r.ValorMaxReferencia,
+                EsPatologico = r.EsPatologico, Activo = r.Activo, CreatedAt = r.CreatedAt, CreatedBy = r.CreatedBy
+            }).ToList();
 
-            try
-            {
-                await _db.BulkInsertAsync(resultados, new BulkConfig { SetOutputIdentity = false });
-            }
-            finally
-            {
-                for (int i = 0; i < resultados.Count; i++)
-                    resultados[i].ParametroClinico = savedParametros[i];
-            }
+            await _db.BulkInsertAsync(clean, new BulkConfig { SetOutputIdentity = false });
+            // Original list (with nav props) is untouched for GenerarSnapshotsAsync
         }
 
         public async Task<List<ResultadoLaboratorio>> GetByPacienteYPeriodoAsync(
@@ -497,24 +517,30 @@ namespace DataMedix.Infrastructure.Repositories
             var toInsert = prescripciones.Where(p => !existingSet.Contains(p.Id)).ToList();
             var toUpdate = prescripciones.Where(p => existingSet.Contains(p.Id)).ToList();
 
-            var prescConfig = new BulkConfig
+            var cfg = new BulkConfig { SetOutputIdentity = false };
+
+            // Fresh scalar-only copies — same reason as ResultadoLaboratorio: EFCore identity map
+            // fixes up nav properties (Paciente, Snapshot, EpoRango, etc.) causing COPY column mismatch.
+            static PrescripcionSugerida ScalarCopy(PrescripcionSugerida p) => new()
             {
-                SetOutputIdentity = false,
-                PropertiesToInclude =
-                [
-                    "Id", "TenantId", "PacienteId", "SnapshotId", "PeriodDate",
-                    "EpoAccion", "EpoDosisSugerida", "EpoObservacion", "EpoRangoId",
-                    "HierroAccion", "HierroDosisSugerida", "HierroObservacion", "HierroRangoId",
-                    "ReglaEpoCodigo", "ReglaHierroCodigo",
-                    "EpoUiSemana", "HierroMgMes", "HierroGanzoniMg",
-                    "AlertasJson", "ContextoJson", "ObservacionesGenerales",
-                    "Estado", "RevisadoPor", "RevisadoAt", "Activo", "CreatedAt"
-                ]
+                Id = p.Id, TenantId = p.TenantId, PacienteId = p.PacienteId,
+                SnapshotId = p.SnapshotId, PeriodDate = p.PeriodDate,
+                EpoAccion = p.EpoAccion, EpoDosisSugerida = p.EpoDosisSugerida,
+                EpoObservacion = p.EpoObservacion, EpoRangoId = p.EpoRangoId,
+                HierroAccion = p.HierroAccion, HierroDosisSugerida = p.HierroDosisSugerida,
+                HierroObservacion = p.HierroObservacion, HierroRangoId = p.HierroRangoId,
+                ReglaEpoCodigo = p.ReglaEpoCodigo, ReglaHierroCodigo = p.ReglaHierroCodigo,
+                EpoUiSemana = p.EpoUiSemana, HierroMgMes = p.HierroMgMes,
+                HierroGanzoniMg = p.HierroGanzoniMg, AlertasJson = p.AlertasJson,
+                ContextoJson = p.ContextoJson, ObservacionesGenerales = p.ObservacionesGenerales,
+                Estado = p.Estado, RevisadoPor = p.RevisadoPor, RevisadoAt = p.RevisadoAt,
+                Activo = p.Activo, CreatedAt = p.CreatedAt
             };
+
             if (toInsert.Any())
-                await _db.BulkInsertAsync(toInsert, prescConfig);
+                await _db.BulkInsertAsync(toInsert.Select(ScalarCopy).ToList(), cfg);
             if (toUpdate.Any())
-                await _db.BulkUpdateAsync(toUpdate, prescConfig);
+                await _db.BulkUpdateAsync(toUpdate.Select(ScalarCopy).ToList(), cfg);
         }
     }
 
