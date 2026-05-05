@@ -76,11 +76,8 @@ if (builder.Environment.IsProduction())
 // ── BUILD ──────────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
-// Crear tabla data_protection_keys si no existe (primera vez / nuevos entornos)
-await app.Services.EnsureDataProtectionTableAsync();
-
-// Crear tabla reglas_clinicas y sembrar las 26 reglas clínicas por defecto (idempotente)
-await app.Services.EnsureReglasSeedAsync();
+// Un único scope/conexión para todas las operaciones de startup (evita el bug MRES de Npgsql 10.x)
+await app.Services.EnsureStartupAsync();
 
 // PRIMERO: leer los headers del proxy antes de cualquier redirect/auth
 app.UseForwardedHeaders();

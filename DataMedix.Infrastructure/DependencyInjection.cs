@@ -59,24 +59,22 @@ namespace DataMedix.Infrastructure
             return services;
         }
 
-        public static async Task EnsureDataProtectionTableAsync(this IServiceProvider services)
+        /// <summary>
+        /// Ejecuta todas las operaciones de startup contra la BD usando un único scope/conexión.
+        /// Npgsql 10.x tiene un bug donde devolver la conexión al pool entre llamadas deja el
+        /// ManualResetEventSlim interno en estado disposed. Un solo scope evita el reciclado.
+        /// </summary>
+        public static async Task EnsureStartupAsync(this IServiceProvider services)
         {
             using var scope = services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<DataMedixDbContext>();
+
+            // 1. Tabla DataProtection
             await db.Database.ExecuteSqlRawAsync(
                 "CREATE TABLE IF NOT EXISTS data_protection_keys " +
                 "(id SERIAL PRIMARY KEY, friendly_name TEXT, xml TEXT);");
-        }
 
-        /// <summary>
-        /// Crea la tabla reglas_clinicas si no existe y siembra las reglas por defecto
-        /// (solo si la tabla está vacía — idempotente).
-        /// </summary>
-        public static async Task EnsureReglasSeedAsync(this IServiceProvider services)
-        {
-            using var scope = services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<DataMedixDbContext>();
-
+            // 2. Tabla reglas_clinicas
             await db.Database.ExecuteSqlRawAsync(@"
                 CREATE TABLE IF NOT EXISTS reglas_clinicas (
                     id               UUID         NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -95,12 +93,14 @@ namespace DataMedix.Infrastructure
                     created_by       UUID
                 );");
 
+            // 3. Seed reglas clínicas (idempotente)
             var hayReglas = await db.ReglasClinicas.AnyAsync();
-            if (hayReglas) return;
-
-            var reglas = ReglasSeed.GetReglas();
-            await db.ReglasClinicas.AddRangeAsync(reglas);
-            await db.SaveChangesAsync();
+            if (!hayReglas)
+            {
+                var reglas = ReglasSeed.GetReglas();
+                await db.ReglasClinicas.AddRangeAsync(reglas);
+                await db.SaveChangesAsync();
+            }
         }
     }
 }
