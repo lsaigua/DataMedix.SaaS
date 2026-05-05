@@ -115,23 +115,22 @@ namespace DataMedix.Infrastructure.Repositories
         public async Task BulkInsertAsync(List<ResultadoLaboratorio> resultados)
         {
             if (!resultados.Any()) return;
-            // PropertiesToInclude whitelist: BulkExtensions v10 rejects navigation property names
-            // in PropertiesToExclude; using an explicit scalar whitelist avoids the column mismatch.
-            var config = new BulkConfig
+
+            // BulkExtensions v10 Npgsql binary COPY includes non-null navigation properties
+            // as extra values, causing "25 column(s) but 26 value(s)" mismatch.
+            // Null them before COPY and restore after so GenerarSnapshotsAsync can still read them.
+            var savedParametros = resultados.Select(r => r.ParametroClinico).ToList();
+            foreach (var r in resultados) r.ParametroClinico = null;
+
+            try
             {
-                SetOutputIdentity = false,
-                PropertiesToInclude =
-                [
-                    "Id", "TenantId", "PacienteId", "LoteId", "ParametroClinicoId",
-                    "PeriodDate", "PeriodoAnio", "PeriodoMes",
-                    "PlanSalud", "TipoAtencion", "FechaOrden",
-                    "ExamenRaw", "ParametroRaw", "ResultadoTexto",
-                    "ValorNumerico", "UnidadMedida",
-                    "ValorMinReferencia", "ValorMaxReferencia",
-                    "EsPatologico", "Activo", "CreatedAt", "CreatedBy"
-                ]
-            };
-            await _db.BulkInsertAsync(resultados, config);
+                await _db.BulkInsertAsync(resultados, new BulkConfig { SetOutputIdentity = false });
+            }
+            finally
+            {
+                for (int i = 0; i < resultados.Count; i++)
+                    resultados[i].ParametroClinico = savedParametros[i];
+            }
         }
 
         public async Task<List<ResultadoLaboratorio>> GetByPacienteYPeriodoAsync(
