@@ -333,12 +333,41 @@ namespace DataMedix.Infrastructure.Repositories
         public async Task AddDetallesAsync(List<SnapshotMensualDetalle> detalles)
         {
             if (!detalles.Any()) return;
-            // Eliminar detalles previos del snapshot
             var snapshotIds = detalles.Select(d => d.SnapshotId).Distinct().ToList();
             var previos = _db.SnapshotsMensualesDetalle
                 .Where(d => snapshotIds.Contains(d.SnapshotId));
             _db.SnapshotsMensualesDetalle.RemoveRange(previos);
             await _db.SnapshotsMensualesDetalle.AddRangeAsync(detalles);
+        }
+
+        public async Task<List<SnapshotMensual>> GetByRangoAsync(
+            Guid tenantId, DateTime desde, DateTime hasta,
+            string? busqueda = null, Guid? parametroClinicoId = null)
+        {
+            var q = _db.SnapshotsMensuales
+                .Include(s => s.Paciente)
+                .Where(s => s.TenantId == tenantId &&
+                            s.PeriodDate >= desde &&
+                            s.PeriodDate <= hasta &&
+                            s.Activo);
+
+            if (!string.IsNullOrWhiteSpace(busqueda))
+            {
+                var b = busqueda.Trim().ToUpper();
+                q = q.Where(s =>
+                    s.Paciente.Identificacion.Contains(b) ||
+                    s.Paciente.PrimerNombre.ToUpper().Contains(b) ||
+                    s.Paciente.PrimerApellido.ToUpper().Contains(b));
+            }
+
+            if (parametroClinicoId.HasValue)
+            {
+                var pid = parametroClinicoId.Value;
+                q = q.Where(s => s.Detalles.Any(d =>
+                    d.ParametroClinicoId == pid && d.ValorNumerico.HasValue));
+            }
+
+            return await q.AsNoTracking().ToListAsync();
         }
     }
 
@@ -499,6 +528,69 @@ namespace DataMedix.Infrastructure.Repositories
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderByDescending(p => p.PeriodDate).First().EpoUiSemana);
+        }
+
+        public async Task<List<PrescripcionSugerida>> GetSugeridaByRangoAsync(
+            Guid tenantId, DateTime desde, DateTime hasta, List<Guid> pacienteIds) =>
+            await _db.PrescripcionesSugeridas
+                .Where(p => p.TenantId == tenantId &&
+                            pacienteIds.Contains(p.PacienteId) &&
+                            p.PeriodDate >= desde &&
+                            p.PeriodDate <= hasta &&
+                            p.Activo)
+                .AsNoTracking()
+                .ToListAsync();
+
+        public async Task<List<PrescripcionFinal>> GetFinalByRangoAsync(
+            Guid tenantId, DateTime desde, DateTime hasta, List<Guid> pacienteIds) =>
+            await _db.PrescripcionesFinales
+                .Where(f => f.TenantId == tenantId &&
+                            pacienteIds.Contains(f.PacienteId) &&
+                            f.PeriodDate >= desde &&
+                            f.PeriodDate <= hasta &&
+                            f.Activo)
+                .AsNoTracking()
+                .ToListAsync();
+
+        public async Task GuardarAjusteHojaEpoAsync(
+            Guid tenantId, Guid pacienteId, DateTime periodDate,
+            string? ajusteEpo, string? ajusteHierro,
+            Guid medicoId, Guid? prescSugeridaId)
+        {
+            var existente = await _db.PrescripcionesFinales
+                .FirstOrDefaultAsync(f =>
+                    f.TenantId == tenantId &&
+                    f.PacienteId == pacienteId &&
+                    f.PeriodDate == periodDate &&
+                    f.Activo);
+
+            if (existente != null)
+            {
+                existente.EpoDosis      = string.IsNullOrWhiteSpace(ajusteEpo)    ? null : ajusteEpo.Trim();
+                existente.HierroDosis   = string.IsNullOrWhiteSpace(ajusteHierro) ? null : ajusteHierro.Trim();
+                existente.EpoPrescrito  = !string.IsNullOrWhiteSpace(ajusteEpo);
+                existente.HierroPrescrito = !string.IsNullOrWhiteSpace(ajusteHierro);
+                existente.UpdatedAt     = DateTime.UtcNow;
+                _db.PrescripcionesFinales.Update(existente);
+            }
+            else
+            {
+                var nuevo = new PrescripcionFinal
+                {
+                    TenantId              = tenantId,
+                    PacienteId            = pacienteId,
+                    PrescripcionSugeridaId = prescSugeridaId,
+                    MedicoId              = medicoId,
+                    PeriodDate            = periodDate,
+                    EpoPrescrito          = !string.IsNullOrWhiteSpace(ajusteEpo),
+                    EpoDosis              = string.IsNullOrWhiteSpace(ajusteEpo)    ? null : ajusteEpo.Trim(),
+                    HierroPrescrito       = !string.IsNullOrWhiteSpace(ajusteHierro),
+                    HierroDosis           = string.IsNullOrWhiteSpace(ajusteHierro) ? null : ajusteHierro.Trim(),
+                };
+                await _db.PrescripcionesFinales.AddAsync(nuevo);
+            }
+
+            await _db.SaveChangesAsync();
         }
 
         public async Task BulkUpsertSugeridaAsync(List<PrescripcionSugerida> prescripciones)

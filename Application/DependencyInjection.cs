@@ -14,6 +14,7 @@ namespace DataMedix.Application
             services.AddScoped<ImportacionService>();
             services.AddScoped<PrescripcionService>();
             services.AddScoped<ProcesarArchivoLaboratorioUseCase>();
+            services.AddScoped<IHojaEpoService, HojaEpoService>();
 
             return services;
         }

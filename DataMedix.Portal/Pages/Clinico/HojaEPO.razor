@@ -1,0 +1,731 @@
+@page "/hoja-epo"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs.HojaEpo
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+
+@inject IHojaEpoService HojaEpoSvc
+@inject IParametroClinicoRepository ParametroRepo
+@inject AuthenticationStateProvider AuthState
+@inject GlobalToastService Toast
+
+<PageTitle>Hoja EPO / Hierro | DataMedix</PageTitle>
+
+<div class="dm-page-header">
+    <div>
+        <h1 class="dm-page-title">Hoja EPO / Hierro</h1>
+        <p class="dm-page-subtitle">Matriz clínica mensual — EPO, Hierro IV y ajustes por médico</p>
+    </div>
+</div>
+
+<!-- ── Barra de filtros ─────────────────────────────────────────────────────── -->
+<div class="epo-filters-bar">
+
+    <div class="epo-search-wrap">
+        <label class="epo-label">Paciente</label>
+        <div class="epo-search-box @(BusquedaActiva ? "epo-search-active" : "")">
+            <svg class="epo-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input type="text"
+                   placeholder="Nombre o cédula..."
+                   class="epo-search-input"
+                   @bind="BusquedaTexto"
+                   @bind:event="oninput"
+                   @onkeydown="OnBusquedaKeyDown" />
+            @if (!string.IsNullOrEmpty(BusquedaTexto))
+            {
+                <button class="epo-search-clear" @onclick="LimpiarBusqueda" title="Limpiar">✕</button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(BusquedaTexto) && BusquedaTexto.Length < 3)
+        {
+            <span class="epo-hint">Escribe al menos 3 caracteres</span>
+        }
+    </div>
+
+    <div class="epo-filter-group">
+        <label class="epo-label">Parámetro</label>
+        <select @bind="FiltroParametroId" class="epo-select">
+            <option value="">Todos</option>
+            @foreach (var p in Parametros)
+            {
+                <option value="@p.Id">@p.Nombre (@p.Codigo)</option>
+            }
+        </select>
+    </div>
+
+    <div class="epo-filter-group">
+        <label class="epo-label">Desde</label>
+        <div class="epo-period-pair">
+            <select @bind="FiltroMesDe" class="epo-select epo-select-sm">
+                @for (int m = 1; m <= 12; m++) { <option value="@m">@NombreMes(m)</option> }
+            </select>
+            <select @bind="FiltroAnioDe" class="epo-select epo-select-sm">
+                @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { <option value="@a">@a</option> }
+            </select>
+        </div>
+    </div>
+
+    <div class="epo-filter-group">
+        <label class="epo-label">Hasta</label>
+        <div class="epo-period-pair">
+            <select @bind="FiltroMesHasta" class="epo-select epo-select-sm">
+                @for (int m = 1; m <= 12; m++) { <option value="@m">@NombreMes(m)</option> }
+            </select>
+            <select @bind="FiltroAnioHasta" class="epo-select epo-select-sm">
+                @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { <option value="@a">@a</option> }
+            </select>
+        </div>
+    </div>
+
+    <div class="epo-filter-actions">
+        <button class="epo-btn epo-btn-primary" @onclick="BuscarAsync" disabled="@Cargando">
+            @if (Cargando)
+            {
+                <span class="epo-spinner-sm"></span>
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+            }
+            Buscar
+        </button>
+        <button class="epo-btn epo-btn-outline" @onclick="LimpiarFiltros" disabled="@Cargando">
+            Limpiar
+        </button>
+    </div>
+</div>
+
+@if (ErrorMensaje != null)
+{
+    <div class="epo-error-banner">⚠ @ErrorMensaje</div>
+}
+
+@if (!HaBuscado)
+{
+    <div class="epo-empty-state epo-empty-intro">
+        <div class="epo-empty-icon">📋</div>
+        <h3>Selecciona los filtros y haz clic en <strong>Buscar</strong></h3>
+        <p>Define el rango de meses y el paciente para visualizar la matriz EPO / Hierro.</p>
+    </div>
+}
+else if (Cargando)
+{
+    <div class="epo-loading">
+        <div class="epo-spinner"></div>
+        <p>Cargando matriz clínica...</p>
+    </div>
+}
+else if (!Filas.Any())
+{
+    <div class="epo-empty-state">
+        <div class="epo-empty-icon">🔬</div>
+        <h3>Sin resultados</h3>
+        <p>No se encontraron datos para los filtros seleccionados.</p>
+    </div>
+}
+else
+{
+    <!-- ── Leyenda ─────────────────────────────────────────────────────────── -->
+    <div class="epo-legend-bar">
+        <span class="epo-legend-item"><span class="epo-dot epo-hb-ok"></span>HB objetivo (10–13)</span>
+        <span class="epo-legend-item"><span class="epo-dot epo-hb-bajo"></span>HB bajo (&lt;10)</span>
+        <span class="epo-legend-item"><span class="epo-dot epo-hb-alto"></span>HB alto (&gt;13)</span>
+        <span class="epo-legend-item"><span class="epo-dot epo-ajuste"></span>Con ajuste médico</span>
+        <span class="epo-legend-item epo-legend-count">@Filas.Count paciente(s) · @FiltroActual.Meses.Count mes(es)</span>
+    </div>
+
+    <!-- ── Tabla pivot ─────────────────────────────────────────────────────── -->
+    <div class="epo-table-wrapper">
+        <table class="epo-table">
+            <thead>
+                <!-- Fila 1: encabezados de grupo de meses -->
+                <tr class="epo-hdr-months">
+                    <th class="epo-th epo-col-sticky epo-col-ident" rowspan="2">Identificación</th>
+                    <th class="epo-th epo-col-sticky epo-col-nombre" rowspan="2">Paciente</th>
+                    <th class="epo-th epo-col-dialisis" rowspan="2" title="Tiempo en diálisis">T. Diál.</th>
+                    @foreach (var mes in FiltroActual.Meses)
+                    {
+                        <th class="epo-th epo-th-mes" colspan="10">@mes.ToString("MMM yyyy").ToUpper()</th>
+                    }
+                    <th class="epo-th epo-th-resumen" colspan="4">RESUMEN</th>
+                </tr>
+                <!-- Fila 2: sub-encabezados por mes -->
+                <tr class="epo-hdr-cols">
+                    @foreach (var mes in FiltroActual.Meses)
+                    {
+                        <th class="epo-th epo-sub">HB<br/><span class="epo-unit">g/dL</span></th>
+                        <th class="epo-th epo-sub">Hierro<br/><span class="epo-unit">µg/dL</span></th>
+                        <th class="epo-th epo-sub">Ferrit.<br/><span class="epo-unit">ng/mL</span></th>
+                        <th class="epo-th epo-sub">ISAT<br/><span class="epo-unit">%</span></th>
+                        <th class="epo-th epo-sub epo-sub-calc">EPO<br/><span class="epo-unit">UI/sem</span></th>
+                        <th class="epo-th epo-sub epo-sub-ajuste">Aj.EPO<br/><span class="epo-unit">médico</span></th>
+                        <th class="epo-th epo-sub epo-sub-calc">Hierro<br/><span class="epo-unit">mg/mes</span></th>
+                        <th class="epo-th epo-sub epo-sub-ajuste">Aj.Hierro<br/><span class="epo-unit">médico</span></th>
+                        <th class="epo-th epo-sub epo-sub-estado">Estado</th>
+                        <th class="epo-th epo-sub epo-sub-accion">Acción</th>
+                    }
+                    <th class="epo-th epo-sub epo-sub-resumen">Prom.<br/>HB</th>
+                    <th class="epo-th epo-sub epo-sub-resumen">Prom.<br/>EPO</th>
+                    <th class="epo-th epo-sub epo-sub-resumen">Prom.<br/>Hierro</th>
+                    <th class="epo-th epo-sub epo-sub-resumen">Suma<br/>Hierro</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Filas)
+                {
+                    <tr class="epo-row">
+                        <td class="epo-td epo-col-sticky epo-col-ident epo-td-ident">
+                            <span class="epo-ident-badge">@row.Identificacion</span>
+                        </td>
+                        <td class="epo-td epo-col-sticky epo-col-nombre">
+                            <div class="epo-paciente-cell">
+                                <div class="epo-avatar">@(row.NombrePaciente.FirstOrDefault())</div>
+                                <span class="epo-nombre">@row.NombrePaciente</span>
+                            </div>
+                        </td>
+                        <td class="epo-td epo-td-center epo-td-sm">
+                            <span class="epo-dialisis-badge">@row.TiempoDialisisMeses m</span>
+                        </td>
+
+                        @foreach (var mes in FiltroActual.Meses)
+                        {
+                            var celda = row.Meses.TryGetValue(mes, out var c) ? c : new HojaEpoCeldaDto { PeriodDate = mes };
+                            bool editando = _editKey == (row.PacienteId, mes);
+
+                            <!-- HB -->
+                            <td class="epo-td epo-td-center @HbClase(celda.HbValor)">
+                                @FmtDec(celda.HbValor, "F1")
+                            </td>
+                            <!-- Hierro sérico -->
+                            <td class="epo-td epo-td-center">@FmtDec(celda.HierroValor)</td>
+                            <!-- Ferritina -->
+                            <td class="epo-td epo-td-center @FerrClase(celda.FerritinaValor)">
+                                @FmtDec(celda.FerritinaValor, "F0")
+                            </td>
+                            <!-- ISAT/Saturación -->
+                            <td class="epo-td epo-td-center @IsatClase(celda.SaturacionValor)">
+                                @FmtDec(celda.SaturacionValor, "F1")
+                            </td>
+                            <!-- EPO calculado -->
+                            <td class="epo-td epo-td-center epo-cell-calc">
+                                @if (celda.EpoUiSemana.HasValue)
+                                {
+                                    <span class="epo-calc-value @AccionClase(celda.EpoAccion)">
+                                        @celda.EpoUiSemana.Value.ToString("N0")
+                                    </span>
+                                }
+                                else { <span class="epo-no-data">—</span> }
+                            </td>
+                            <!-- AJUSTE EPO (editable) -->
+                            @if (editando)
+                            {
+                                <td class="epo-td epo-td-edit">
+                                    <input type="text"
+                                           class="epo-cell-input"
+                                           @bind="_tempAjusteEpo"
+                                           placeholder="EPO UI/sem"
+                                           @onkeydown="e => OnEditKeyDown(e, row, mes)" />
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="epo-td epo-td-center @(celda.AjusteEpo != null ? "epo-cell-ajuste-filled" : "epo-cell-ajuste-empty")"
+                                    @onclick="() => AbrirEdicion(row, mes, celda)" title="Clic para editar ajuste">
+                                    @(celda.AjusteEpo ?? "—")
+                                </td>
+                            }
+                            <!-- Hierro calculado -->
+                            <td class="epo-td epo-td-center epo-cell-calc">
+                                @if (celda.HierroMgMes.HasValue)
+                                {
+                                    <span class="epo-calc-value @AccionClase(celda.HierroAccion)">
+                                        @celda.HierroMgMes.Value.ToString("N0")
+                                    </span>
+                                }
+                                else { <span class="epo-no-data">—</span> }
+                            </td>
+                            <!-- AJUSTE Hierro (editable) -->
+                            @if (editando)
+                            {
+                                <td class="epo-td epo-td-edit">
+                                    <input type="text"
+                                           class="epo-cell-input"
+                                           @bind="_tempAjusteHierro"
+                                           placeholder="mg/mes"
+                                           @onkeydown="e => OnEditKeyDown(e, row, mes)" />
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="epo-td epo-td-center @(celda.AjusteHierro != null ? "epo-cell-ajuste-filled" : "epo-cell-ajuste-empty")"
+                                    @onclick="() => AbrirEdicion(row, mes, celda)" title="Clic para editar ajuste">
+                                    @(celda.AjusteHierro ?? "—")
+                                </td>
+                            }
+                            <!-- Estado -->
+                            <td class="epo-td epo-td-center">
+                                <span class="epo-estado-badge @EstadoClase(celda.EstadoPrescripcion)">
+                                    @EstadoShort(celda.EstadoPrescripcion)
+                                </span>
+                            </td>
+                            <!-- Botones guardar/cancelar cuando está en edición -->
+                            @if (editando)
+                            {
+                                <td class="epo-td epo-td-center">
+                                    <div class="epo-edit-btns">
+                                        <button class="epo-btn-icon epo-btn-save"
+                                                @onclick="() => GuardarCeldaAsync(row, mes)"
+                                                disabled="@_guardandoCelda" title="Guardar">
+                                            @if (_guardandoCelda) { <span class="epo-spinner-xs"></span> }
+                                            else { <span>✓</span> }
+                                        </button>
+                                        <button class="epo-btn-icon epo-btn-cancel"
+                                                @onclick="CancelarEdicion" title="Cancelar">✕</button>
+                                    </div>
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="epo-td epo-td-center">
+                                    @if (celda.TieneDatos)
+                                    {
+                                        <button class="epo-btn-icon epo-btn-edit"
+                                                @onclick="() => AbrirEdicion(row, mes, celda)"
+                                                title="Editar ajustes">✏</button>
+                                    }
+                                </td>
+                            }
+                        }
+
+                        <!-- Columnas de resumen -->
+                        <td class="epo-td epo-td-center epo-td-resumen @HbClase(row.PromedioHb)">
+                            @FmtDec(row.PromedioHb, "F1")
+                        </td>
+                        <td class="epo-td epo-td-center epo-td-resumen">
+                            @FmtDec(row.PromedioEpo, "N0")
+                        </td>
+                        <td class="epo-td epo-td-center epo-td-resumen">
+                            @FmtDec(row.PromedioHierro, "N0")
+                        </td>
+                        <td class="epo-td epo-td-center epo-td-resumen epo-td-suma">
+                            @FmtDec(row.SumaHierro, "N0")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<!-- ── Modal de guardado con toast inline ──────────────────────────────────── -->
+@if (_mensajeGuardado != null)
+{
+    <div class="epo-save-toast @(_mensajeGuardadoOk ? "epo-toast-ok" : "epo-toast-err")">
+        @(_mensajeGuardadoOk ? "✓" : "⚠") @_mensajeGuardado
+    </div>
+}
+
+<style>
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; }
+    .dm-page-title { font-size: 1.6rem; font-weight: 800; color: #1e293b; margin: 0; }
+    .dm-page-subtitle { color: #64748b; margin: 0.2rem 0 0; font-size: 0.88rem; }
+
+    /* ── Filters ─────────────────────────────────────────────────────────── */
+    .epo-filters-bar { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;
+                        background: white; border-radius: 12px; padding: 1rem 1.25rem;
+                        border: 1.5px solid #e2e8f0; margin-bottom: 1rem;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .epo-label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+                  letter-spacing: 0.06em; display: block; margin-bottom: 0.3rem; }
+    .epo-search-wrap { display: flex; flex-direction: column; flex: 1; min-width: 220px; }
+    .epo-search-box { display: flex; align-items: center; gap: 0.4rem; background: #f8fafc;
+                       border: 1.5px solid #e2e8f0; border-radius: 9px; padding: 0.45rem 0.75rem; }
+    .epo-search-box:focus-within, .epo-search-active { border-color: #0ea5e9; background: white; }
+    .epo-search-icon { width: 15px; height: 15px; color: #94a3b8; flex-shrink: 0; }
+    .epo-search-input { border: none; outline: none; flex: 1; font-size: 0.88rem; background: transparent;
+                         color: #1e293b; }
+    .epo-search-clear { background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 0.8rem;
+                         padding: 0; line-height: 1; }
+    .epo-search-clear:hover { color: #dc2626; }
+    .epo-hint { font-size: 0.7rem; color: #94a3b8; margin-top: 0.2rem; }
+    .epo-filter-group { display: flex; flex-direction: column; }
+    .epo-period-pair { display: flex; gap: 0.4rem; }
+    .epo-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.45rem 0.7rem;
+                   font-size: 0.85rem; color: #374151; background: white; outline: none; cursor: pointer; }
+    .epo-select:focus { border-color: #0ea5e9; }
+    .epo-select-sm { min-width: 80px; }
+    .epo-filter-actions { display: flex; gap: 0.5rem; align-items: flex-end; }
+    .epo-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.5rem 1rem;
+                border-radius: 8px; font-weight: 600; font-size: 0.875rem; cursor: pointer;
+                border: none; transition: all 0.15s; }
+    .epo-btn svg { width: 14px; height: 14px; }
+    .epo-btn-primary { background: #0ea5e9; color: white; }
+    .epo-btn-primary:hover { background: #0284c7; }
+    .epo-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .epo-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .epo-btn-outline:hover { background: #f8fafc; }
+    .epo-btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Legend ──────────────────────────────────────────────────────────── */
+    .epo-legend-bar { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap;
+                       font-size: 0.78rem; color: #475569; margin-bottom: 0.75rem; }
+    .epo-legend-item { display: flex; align-items: center; gap: 0.35rem; }
+    .epo-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .epo-hb-ok { background: #10b981; }
+    .epo-hb-bajo { background: #ef4444; }
+    .epo-hb-alto { background: #f59e0b; }
+    .epo-ajuste { background: #8b5cf6; }
+    .epo-legend-count { margin-left: auto; font-weight: 700; color: #1e293b;
+                         background: #f1f5f9; padding: 0.2rem 0.7rem; border-radius: 20px; }
+
+    /* ── Table wrapper ───────────────────────────────────────────────────── */
+    .epo-table-wrapper { overflow-x: auto; border-radius: 12px; border: 1.5px solid #e2e8f0;
+                          box-shadow: 0 2px 8px rgba(0,0,0,0.06); background: white;
+                          max-height: calc(100vh - 280px); overflow-y: auto; }
+
+    /* ── Table ───────────────────────────────────────────────────────────── */
+    .epo-table { border-collapse: collapse; white-space: nowrap; font-size: 0.8rem; }
+    .epo-th { background: #0f172a; color: #94a3b8; padding: 0.55rem 0.6rem; text-align: center;
+               font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; border: 1px solid #1e293b;
+               position: sticky; top: 0; z-index: 10; }
+    .epo-th-mes { background: #1e293b; color: #e2e8f0; font-size: 0.72rem; }
+    .epo-th-resumen { background: #164e63; color: #bae6fd; }
+    .epo-sub { background: #0f172a; font-weight: 600; }
+    .epo-sub-calc { color: #7dd3fc; }
+    .epo-sub-ajuste { color: #c4b5fd; }
+    .epo-sub-estado { color: #86efac; }
+    .epo-sub-accion { color: #fde68a; }
+    .epo-sub-resumen { background: #0c4a6e; color: #bae6fd; }
+    .epo-unit { font-size: 0.6rem; font-weight: 500; opacity: 0.7; }
+
+    /* Sticky left columns */
+    .epo-col-sticky { position: sticky; z-index: 5; background: white; }
+    .epo-col-ident { left: 0; min-width: 120px; z-index: 6; }
+    .epo-col-nombre { left: 120px; min-width: 180px; z-index: 6; }
+    .epo-col-dialisis { min-width: 60px; }
+    thead .epo-col-sticky { background: #0f172a; z-index: 20; }
+
+    /* ── Table cells ─────────────────────────────────────────────────────── */
+    .epo-td { padding: 0.4rem 0.55rem; border: 1px solid #f1f5f9; vertical-align: middle; }
+    .epo-td-center { text-align: center; }
+    .epo-td-sm { font-size: 0.75rem; }
+    .epo-td-ident { border-right: 2px solid #e2e8f0; }
+    .epo-td-edit { padding: 0.25rem 0.35rem; }
+    .epo-row:hover td { background: #f8fafc; }
+    .epo-row:hover .epo-col-sticky { background: #f8fafc; }
+
+    /* Summary columns */
+    .epo-td-resumen { background: #f0f9ff; font-weight: 700; border-left: 2px solid #bae6fd; }
+    .epo-td-suma { background: #e0f2fe; }
+
+    /* ── Value classes ───────────────────────────────────────────────────── */
+    .epo-hb-ok-cell { background: #f0fdf4; color: #166534; font-weight: 700; }
+    .epo-hb-bajo-cell { background: #fef2f2; color: #991b1b; font-weight: 800; }
+    .epo-hb-alto-cell { background: #fffbeb; color: #92400e; font-weight: 700; }
+    .epo-ferr-bajo-cell { background: #fef2f2; color: #991b1b; }
+    .epo-ferr-alto-cell { background: #fffbeb; color: #92400e; }
+    .epo-isat-bajo-cell { background: #fef2f2; color: #991b1b; }
+    .epo-cell-calc { background: #f8fafc; }
+    .epo-calc-value { font-weight: 700; }
+    .epo-no-data { color: #cbd5e1; font-size: 0.75rem; }
+
+    /* Ajuste cells */
+    .epo-cell-ajuste-filled { background: #f5f3ff; color: #5b21b6; font-weight: 700; cursor: pointer; }
+    .epo-cell-ajuste-filled:hover { background: #ede9fe; }
+    .epo-cell-ajuste-empty { color: #94a3b8; cursor: pointer; font-size: 0.75rem; }
+    .epo-cell-ajuste-empty:hover { background: #f5f3ff; color: #6d28d9; }
+    .epo-cell-input { width: 80px; border: 1.5px solid #8b5cf6; border-radius: 5px;
+                       padding: 0.25rem 0.4rem; font-size: 0.78rem; outline: none; background: white; }
+    .epo-cell-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.2); }
+
+    /* Badges */
+    .epo-ident-badge { font-family: monospace; font-size: 0.78rem; font-weight: 700; color: #1d4ed8;
+                        background: #eff6ff; padding: 0.15rem 0.45rem; border-radius: 4px; }
+    .epo-paciente-cell { display: flex; align-items: center; gap: 0.5rem; }
+    .epo-avatar { width: 26px; height: 26px; background: linear-gradient(135deg,#0ea5e9,#8b5cf6);
+                   border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                   color: white; font-weight: 800; font-size: 0.7rem; flex-shrink: 0; }
+    .epo-nombre { font-weight: 600; color: #1e293b; font-size: 0.82rem; }
+    .epo-dialisis-badge { background: #f1f5f9; color: #475569; font-size: 0.72rem; font-weight: 700;
+                           padding: 0.1rem 0.4rem; border-radius: 4px; }
+
+    /* Estado badges */
+    .epo-estado-badge { padding: 0.1rem 0.4rem; border-radius: 10px; font-size: 0.65rem; font-weight: 800;
+                         text-transform: uppercase; white-space: nowrap; }
+    .epo-estado-pendiente { background: #fef3c7; color: #92400e; }
+    .epo-estado-revisado  { background: #eff6ff; color: #1d4ed8; }
+    .epo-estado-aprobado  { background: #dcfce7; color: #166534; }
+    .epo-estado-rechazado { background: #fee2e2; color: #991b1b; }
+    .epo-estado-sindatos  { background: #f1f5f9; color: #94a3b8; }
+
+    /* Accion badges */
+    .epo-accion-aumentar { color: #dc2626; }
+    .epo-accion-mantener { color: #059669; }
+    .epo-accion-reducir  { color: #d97706; }
+    .epo-accion-suspender{ color: #6b7280; }
+
+    /* Edit buttons */
+    .epo-edit-btns { display: flex; gap: 0.3rem; justify-content: center; }
+    .epo-btn-icon { width: 24px; height: 24px; border-radius: 5px; border: none; cursor: pointer;
+                     display: flex; align-items: center; justify-content: center; font-size: 0.75rem;
+                     font-weight: 700; transition: all 0.12s; flex-shrink: 0; }
+    .epo-btn-edit   { background: #ede9fe; color: #6d28d9; }
+    .epo-btn-edit:hover { background: #c4b5fd; }
+    .epo-btn-save   { background: #dcfce7; color: #166534; }
+    .epo-btn-save:hover { background: #bbf7d0; }
+    .epo-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+    .epo-btn-cancel { background: #fee2e2; color: #991b1b; }
+    .epo-btn-cancel:hover { background: #fecaca; }
+
+    /* Spinners */
+    .epo-spinner { width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+                    border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .epo-spinner-sm { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4);
+                       border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .epo-spinner-xs { width: 11px; height: 11px; border: 2px solid rgba(22,101,52,0.3);
+                       border-top-color: #166534; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    /* States */
+    .epo-loading { display: flex; flex-direction: column; align-items: center; padding: 3rem; gap: 1rem; color: #64748b; }
+    .epo-empty-state { text-align: center; padding: 3rem 2rem; color: #64748b;
+                        background: white; border-radius: 12px; border: 1.5px solid #e2e8f0; }
+    .epo-empty-intro { background: linear-gradient(135deg,#f0f9ff,#f5f3ff); border-color: #bae6fd; }
+    .epo-empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .epo-empty-state h3 { font-size: 1.1rem; font-weight: 700; color: #374151; margin-bottom: 0.4rem; }
+    .epo-empty-state p { font-size: 0.88rem; }
+    .epo-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
+                         padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.875rem; }
+
+    /* Save toast */
+    .epo-save-toast { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: 0.75rem 1.25rem;
+                       border-radius: 10px; font-weight: 600; font-size: 0.875rem; z-index: 2000;
+                       animation: slideIn 0.2s ease; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+    .epo-toast-ok  { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .epo-toast-err { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    @@keyframes slideIn { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+</style>
+
+@code {
+    // ── Filtros ──────────────────────────────────────────────────────────────
+    private string  BusquedaTexto    = string.Empty;
+    private bool    BusquedaActiva   => !string.IsNullOrEmpty(BusquedaTexto) && BusquedaTexto.Length >= 3;
+    private Guid?   FiltroParametroId;
+    private int     FiltroMesDe      = DateTime.Now.Month;
+    private int     FiltroAnioDe     = DateTime.Now.Year;
+    private int     FiltroMesHasta   = DateTime.Now.Month;
+    private int     FiltroAnioHasta  = DateTime.Now.Year;
+
+    // ── Estado ───────────────────────────────────────────────────────────────
+    private List<HojaEpoRowDto>    Filas       = new();
+    private List<ParametroClinico> Parametros  = new();
+    private HojaEpoFiltroDto       FiltroActual = new();
+    private bool   Cargando      = false;
+    private bool   HaBuscado     = false;
+    private string? ErrorMensaje;
+    private Guid   TenantId;
+    private Guid   MedicoId;
+
+    // ── Edición inline ───────────────────────────────────────────────────────
+    private (Guid PacienteId, DateTime PeriodDate)? _editKey;
+    private string? _tempAjusteEpo;
+    private string? _tempAjusteHierro;
+    private bool    _guardandoCelda;
+    private string? _mensajeGuardado;
+    private bool    _mensajeGuardadoOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+        Guid.TryParse(auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out MedicoId);
+
+        Parametros = await ParametroRepo.GetAllAsync(soloActivos: true);
+    }
+
+    private async Task BuscarAsync()
+    {
+        if (!string.IsNullOrEmpty(BusquedaTexto) && BusquedaTexto.Length < 3) return;
+
+        Cargando     = true;
+        HaBuscado    = true;
+        ErrorMensaje = null;
+        _editKey     = null;
+        StateHasChanged();
+
+        try
+        {
+            FiltroActual = new HojaEpoFiltroDto
+            {
+                BusquedaPaciente  = string.IsNullOrWhiteSpace(BusquedaTexto) ? null : BusquedaTexto.Trim(),
+                ParametroClinicoId = FiltroParametroId == Guid.Empty ? null : FiltroParametroId,
+                MesDe     = FiltroMesDe,
+                AnioDe    = FiltroAnioDe,
+                MesHasta  = FiltroMesHasta,
+                AnioHasta = FiltroAnioHasta,
+            };
+
+            Filas = await HojaEpoSvc.GetMatrizAsync(TenantId, FiltroActual);
+        }
+        catch (Exception ex)
+        {
+            ErrorMensaje = ex.Message;
+            Filas = [];
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private void LimpiarFiltros()
+    {
+        BusquedaTexto    = string.Empty;
+        FiltroParametroId = null;
+        FiltroMesDe      = DateTime.Now.Month;
+        FiltroAnioDe     = DateTime.Now.Year;
+        FiltroMesHasta   = DateTime.Now.Month;
+        FiltroAnioHasta  = DateTime.Now.Year;
+        Filas            = [];
+        HaBuscado        = false;
+        ErrorMensaje     = null;
+        _editKey         = null;
+    }
+
+    private void LimpiarBusqueda()
+    {
+        BusquedaTexto = string.Empty;
+    }
+
+    private async Task OnBusquedaKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && BusquedaActiva)
+            await BuscarAsync();
+    }
+
+    // ── Edición inline ───────────────────────────────────────────────────────
+    private void AbrirEdicion(HojaEpoRowDto row, DateTime mes, HojaEpoCeldaDto celda)
+    {
+        _editKey         = (row.PacienteId, mes);
+        _tempAjusteEpo   = celda.AjusteEpo;
+        _tempAjusteHierro = celda.AjusteHierro;
+    }
+
+    private void CancelarEdicion()
+    {
+        _editKey         = null;
+        _tempAjusteEpo   = null;
+        _tempAjusteHierro = null;
+    }
+
+    private async Task OnEditKeyDown(KeyboardEventArgs e, HojaEpoRowDto row, DateTime mes)
+    {
+        if (e.Key == "Enter")  await GuardarCeldaAsync(row, mes);
+        if (e.Key == "Escape") CancelarEdicion();
+    }
+
+    private async Task GuardarCeldaAsync(HojaEpoRowDto row, DateTime mes)
+    {
+        if (_guardandoCelda) return;
+        _guardandoCelda = true;
+        _mensajeGuardado = null;
+        StateHasChanged();
+
+        try
+        {
+            var celda = row.Meses.TryGetValue(mes, out var c) ? c : null;
+
+            await HojaEpoSvc.GuardarAjusteAsync(
+                TenantId, row.PacienteId, mes,
+                _tempAjusteEpo, _tempAjusteHierro,
+                MedicoId, celda?.PrescripcionSugeridaId);
+
+            // Actualizar la celda en memoria para reflejo inmediato
+            if (celda == null)
+            {
+                celda = new HojaEpoCeldaDto { PeriodDate = mes };
+                row.Meses[mes] = celda;
+            }
+            celda.AjusteEpo    = string.IsNullOrWhiteSpace(_tempAjusteEpo)    ? null : _tempAjusteEpo!.Trim();
+            celda.AjusteHierro = string.IsNullOrWhiteSpace(_tempAjusteHierro) ? null : _tempAjusteHierro!.Trim();
+
+            _editKey             = null;
+            _mensajeGuardado     = $"Ajuste guardado — {row.NombrePaciente} {mes:MMM yyyy}";
+            _mensajeGuardadoOk   = true;
+
+            // Ocultar el toast automáticamente
+            _ = OcultarToastAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensajeGuardado   = $"Error al guardar: {ex.Message}";
+            _mensajeGuardadoOk = false;
+        }
+        finally
+        {
+            _guardandoCelda = false;
+        }
+    }
+
+    private async Task OcultarToastAsync()
+    {
+        await Task.Delay(3500);
+        _mensajeGuardado = null;
+        StateHasChanged();
+    }
+
+    // ── Helpers de formato ───────────────────────────────────────────────────
+    private static string FmtDec(decimal? v, string fmt = "F0") =>
+        v.HasValue ? v.Value.ToString(fmt) : "—";
+
+    private static string NombreMes(int m) =>
+        new DateTime(2000, m, 1).ToString("MMM");
+
+    private static string HbClase(decimal? v) =>
+        v == null ? "" :
+        v < 10    ? "epo-hb-bajo-cell" :
+        v > 13    ? "epo-hb-alto-cell" : "epo-hb-ok-cell";
+
+    private static string FerrClase(decimal? v) =>
+        v == null ? "" :
+        v < 200   ? "epo-ferr-bajo-cell" :
+        v > 500   ? "epo-ferr-alto-cell" : "";
+
+    private static string IsatClase(decimal? v) =>
+        v == null ? "" : v < 20 ? "epo-isat-bajo-cell" : "";
+
+    private static string AccionClase(string? a) => a switch
+    {
+        "AUMENTAR"  => "epo-accion-aumentar",
+        "MANTENER"  => "epo-accion-mantener",
+        "REDUCIR"   => "epo-accion-reducir",
+        "SUSPENDER" => "epo-accion-suspender",
+        _ => ""
+    };
+
+    private static string EstadoClase(string e) => e switch
+    {
+        "PENDIENTE" => "epo-estado-pendiente",
+        "REVISADO"  => "epo-estado-revisado",
+        "APROBADO"  => "epo-estado-aprobado",
+        "RECHAZADO" => "epo-estado-rechazado",
+        _ => "epo-estado-sindatos"
+    };
+
+    private static string EstadoShort(string e) => e switch
+    {
+        "PENDIENTE" => "PEND",
+        "REVISADO"  => "REV",
+        "APROBADO"  => "APRO",
+        "RECHAZADO" => "RECH",
+        _ => "S/D"
+    };
+}

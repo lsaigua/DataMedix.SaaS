@@ -47,6 +47,9 @@ namespace DataMedix.Application.Interfaces
         Task<List<string>> GetPlanesSaludAsync(Guid tenantId, DateTime periodDate);
         Task UpsertAsync(SnapshotMensual snapshot);
         Task AddDetallesAsync(List<SnapshotMensualDetalle> detalles);
+        /// <summary>Hoja EPO: snapshots de un rango de fechas con filtro opcional de paciente y parámetro.</summary>
+        Task<List<SnapshotMensual>> GetByRangoAsync(Guid tenantId, DateTime desde, DateTime hasta,
+            string? busqueda = null, Guid? parametroClinicoId = null);
     }
 
     public interface IRangoPreescribaRepository
@@ -75,6 +78,13 @@ namespace DataMedix.Application.Interfaces
             Guid tenantId, IEnumerable<Guid> pacienteIds, DateTime hasta);
         /// <summary>Upsert masivo de prescripciones sugeridas usando BulkExtensions.</summary>
         Task BulkUpsertSugeridaAsync(List<PrescripcionSugerida> prescripciones);
+        /// <summary>Hoja EPO: sugeridas de un rango para un conjunto de pacientes.</summary>
+        Task<List<PrescripcionSugerida>> GetSugeridaByRangoAsync(Guid tenantId, DateTime desde, DateTime hasta, List<Guid> pacienteIds);
+        /// <summary>Hoja EPO: finales de un rango para un conjunto de pacientes.</summary>
+        Task<List<PrescripcionFinal>> GetFinalByRangoAsync(Guid tenantId, DateTime desde, DateTime hasta, List<Guid> pacienteIds);
+        /// <summary>Hoja EPO: crea o actualiza la PrescripcionFinal con los ajustes del médico.</summary>
+        Task GuardarAjusteHojaEpoAsync(Guid tenantId, Guid pacienteId, DateTime periodDate,
+            string? ajusteEpo, string? ajusteHierro, Guid medicoId, Guid? prescSugeridaId);
     }
 
     public interface IAuditoriaRepository
