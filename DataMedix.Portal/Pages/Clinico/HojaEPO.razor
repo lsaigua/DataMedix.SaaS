@@ -11,11 +11,11 @@
 @inject AuthenticationStateProvider AuthState
 @inject GlobalToastService Toast
 
-<PageTitle>Hoja EPO / Hierro | DataMedix</PageTitle>
+<PageTitle>Prescripción Sugerida | DataMedix</PageTitle>
 
 <div class="dm-page-header">
     <div>
-        <h1 class="dm-page-title">Hoja EPO / Hierro</h1>
+        <h1 class="dm-page-title">Prescripción Sugerida</h1>
         <p class="dm-page-subtitle">Matriz clínica mensual — EPO, Hierro IV y ajustes por médico</p>
     </div>
 </div>
@@ -132,12 +132,18 @@ else if (!Filas.Any())
 else
 {
     <!-- ── Leyenda ─────────────────────────────────────────────────────────── -->
-    <div class="epo-legend-bar">
-        <span class="epo-legend-item"><span class="epo-dot epo-hb-ok"></span>HB objetivo (10–13)</span>
-        <span class="epo-legend-item"><span class="epo-dot epo-hb-bajo"></span>HB bajo (&lt;10)</span>
-        <span class="epo-legend-item"><span class="epo-dot epo-hb-alto"></span>HB alto (&gt;13)</span>
-        <span class="epo-legend-item"><span class="epo-dot epo-ajuste"></span>Con ajuste médico</span>
-        <span class="epo-legend-item epo-legend-count">@Filas.Count paciente(s) · @FiltroActual.Meses.Count mes(es)</span>
+    <div class="epo-legend-card">
+        <div class="epo-legend-bar">
+            <span class="epo-legend-item"><span class="epo-dot epo-hb-ok"></span>HB 10–13 g/dL (objetivo)</span>
+            <span class="epo-legend-item"><span class="epo-dot epo-hb-bajo"></span>HB &lt;10 — aumentar EPO</span>
+            <span class="epo-legend-item"><span class="epo-dot epo-hb-alto"></span>HB &gt;13 — reducir/suspender EPO</span>
+            <span class="epo-legend-item"><span class="epo-dot epo-ajuste"></span><strong>✏ Aj.EPO / Aj.Hierro</strong>: dosis ajustada por médico</span>
+            <span class="epo-legend-item"><span class="epo-dot epo-pato-dot"></span>PATOLÓGICO: HB fuera de rango</span>
+            <span class="epo-legend-item epo-legend-count">@Filas.Count paciente(s) · @FiltroActual.Meses.Count mes(es)</span>
+        </div>
+        <div class="epo-legend-note">
+            <strong>Nota clínica:</strong> Los valores <em>EPO UI/sem</em> y <em>Hierro mg/mes</em> son calculados automáticamente según reglas de prescripción. Las columnas <strong>✏ Aj.EPO</strong> y <strong>✏ Aj.Hierro</strong> permiten al médico registrar la dosis final ajustada — haga clic en la celda o en ✏ para editar y seleccionar de la lista de dosis. El ícono 💊 abre la <em>Prescripción Clínica</em> del paciente.
+        </div>
     </div>
 
     <!-- ── Tabla pivot ─────────────────────────────────────────────────────── -->
@@ -151,7 +157,7 @@ else
                     <th class="epo-th epo-col-dialisis" rowspan="2" title="Tiempo en diálisis">T. Diál.</th>
                     @foreach (var mes in FiltroActual.Meses)
                     {
-                        <th class="epo-th epo-th-mes" colspan="10">@mes.ToString("MMM yyyy").ToUpper()</th>
+                        <th class="epo-th epo-th-mes" colspan="11">@mes.ToString("MMM yyyy").ToUpper()</th>
                     }
                     <th class="epo-th epo-th-resumen" colspan="4">RESUMEN</th>
                 </tr>
@@ -164,10 +170,11 @@ else
                         <th class="epo-th epo-sub">Ferrit.<br/><span class="epo-unit">ng/mL</span></th>
                         <th class="epo-th epo-sub">ISAT<br/><span class="epo-unit">%</span></th>
                         <th class="epo-th epo-sub epo-sub-calc">EPO<br/><span class="epo-unit">UI/sem</span></th>
-                        <th class="epo-th epo-sub epo-sub-ajuste">Aj.EPO<br/><span class="epo-unit">médico</span></th>
+                        <th class="epo-th epo-sub epo-sub-ajuste epo-sub-ajuste-h">✏ Aj.EPO<br/><span class="epo-unit">médico</span></th>
                         <th class="epo-th epo-sub epo-sub-calc">Hierro<br/><span class="epo-unit">mg/mes</span></th>
-                        <th class="epo-th epo-sub epo-sub-ajuste">Aj.Hierro<br/><span class="epo-unit">médico</span></th>
+                        <th class="epo-th epo-sub epo-sub-ajuste epo-sub-ajuste-h">✏ Aj.Hierro<br/><span class="epo-unit">médico</span></th>
                         <th class="epo-th epo-sub epo-sub-estado">Estado</th>
+                        <th class="epo-th epo-sub epo-sub-pato">PATOLÓGICO</th>
                         <th class="epo-th epo-sub epo-sub-accion">Acción</th>
                     }
                     <th class="epo-th epo-sub epo-sub-resumen">Prom.<br/>HB</th>
@@ -225,12 +232,14 @@ else
                             <!-- AJUSTE EPO (editable) -->
                             @if (editando)
                             {
-                                <td class="epo-td epo-td-edit">
+                                <td class="epo-td epo-td-edit epo-td-ajuste-active">
                                     <input type="text"
-                                           class="epo-cell-input"
+                                           list="epo-dosis-list"
+                                           class="epo-cell-input epo-cell-input-aj"
                                            @bind="_tempAjusteEpo"
-                                           placeholder="EPO UI/sem"
-                                           @onkeydown="e => OnEditKeyDown(e, row, mes)" />
+                                           placeholder="UI/sem"
+                                           @onkeydown="e => OnEditKeyDown(e, row, mes)"
+                                           autocomplete="off" />
                                 </td>
                             }
                             else
@@ -253,12 +262,14 @@ else
                             <!-- AJUSTE Hierro (editable) -->
                             @if (editando)
                             {
-                                <td class="epo-td epo-td-edit">
+                                <td class="epo-td epo-td-edit epo-td-ajuste-active">
                                     <input type="text"
-                                           class="epo-cell-input"
+                                           list="hierro-dosis-list"
+                                           class="epo-cell-input epo-cell-input-aj"
                                            @bind="_tempAjusteHierro"
                                            placeholder="mg/mes"
-                                           @onkeydown="e => OnEditKeyDown(e, row, mes)" />
+                                           @onkeydown="e => OnEditKeyDown(e, row, mes)"
+                                           autocomplete="off" />
                                 </td>
                             }
                             else
@@ -273,6 +284,21 @@ else
                                 <span class="epo-estado-badge @EstadoClase(celda.EstadoPrescripcion)">
                                     @EstadoShort(celda.EstadoPrescripcion)
                                 </span>
+                            </td>
+                            <!-- PATOLÓGICO -->
+                            <td class="epo-td epo-td-center">
+                                @if (celda.HbValor.HasValue)
+                                {
+                                    @if (celda.HbValor < 10 || celda.HbValor > 13)
+                                    {
+                                        <span class="epo-badge-pato">⚠ Sí</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="epo-badge-normal">✓ No</span>
+                                    }
+                                }
+                                else { <span class="epo-no-data">—</span> }
                             </td>
                             <!-- Botones guardar/cancelar cuando está en edición -->
                             @if (editando)
@@ -293,12 +319,16 @@ else
                             else
                             {
                                 <td class="epo-td epo-td-center">
-                                    @if (celda.TieneDatos)
-                                    {
-                                        <button class="epo-btn-icon epo-btn-edit"
-                                                @onclick="() => AbrirEdicion(row, mes, celda)"
-                                                title="Editar ajustes">✏</button>
-                                    }
+                                    <div class="epo-edit-btns">
+                                        @if (celda.TieneDatos)
+                                        {
+                                            <button class="epo-btn-icon epo-btn-edit"
+                                                    @onclick="() => AbrirEdicion(row, mes, celda)"
+                                                    title="Editar ajustes">✏</button>
+                                        }
+                                        <a href="/prescripciones/@row.PacienteId"
+                                           class="epo-btn-icon epo-btn-presc" title="Ver prescripciones">💊</a>
+                                    </div>
                                 </td>
                             }
                         }
@@ -322,6 +352,28 @@ else
         </table>
     </div>
 }
+
+<!-- Listas de dosis predefinidas para ajustes médicos -->
+<datalist id="epo-dosis-list">
+    <option value="1000"></option>
+    <option value="2000"></option>
+    <option value="3000"></option>
+    <option value="4000"></option>
+    <option value="6000"></option>
+    <option value="8000"></option>
+    <option value="10000"></option>
+    <option value="12000"></option>
+</datalist>
+<datalist id="hierro-dosis-list">
+    <option value="100"></option>
+    <option value="200"></option>
+    <option value="300"></option>
+    <option value="400"></option>
+    <option value="500"></option>
+    <option value="600"></option>
+    <option value="800"></option>
+    <option value="1000"></option>
+</datalist>
 
 <!-- ── Modal de guardado con toast inline ──────────────────────────────────── -->
 @if (_mensajeGuardado != null)
@@ -374,16 +426,22 @@ else
     .epo-btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* ── Legend ──────────────────────────────────────────────────────────── */
+    .epo-legend-card { background: white; border-radius: 10px; border: 1.5px solid #e2e8f0;
+                        padding: 0.75rem 1rem; margin-bottom: 0.75rem;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
     .epo-legend-bar { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap;
-                       font-size: 0.78rem; color: #475569; margin-bottom: 0.75rem; }
+                       font-size: 0.78rem; color: #475569; }
     .epo-legend-item { display: flex; align-items: center; gap: 0.35rem; }
     .epo-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
     .epo-hb-ok { background: #10b981; }
     .epo-hb-bajo { background: #ef4444; }
     .epo-hb-alto { background: #f59e0b; }
     .epo-ajuste { background: #8b5cf6; }
+    .epo-pato-dot { background: #ef4444; border: 2px solid #991b1b; }
     .epo-legend-count { margin-left: auto; font-weight: 700; color: #1e293b;
                          background: #f1f5f9; padding: 0.2rem 0.7rem; border-radius: 20px; }
+    .epo-legend-note { font-size: 0.73rem; color: #475569; margin-top: 0.5rem; padding-top: 0.5rem;
+                        border-top: 1px solid #f1f5f9; line-height: 1.6; }
 
     /* ── Table wrapper ───────────────────────────────────────────────────── */
     .epo-table-wrapper { overflow-x: auto; border-radius: 12px; border: 1.5px solid #e2e8f0;
@@ -400,7 +458,10 @@ else
     .epo-sub { background: #0f172a; font-weight: 600; }
     .epo-sub-calc { color: #7dd3fc; }
     .epo-sub-ajuste { color: #c4b5fd; }
+    .epo-sub-ajuste-h { background: #3b0764 !important; color: #e9d5ff !important;
+                         border-left: 2px solid #7c3aed !important; border-right: 2px solid #7c3aed !important; }
     .epo-sub-estado { color: #86efac; }
+    .epo-sub-pato { color: #fca5a5; }
     .epo-sub-accion { color: #fde68a; }
     .epo-sub-resumen { background: #0c4a6e; color: #bae6fd; }
     .epo-unit { font-size: 0.6rem; font-weight: 500; opacity: 0.7; }
@@ -437,13 +498,27 @@ else
     .epo-no-data { color: #cbd5e1; font-size: 0.75rem; }
 
     /* Ajuste cells */
-    .epo-cell-ajuste-filled { background: #f5f3ff; color: #5b21b6; font-weight: 700; cursor: pointer; }
+    .epo-cell-ajuste-filled { background: #f5f3ff; color: #5b21b6; font-weight: 700; cursor: pointer;
+                               border-left: 2px solid #a78bfa; border-right: 2px solid #a78bfa; }
     .epo-cell-ajuste-filled:hover { background: #ede9fe; }
-    .epo-cell-ajuste-empty { color: #94a3b8; cursor: pointer; font-size: 0.75rem; }
-    .epo-cell-ajuste-empty:hover { background: #f5f3ff; color: #6d28d9; }
+    .epo-cell-ajuste-empty { color: #94a3b8; cursor: pointer; font-size: 0.75rem;
+                              border-left: 2px solid #ede9fe; border-right: 2px solid #ede9fe; }
+    .epo-cell-ajuste-empty:hover { background: #f5f3ff; color: #6d28d9; border-color: #a78bfa; }
+    .epo-td-ajuste-active { background: #faf5ff !important; border-left: 2px solid #a78bfa !important;
+                             border-right: 2px solid #a78bfa !important; }
     .epo-cell-input { width: 80px; border: 1.5px solid #8b5cf6; border-radius: 5px;
                        padding: 0.25rem 0.4rem; font-size: 0.78rem; outline: none; background: white; }
     .epo-cell-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.2); }
+    .epo-cell-input-aj { width: 88px; border: 2px solid #7c3aed; border-radius: 5px;
+                          padding: 0.25rem 0.4rem; font-size: 0.78rem; outline: none; background: white;
+                          font-weight: 600; color: #5b21b6; }
+    .epo-cell-input-aj:focus { border-color: #6d28d9; box-shadow: 0 0 0 2px rgba(109,40,217,0.25); }
+
+    /* PATOLÓGICO badges */
+    .epo-badge-pato { background: #fee2e2; color: #991b1b; padding: 0.1rem 0.4rem;
+                      border-radius: 10px; font-size: 0.67rem; font-weight: 800; white-space: nowrap; }
+    .epo-badge-normal { background: #dcfce7; color: #166534; padding: 0.1rem 0.4rem;
+                        border-radius: 10px; font-size: 0.67rem; font-weight: 800; white-space: nowrap; }
 
     /* Badges */
     .epo-ident-badge { font-family: monospace; font-size: 0.78rem; font-weight: 700; color: #1d4ed8;
@@ -483,6 +558,9 @@ else
     .epo-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
     .epo-btn-cancel { background: #fee2e2; color: #991b1b; }
     .epo-btn-cancel:hover { background: #fecaca; }
+    .epo-btn-presc  { background: #f0fdf4; color: #16a34a; text-decoration: none;
+                       display: flex; align-items: center; justify-content: center; font-size: 0.85rem; }
+    .epo-btn-presc:hover { background: #dcfce7; }
 
     /* Spinners */
     .epo-spinner { width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;

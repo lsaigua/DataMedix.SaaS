@@ -383,7 +383,7 @@ else
     private int TotalPaginas => Total == 0 ? 1 : (int)Math.Ceiling(Total / (double)Filtro.Tamano);
     private bool Cargando = true;
     private Guid TenantId;
-    private System.Timers.Timer? _debounceTimer;
+    private System.Threading.CancellationTokenSource? _debounce;
 
     protected override async Task OnInitializedAsync()
     {
@@ -426,19 +426,20 @@ else
         }
     }
 
-    private void BuscarDebounced(KeyboardEventArgs _)
+    private async Task BuscarDebounced()
     {
         Filtro.BusquedaPaciente = BusquedaPaciente;
         Filtro.Pagina = 1;
-        _debounceTimer?.Dispose();
-        _debounceTimer = new System.Timers.Timer(350);
-        _debounceTimer.Elapsed += async (_, _) =>
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+        _debounce = new System.Threading.CancellationTokenSource();
+        var token = _debounce.Token;
+        try
         {
-            _debounceTimer?.Dispose();
-            await InvokeAsync(CargarAsync);
-        };
-        _debounceTimer.AutoReset = false;
-        _debounceTimer.Start();
+            await Task.Delay(350, token);
+            await CargarAsync();
+        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task PaginaAnterior()
@@ -533,5 +534,5 @@ else
         return s.Length > max ? s[..max] + "…" : s;
     }
 
-    public void Dispose() => _debounceTimer?.Dispose();
+    public void Dispose() => _debounce?.Dispose();
 }

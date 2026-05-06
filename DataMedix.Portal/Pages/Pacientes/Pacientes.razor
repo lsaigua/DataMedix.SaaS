@@ -261,17 +261,16 @@ else
     private async Task BuscarDebounced()
     {
         _debounce?.Cancel();
+        _debounce?.Dispose();
         _debounce = new System.Threading.CancellationTokenSource();
         var token = _debounce.Token;
-
-        await Task.Delay(400, token).ContinueWith(async t =>
+        try
         {
-            if (t.IsCompletedSuccessfully)
-            {
-                PaginaActual = 1;
-                await InvokeAsync(CargarPacientesAsync);
-            }
-        });
+            await Task.Delay(400, token);
+            PaginaActual = 1;
+            await CargarPacientesAsync();
+        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task LimpiarBusqueda()
