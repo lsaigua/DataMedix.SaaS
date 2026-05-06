@@ -60,46 +60,57 @@ namespace DataMedix.Infrastructure
         }
 
         /// <summary>
-        /// Ejecuta todas las operaciones de startup contra la BD usando un único scope/conexión.
-        /// Npgsql 10.x tiene un bug donde devolver la conexión al pool entre llamadas deja el
-        /// ManualResetEventSlim interno en estado disposed. Un solo scope evita el reciclado.
+        /// Ejecuta todas las operaciones de startup contra la BD con la conexión abierta
+        /// explícitamente durante toda la secuencia.  Npgsql 10.x dispone el
+        /// ManualResetEventSlim interno del conector al devolver la conexión al pool;
+        /// al mantenerla abierta (OpenConnectionAsync) se evita ese reciclado.
         /// </summary>
         public static async Task EnsureStartupAsync(this IServiceProvider services)
         {
             using var scope = services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<DataMedixDbContext>();
 
-            // 1. Tabla DataProtection
-            await db.Database.ExecuteSqlRawAsync(
-                "CREATE TABLE IF NOT EXISTS data_protection_keys " +
-                "(id SERIAL PRIMARY KEY, friendly_name TEXT, xml TEXT);");
-
-            // 2. Tabla reglas_clinicas
-            await db.Database.ExecuteSqlRawAsync(@"
-                CREATE TABLE IF NOT EXISTS reglas_clinicas (
-                    id               UUID         NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
-                    codigo           VARCHAR(50)  NOT NULL UNIQUE,
-                    nombre           VARCHAR(300) NOT NULL,
-                    tipo             VARCHAR(20)  NOT NULL,
-                    prioridad        INT          NOT NULL,
-                    severidad        VARCHAR(20),
-                    condiciones_json TEXT         NOT NULL,
-                    accion_json      TEXT         NOT NULL,
-                    version          INT          NOT NULL DEFAULT 1,
-                    activo           BOOLEAN      NOT NULL DEFAULT TRUE,
-                    tenant_id        UUID,
-                    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                    updated_at       TIMESTAMPTZ,
-                    created_by       UUID
-                );");
-
-            // 3. Seed reglas clínicas (idempotente)
-            var hayReglas = await db.ReglasClinicas.AnyAsync();
-            if (!hayReglas)
+            // Mantener la conexión abierta durante toda la secuencia de startup para que
+            // Npgsql no la devuelva al pool (y no disponga el MRES) entre operaciones.
+            await db.Database.OpenConnectionAsync();
+            try
             {
-                var reglas = ReglasSeed.GetReglas();
-                await db.ReglasClinicas.AddRangeAsync(reglas);
-                await db.SaveChangesAsync();
+                // 1. Tabla DataProtection
+                await db.Database.ExecuteSqlRawAsync(
+                    "CREATE TABLE IF NOT EXISTS data_protection_keys " +
+                    "(id SERIAL PRIMARY KEY, friendly_name TEXT, xml TEXT);");
+
+                // 2. Tabla reglas_clinicas
+                await db.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS reglas_clinicas (
+                        id               UUID         NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+                        codigo           VARCHAR(50)  NOT NULL UNIQUE,
+                        nombre           VARCHAR(300) NOT NULL,
+                        tipo             VARCHAR(20)  NOT NULL,
+                        prioridad        INT          NOT NULL,
+                        severidad        VARCHAR(20),
+                        condiciones_json TEXT         NOT NULL,
+                        accion_json      TEXT         NOT NULL,
+                        version          INT          NOT NULL DEFAULT 1,
+                        activo           BOOLEAN      NOT NULL DEFAULT TRUE,
+                        tenant_id        UUID,
+                        created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        updated_at       TIMESTAMPTZ,
+                        created_by       UUID
+                    );");
+
+                // 3. Seed reglas clínicas (idempotente)
+                var hayReglas = await db.ReglasClinicas.AnyAsync();
+                if (!hayReglas)
+                {
+                    var reglas = ReglasSeed.GetReglas();
+                    await db.ReglasClinicas.AddRangeAsync(reglas);
+                    await db.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                await db.Database.CloseConnectionAsync();
             }
         }
     }
