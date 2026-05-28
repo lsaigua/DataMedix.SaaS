@@ -143,7 +143,7 @@ namespace DataMedix.Application.Services
                     // Todos los registros se almacenan — solo los reconocidos contribuyen al snapshot
 
                     // Resolver paciente (cache en memoria durante el lote)
-                    var ident = fila.Identificacion!.Trim();
+                    var ident = NormalizarIdentificacion(fila.Identificacion!);
                     if (!pacientesCache.TryGetValue(ident, out var paciente))
                     {
                         paciente = await _pacienteRepo.GetByIdentificacionAsync(tenantId, ident);
@@ -422,15 +422,15 @@ namespace DataMedix.Application.Services
 
         private static Paciente CrearPaciente(LabRowDto fila, Guid tenantId, Guid usuarioId)
         {
-            var nombre = fila.NombrePaciente?.Trim() ?? "";
-            var partes = nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
+            var (primer, segundo, primerAp, segundoAp) = ParsearNombre(fila.NombrePaciente?.Trim() ?? "");
             return new Paciente
             {
                 TenantId = tenantId,
-                Identificacion = fila.Identificacion!.Trim(),
-                PrimerNombre = partes.Length > 0 ? partes[0] : "SIN NOMBRE",
-                PrimerApellido = partes.Length > 1 ? partes[^1] : "SIN APELLIDO",
+                Identificacion = NormalizarIdentificacion(fila.Identificacion!),
+                PrimerNombre = primer,
+                SegundoNombre = segundo,
+                PrimerApellido = primerAp,
+                SegundoApellido = segundoAp,
                 PlanSalud = fila.PlanSalud,
                 TipoAtencion = fila.TipoAtencion,
                 CreatedBy = usuarioId,
@@ -440,11 +440,43 @@ namespace DataMedix.Application.Services
 
         private static void ActualizarPacienteSiNecesario(Paciente paciente, LabRowDto fila)
         {
-            if (string.IsNullOrEmpty(paciente.PlanSalud) && !string.IsNullOrEmpty(fila.PlanSalud))
-                paciente.PlanSalud = fila.PlanSalud;
-            if (string.IsNullOrEmpty(paciente.TipoAtencion) && !string.IsNullOrEmpty(fila.TipoAtencion))
-                paciente.TipoAtencion = fila.TipoAtencion;
+            var nombreNuevo = fila.NombrePaciente?.Trim() ?? "";
+            if (!string.IsNullOrEmpty(nombreNuevo))
+            {
+                var (primer, segundo, primerAp, segundoAp) = ParsearNombre(nombreNuevo);
+                paciente.PrimerNombre    = primer;
+                paciente.SegundoNombre   = segundo;
+                paciente.PrimerApellido  = primerAp;
+                paciente.SegundoApellido = segundoAp;
+            }
+            if (!string.IsNullOrEmpty(fila.PlanSalud))    paciente.PlanSalud    = fila.PlanSalud;
+            if (!string.IsNullOrEmpty(fila.TipoAtencion)) paciente.TipoAtencion = fila.TipoAtencion;
+            var identNorm = NormalizarIdentificacion(fila.Identificacion!);
+            if (paciente.Identificacion != identNorm) paciente.Identificacion = identNorm;
             paciente.UpdatedAt = DateTime.UtcNow;
+        }
+
+        private static string NormalizarIdentificacion(string ident)
+        {
+            var clean = ident.Trim();
+            if (clean.Length > 0 && clean.All(char.IsDigit) && clean.Length < 10)
+                clean = clean.PadLeft(10, '0');
+            return clean;
+        }
+
+        private static (string primerNombre, string? segundoNombre, string primerApellido, string? segundoApellido)
+            ParsearNombre(string nombre)
+        {
+            var p = nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return p.Length switch
+            {
+                0 => ("SIN NOMBRE", null, "SIN APELLIDO", null),
+                1 => (p[0], null, "SIN APELLIDO", null),
+                2 => (p[0], null, p[1], null),
+                3 => (p[0], p[1], p[2], null),
+                4 => (p[0], p[1], p[2], p[3]),
+                _ => (p[0], string.Join(" ", p[1..^2]), p[^2], p[^1])
+            };
         }
 
         private static ImportacionResultadoDto Error(Guid loteId, string mensaje) =>

@@ -10,11 +10,16 @@ namespace DataMedix.Infrastructure.Repositories
         private readonly DataMedixDbContext _db;
         public PacienteRepository(DataMedixDbContext db) => _db = db;
 
-        public async Task<Paciente?> GetByIdentificacionAsync(Guid tenantId, string identificacion) =>
-            await _db.Pacientes.FirstOrDefaultAsync(p =>
-                p.TenantId == tenantId &&
-                p.Identificacion == identificacion &&
-                p.Activo);
+        public async Task<Paciente?> GetByIdentificacionAsync(Guid tenantId, string identificacion)
+        {
+            var clean = identificacion.Trim();
+            var padded = clean.Length > 0 && clean.All(char.IsDigit) && clean.Length < 10
+                ? clean.PadLeft(10, '0')
+                : clean;
+            return await _db.Pacientes.FirstOrDefaultAsync(p =>
+                p.TenantId == tenantId && p.Activo &&
+                (p.Identificacion == clean || p.Identificacion == padded));
+        }
 
         public async Task<Paciente?> GetByIdAsync(Guid tenantId, Guid pacienteId) =>
             await _db.Pacientes
