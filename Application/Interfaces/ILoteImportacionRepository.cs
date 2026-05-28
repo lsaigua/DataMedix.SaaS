@@ -26,6 +26,8 @@ namespace DataMedix.Application.Interfaces
     public interface IResultadoLaboratorioRepository
     {
         Task BulkInsertAsync(List<ResultadoLaboratorio> resultados);
+        /// <summary>Soft-delete de registros previos para los mismos pacientes+períodos antes de reimportar.</summary>
+        Task DesactivarByPacientesYPeriodosAsync(Guid tenantId, List<Guid> pacienteIds, List<DateTime> periodos);
         Task<List<ResultadoLaboratorio>> GetByPacienteYPeriodoAsync(Guid tenantId, Guid pacienteId, DateTime periodDate);
         Task<List<ResultadoLaboratorio>> GetByLoteAsync(Guid loteId);
         Task<(List<ResultadoLaboratorio> Items, int Total)> GetPagedAsync(Guid tenantId, ResultadoFiltro filtro);

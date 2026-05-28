@@ -152,6 +152,18 @@ namespace DataMedix.Infrastructure.Repositories
             await _db.SaveChangesAsync();
         }
 
+        public async Task DesactivarByPacientesYPeriodosAsync(
+            Guid tenantId, List<Guid> pacienteIds, List<DateTime> periodos)
+        {
+            if (!pacienteIds.Any() || !periodos.Any()) return;
+            await _db.ResultadosLaboratorio
+                .Where(r => r.TenantId == tenantId &&
+                            r.Activo &&
+                            pacienteIds.Contains(r.PacienteId) &&
+                            periodos.Contains(r.PeriodDate))
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.Activo, false));
+        }
+
         public async Task<List<ResultadoLaboratorio>> GetByPacienteYPeriodoAsync(
             Guid tenantId, Guid pacienteId, DateTime periodDate) =>
             await _db.ResultadosLaboratorio

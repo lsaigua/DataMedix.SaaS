@@ -135,31 +135,12 @@ namespace DataMedix.Application.Services
                         continue;
                     }
 
-                    // Resolver parámetro clínico por alias (primero, para filtrar filas irrelevantes)
+                    // Resolver parámetro clínico por alias exacto (sin fallback parcial para evitar
+                    // que parámetros con nombre similar, como HCM, sobreescriban el valor de HB)
                     var aliasKey = fila.Parametro!.Trim().ToUpperInvariant();
                     mapaAliases.TryGetValue(aliasKey, out var parametro);
-
-                    if (parametro == null)
-                    {
-                        // Búsqueda parcial como fallback
-                        var aliasEntry = mapaAliases.Keys.FirstOrDefault(k =>
-                            k.Contains(aliasKey) || aliasKey.Contains(k));
-                        if (aliasEntry != null) mapaAliases.TryGetValue(aliasEntry, out parametro);
-                    }
-
-                    if (parametro == null)
-                    {
-                        errores.Add(new ImportacionError
-                        {
-                            LoteId = lote.Id,
-                            NumeroFila = fila.LineNumber,
-                            Campo = "Parametro",
-                            TipoError = TipoErrorImportacion.ParametroDesconocido,
-                            Mensaje = $"Parámetro no reconocido: '{fila.Parametro}'",
-                            ValorRecibido = fila.Parametro
-                        });
-                        continue;
-                    }
+                    // Si no se reconoce, se guarda como dato crudo (ParametroClinicoId = null)
+                    // Todos los registros se almacenan — solo los reconocidos contribuyen al snapshot
 
                     // Resolver paciente (cache en memoria durante el lote)
                     var ident = fila.Identificacion!.Trim();
@@ -189,8 +170,8 @@ namespace DataMedix.Application.Services
                         TenantId = tenantId,
                         PacienteId = paciente.Id,
                         LoteId = lote.Id,
-                        ParametroClinicoId = parametro.Id,
-                        // CRÍTICO: asignar nav prop para que GenerarSnapshotsAsync pueda leer el Codigo
+                        ParametroClinicoId = parametro?.Id,
+                        // Nav prop asignado para que GenerarSnapshotsAsync pueda leer el Codigo sin re-consultar
                         ParametroClinico = parametro,
                         PeriodDate = fila.PeriodDate,
                         PeriodoAnio = fila.PeriodDate.Year,
@@ -202,9 +183,9 @@ namespace DataMedix.Application.Services
                         ParametroRaw = fila.Parametro,
                         ResultadoTexto = fila.ResultadoTexto!,
                         ValorNumerico = valorNumerico,
-                        UnidadMedida = fila.UnidadMedida ?? parametro.UnidadMedidaDefault,
-                        ValorMinReferencia = parametro.ValorMinReferencia,
-                        ValorMaxReferencia = parametro.ValorMaxReferencia,
+                        UnidadMedida = fila.UnidadMedida ?? parametro?.UnidadMedidaDefault,
+                        ValorMinReferencia = parametro?.ValorMinReferencia,
+                        ValorMaxReferencia = parametro?.ValorMaxReferencia,
                         CreatedBy = usuarioId
                     };
                     resultado.CalcularPatologia();
@@ -214,9 +195,16 @@ namespace DataMedix.Application.Services
                 // 7. CRÍTICO: persistir pacientes nuevos antes del BulkInsert de resultados (FK paciente_id)
                 await _unitOfWork.CommitAsync();
 
-                // 8. BulkInsert resultados (ahora los pacientes ya existen en BD)
+                // 8. Desactivar resultados anteriores del mismo paciente+período antes de insertar
+                // (garantiza que solo la última carga es visible — sin duplicados históricos)
                 if (resultados.Any())
+                {
+                    var pacientesEnLote = resultados.Select(r => r.PacienteId).Distinct().ToList();
+                    var periodosEnLote  = resultados.Select(r => r.PeriodDate).Distinct().ToList();
+                    await _resultadoRepo.DesactivarByPacientesYPeriodosAsync(
+                        tenantId, pacientesEnLote, periodosEnLote);
                     await _resultadoRepo.BulkInsertAsync(resultados);
+                }
 
                 // 9. BulkInsert errores
                 if (errores.Any())
@@ -291,9 +279,15 @@ namespace DataMedix.Application.Services
                     };
 
                 var primerRes = grupo.First();
-                snapshot.PlanSalud ??= primerRes.PlanSalud;
-                snapshot.TipoAtencion ??= primerRes.TipoAtencion;
-                snapshot.UpdatedAt = DateTime.UtcNow;
+                snapshot.PlanSalud    = primerRes.PlanSalud    ?? snapshot.PlanSalud;
+                snapshot.TipoAtencion = primerRes.TipoAtencion ?? snapshot.TipoAtencion;
+                snapshot.UpdatedAt    = DateTime.UtcNow;
+
+                // Reset de valores clínicos: el snapshot refleja SOLO la última carga
+                snapshot.HbValor        = null; snapshot.HbUnidad        = null;
+                snapshot.HierroValor    = null; snapshot.HierroUnidad    = null;
+                snapshot.FerritinaValor = null; snapshot.FerritinaUnidad = null;
+                snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null;
 
                 // Mapear parámetros clave por código (nav prop ParametroClinico asignado al crear)
                 foreach (var res in grupo.Where(r => r.ParametroClinico != null))
