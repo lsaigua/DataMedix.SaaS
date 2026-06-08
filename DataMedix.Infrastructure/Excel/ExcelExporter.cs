@@ -76,80 +76,63 @@ namespace DataMedix.Infrastructure.Excel
             ws.Row(1).Height = 18;
             ws.Row(2).Height = 28;
             ws.SheetView.FreezeRows(2);
+            ws.SheetView.FreezeColumns(colsFijas.Length);
 
-            // ── Filas de datos ─────────────────────────────────────────────────
-            int row = 3;
-            int n   = 1;
+            // ── Filas de datos: UNA FILA por paciente (igual que la grilla) ────
+            int row  = 3;
+            int pnum = 1;
             foreach (var fila in filasList)
             {
-                foreach (var mes in mesesList)
-                {
-                    fila.Meses.TryGetValue(mes, out var celda);
+                ws.Cell(row, 1).Value = pnum++;
+                ws.Cell(row, 2).Value = fila.NombrePaciente;
+                ws.Cell(row, 3).Value = fila.Identificacion;
 
-                    ws.Cell(row, 1).Value = n++;
-                    ws.Cell(row, 2).Value = fila.NombrePaciente;
-                    ws.Cell(row, 3).Value = fila.Identificacion;
+                for (int mi = 0; mi < mesesList.Count; mi++)
+                {
+                    var mes = mesesList[mi];
+                    fila.Meses.TryGetValue(mes, out var celda);
+                    int bc = colsFijas.Length + mi * colsMes.Length + 1;
 
                     if (celda != null)
                     {
-                        int bc = colsFijas.Length + mesesList.IndexOf(mes) * colsMes.Length + 1;
-
                         SetNum(ws, row, bc,     celda.HbValor,         "0.0");
                         SetNum(ws, row, bc + 1, celda.HierroValor,     "0");
                         SetNum(ws, row, bc + 2, celda.FerritinaValor,  "0");
                         SetNum(ws, row, bc + 3, celda.SaturacionValor, "0.0");
                         SetNum(ws, row, bc + 4, celda.EpoUiSemana,     "#,##0");
-                        ws.Cell(row, bc + 5).Value = celda.AjusteEpo   ?? "";
+                        ws.Cell(row, bc + 5).Value  = celda.AjusteEpo   ?? "";
                         SetNum(ws, row, bc + 6, celda.HierroMgMes,     "#,##0");
-                        ws.Cell(row, bc + 7).Value = celda.AjusteHierro ?? "";
-                        ws.Cell(row, bc + 8).Value = celda.EstadoPrescripcion ?? "";
-                        ws.Cell(row, bc + 9).Value = celda.HbValor.HasValue
-                            ? (celda.HbValor < 10 || celda.HbValor > 13 ? "Sí ⚠" : "No ✓")
-                            : "";
+                        ws.Cell(row, bc + 7).Value  = celda.AjusteHierro ?? "";
+                        ws.Cell(row, bc + 8).Value  = celda.EstadoPrescripcion ?? "";
+                        ws.Cell(row, bc + 9).Value  = celda.HbValor.HasValue
+                            ? (celda.HbValor < 10 || celda.HbValor > 13 ? "Sí ⚠" : "No ✓") : "";
                         ws.Cell(row, bc + 10).Value = celda.EpoAccion ?? "";
 
-                        // Color HB
                         if (celda.HbValor.HasValue)
                         {
                             ws.Cell(row, bc).Style.Font.Bold = true;
                             ws.Cell(row, bc).Style.Font.FontColor =
-                                celda.HbValor < 10  ? XLColor.FromHtml("#dc2626") :
-                                celda.HbValor > 13  ? XLColor.FromHtml("#d97706") :
-                                                      XLColor.FromHtml("#059669");
+                                celda.HbValor < 10 ? XLColor.FromHtml("#dc2626") :
+                                celda.HbValor > 13 ? XLColor.FromHtml("#d97706") :
+                                                     XLColor.FromHtml("#059669");
                         }
                     }
-
-                    if (row % 2 == 1)
-                        ws.Row(row).Style.Fill.BackgroundColor = XLColor.FromHtml("#f8fafc");
-                    row++;
-                    n = 1; // reset para el siguiente mes — usamos n por fila, no por grupo
                 }
-                // Corregir: N° por paciente, no por fila
-            }
 
-            // Re-numerar N° correctamente: 1 fila por paciente, repetida por mes
-            // Resetear: n ya es por fila de datos
-            // Simple: volver a numerar
-            int dataRow = 3;
-            int pnum = 1;
-            foreach (var fila in filasList)
-            {
-                for (int mi = 0; mi < mesesList.Count; mi++)
-                {
-                    ws.Cell(dataRow, 1).Value = pnum;
-                    dataRow++;
-                }
-                pnum++;
+                if (row % 2 == 0)
+                    ws.Row(row).Style.Fill.BackgroundColor = XLColor.FromHtml("#f8fafc");
+                row++;
             }
 
             // ── Ajustar anchos ─────────────────────────────────────────────────
+            ws.Column(1).Width = 5;
             ws.Column(2).Width = 35;
             ws.Column(3).Width = 14;
             for (int mi = 0; mi < mesesList.Count; mi++)
             {
                 int startCol = colsFijas.Length + mi * colsMes.Length + 1;
                 for (int ci = 0; ci < colsMes.Length; ci++)
-                    ws.Column(startCol + ci).Width = 13;
+                    ws.Column(startCol + ci).Width = 12;
             }
 
             // Borde

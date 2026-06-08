@@ -22,11 +22,16 @@ namespace DataMedix.Application.Services
             var desde = meses.First();
             var hasta = meses.Last();
 
-            // Carga snapshots (incluye navegación Paciente)
+            // Cargar un mes extra antes del rango para poder hacer carry-forward del panel
+            // de hierro (Ferritina, ISAT, Hierro sérico se piden cada 2 meses en HD)
+            var desdeConMargen = desde.AddMonths(-1);
             var snapshots = await _snapRepo.GetByRangoAsync(
-                tenantId, desde, hasta, filtro.BusquedaPaciente, filtro.ParametroClinicoId);
+                tenantId, desdeConMargen, hasta, filtro.BusquedaPaciente, filtro.ParametroClinicoId);
 
-            var pacienteIds = snapshots.Select(s => s.PacienteId).Distinct().ToList();
+            // Solo mostrar pacientes que tienen al menos un snapshot dentro del rango pedido
+            var pacienteIds = snapshots
+                .Where(s => s.PeriodDate >= desde)
+                .Select(s => s.PacienteId).Distinct().ToList();
             if (!pacienteIds.Any()) return [];
 
             // Carga prescripciones en lote para todos los pacientes del rango
@@ -68,6 +73,23 @@ namespace DataMedix.Application.Services
                         celda.HierroValor     = snap.HierroValor;
                         celda.FerritinaValor  = snap.FerritinaValor;
                         celda.SaturacionValor = snap.SaturacionValor;
+                    }
+
+                    // Carry-forward del panel de hierro desde el mes anterior más reciente
+                    if (!celda.HierroValor.HasValue || !celda.FerritinaValor.HasValue || !celda.SaturacionValor.HasValue)
+                    {
+                        var hierroRef = snapshots
+                            .Where(s => s.PacienteId == paciente.Id &&
+                                        s.PeriodDate < mes &&
+                                        (s.HierroValor.HasValue || s.FerritinaValor.HasValue || s.SaturacionValor.HasValue))
+                            .OrderByDescending(s => s.PeriodDate)
+                            .FirstOrDefault();
+                        if (hierroRef != null)
+                        {
+                            celda.HierroValor    ??= hierroRef.HierroValor;
+                            celda.FerritinaValor  ??= hierroRef.FerritinaValor;
+                            celda.SaturacionValor ??= hierroRef.SaturacionValor;
+                        }
                     }
 
                     if (prescIdx.TryGetValue((paciente.Id, mes), out var presc))
