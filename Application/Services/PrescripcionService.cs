@@ -130,19 +130,35 @@ namespace DataMedix.Application.Services
             bool tieneHierroPrevio,
             DateTime periodDate)
         {
+            // Panel de hierro: si no se midió este mes, usar el mes anterior más reciente
+            // (Ferritina, ISAT y Hierro sérico se piden cada dos meses en HD — no HB)
+            var hierroRef = (!snapshot.SaturacionValor.HasValue ||
+                             !snapshot.FerritinaValor.HasValue  ||
+                             !snapshot.HierroValor.HasValue)
+                ? historial
+                    .Where(h => h.PeriodDate < periodDate &&
+                                (h.SaturacionValor.HasValue || h.FerritinaValor.HasValue || h.HierroValor.HasValue))
+                    .OrderByDescending(h => h.PeriodDate)
+                    .FirstOrDefault()
+                : null;
+
+            var tsat      = snapshot.SaturacionValor ?? hierroRef?.SaturacionValor;
+            var ferritina = snapshot.FerritinaValor  ?? hierroRef?.FerritinaValor;
+            var hierro    = snapshot.HierroValor     ?? hierroRef?.HierroValor;
+
             var ctx = new EvaluationContext
             {
                 TenantId     = tenantId,
                 PacienteId   = snapshot.PacienteId,
                 PeriodDate   = periodDate,
                 Hb           = snapshot.HbValor,
-                TSAT         = snapshot.SaturacionValor,
-                Ferritina    = snapshot.FerritinaValor,
-                HierroSerico = snapshot.HierroValor,
+                TSAT         = tsat,
+                Ferritina    = ferritina,
+                HierroSerico = hierro,
                 EpoUiSemanaActual = epoUiSemana,
                 PrimeraVezHierro  = !tieneHierroPrevio,
                 MesActualEsImpar  = periodDate.Month % 2 != 0,
-                PerfilHierroActual = snapshot.FerritinaValor.HasValue && snapshot.SaturacionValor.HasValue,
+                PerfilHierroActual = ferritina.HasValue && tsat.HasValue,
                 MesesSinMejoraHb   = CalcularMesesSinMejoraHb(snapshot.HbValor, historial)
             };
 

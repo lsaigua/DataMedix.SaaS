@@ -3,6 +3,7 @@
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
+@using Microsoft.JSInterop
 @using DataMedix.Application.RuleEngine
 @using DataMedix.Domain.Entities
 @using System.Security.Claims
@@ -13,6 +14,8 @@
 @inject IPacienteRepository PacienteRepo
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
+@inject IExcelExporter ExcelExporter
+@inject IJSRuntime JS
 
 <PageTitle>Prescripciones | DataMedix</PageTitle>
 
@@ -35,6 +38,14 @@
     <div class="dm-page-actions">
         <button class="dm-btn dm-btn-outline" @onclick="CargarAsync" disabled="@Cargando">
             🔄 Actualizar
+        </button>
+        <button class="dm-btn dm-btn-export" @onclick="ExportarExcelAsync"
+                disabled="@(_exportando || !ListaPrescripciones.Any())" title="Exportar a Excel">
+            @if (_exportando)
+            {
+                <span class="dm-spinner-sm"></span>
+            }
+            📊 Exportar Excel
         </button>
     </div>
 </div>
@@ -584,7 +595,10 @@ else
     .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
     .dm-empty-desc { margin-bottom: 1.5rem; font-size: 0.9rem; }
 
-    .dm-page-actions { display: flex; gap: 0.75rem; }
+    .dm-page-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .dm-btn-export { background: #059669; color: white; }
+    .dm-btn-export:hover:not(:disabled) { background: #047857; }
+    .dm-btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
     .dm-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
                        padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
                        align-items: center; font-size: 0.875rem; font-weight: 500; }
@@ -633,6 +647,7 @@ else
     private Guid TenantId;
     private string? ErrorMensaje;
     private System.Threading.CancellationTokenSource? _debounce;
+    private bool _exportando = false;
 
     // Contextos expandidos
     private readonly HashSet<Guid> _contextosExpandidos = new();
@@ -810,6 +825,28 @@ else
         if (Guid.TryParse(userId, out var uid)) presc.RevisadoPor = uid;
         await PrescripcionRepo.UpsertSugeridaAsync(presc);
         StateHasChanged();
+    }
+
+    private async Task ExportarExcelAsync()
+    {
+        if (_exportando || !ListaPrescripciones.Any()) return;
+        _exportando = true;
+        StateHasChanged();
+        try
+        {
+            var periodo = new DateTime(FiltroAnio, FiltroMes, 1).ToString("yyyy-MM");
+            var bytes   = await Task.Run(() =>
+                ExcelExporter.ExportarPrescripcionesMes(ListaPrescripciones, Snapshots, periodo));
+            var base64  = Convert.ToBase64String(bytes);
+            var fileName = $"Prescripciones_{periodo}.xlsx";
+            await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, base64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch { /* silencioso — no rompe la UI */ }
+        finally
+        {
+            _exportando = false;
+        }
     }
 
     private async Task BuscarDebounced()
