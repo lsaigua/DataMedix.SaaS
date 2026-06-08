@@ -10,6 +10,9 @@
 @inject IParametroClinicoRepository ParametroRepo
 @inject AuthenticationStateProvider AuthState
 @inject GlobalToastService Toast
+@inject IExcelExporter ExcelExporter
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
 
 <PageTitle>Prescripción Sugerida | DataMedix</PageTitle>
 
@@ -97,6 +100,12 @@
         </button>
         <button class="epo-btn epo-btn-outline" @onclick="LimpiarFiltros" disabled="@Cargando">
             Limpiar
+        </button>
+        <button class="epo-btn epo-btn-export" @onclick="ExportarExcelAsync"
+                disabled="@(_exportando || !Filas.Any())" title="Exportar la grilla a Excel">
+            @if (_exportando) { <span class="epo-spinner-sm"></span> }
+            else { <span>📊</span> }
+            Exportar Excel
         </button>
     </div>
 </div>
@@ -413,7 +422,10 @@ else
                    font-size: 0.85rem; color: #374151; background: white; outline: none; cursor: pointer; }
     .epo-select:focus { border-color: #0ea5e9; }
     .epo-select-sm { min-width: 80px; }
-    .epo-filter-actions { display: flex; gap: 0.5rem; align-items: flex-end; }
+    .epo-filter-actions { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+    .epo-btn-export { background: #059669; color: white; }
+    .epo-btn-export:hover:not(:disabled) { background: #047857; }
+    .epo-btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
     .epo-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.5rem 1rem;
                 border-radius: 8px; font-weight: 600; font-size: 0.875rem; cursor: pointer;
                 border: none; transition: all 0.15s; }
@@ -618,6 +630,7 @@ else
     private bool    _guardandoCelda;
     private string? _mensajeGuardado;
     private bool    _mensajeGuardadoOk;
+    private bool    _exportando;
 
     protected override async Task OnInitializedAsync()
     {
@@ -681,6 +694,28 @@ else
     private void LimpiarBusqueda()
     {
         BusquedaTexto = string.Empty;
+    }
+
+    private async Task ExportarExcelAsync()
+    {
+        if (_exportando || !Filas.Any()) return;
+        _exportando = true;
+        StateHasChanged();
+        try
+        {
+            var periodo  = $"{new DateTime(FiltroAnioDe, FiltroMesDe, 1):yyyy-MM} a {new DateTime(FiltroAnioHasta, FiltroMesHasta, 1):yyyy-MM}";
+            var bytes    = await Task.Run(() =>
+                ExcelExporter.ExportarHojaEpo(Filas, FiltroActual.Meses, periodo));
+            var base64   = Convert.ToBase64String(bytes);
+            var fileName = $"PrescripcionSugerida_{new DateTime(FiltroAnioDe, FiltroMesDe, 1):yyyyMM}-{new DateTime(FiltroAnioHasta, FiltroMesHasta, 1):yyyyMM}.xlsx";
+            await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, base64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch { /* silencioso — no rompe la UI */ }
+        finally
+        {
+            _exportando = false;
+        }
     }
 
     private async Task OnBusquedaKeyDown(KeyboardEventArgs e)

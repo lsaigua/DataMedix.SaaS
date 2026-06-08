@@ -264,6 +264,15 @@ namespace DataMedix.Application.Services
                 .GroupBy(r => new { r.PacienteId, r.PeriodDate })
                 .ToList();
 
+            if (!grupos.Any()) return;
+
+            // Pre-cargar historial previo en lote para carry-forward del panel de hierro
+            // (Ferritina, ISAT y Hierro sérico se solicitan cada 2 meses — no HB)
+            var todosLosIds  = grupos.Select(g => g.Key.PacienteId).Distinct().ToList();
+            var periodoMinimo = grupos.Select(g => g.Key.PeriodDate).Min();
+            var historialMap = await _snapshotRepo.GetHistorialByPacientesAsync(
+                tenantId, todosLosIds, periodoMinimo, meses: 6);
+
             foreach (var grupo in grupos)
             {
                 var snapshot = await _snapshotRepo.GetByPacienteYPeriodoAsync(
@@ -310,6 +319,27 @@ namespace DataMedix.Application.Services
                             snapshot.SaturacionValor = res.ValorNumerico;
                             snapshot.SaturacionUnidad = res.UnidadMedida;
                             break;
+                    }
+                }
+
+                // Carry-forward del panel de hierro: si este mes no tiene los valores,
+                // tomar del snapshot anterior más reciente que sí los traiga
+                if (!snapshot.HierroValor.HasValue || !snapshot.FerritinaValor.HasValue || !snapshot.SaturacionValor.HasValue)
+                {
+                    historialMap.TryGetValue(grupo.Key.PacienteId, out var hist);
+                    var anterior = hist?
+                        .Where(h => h.PeriodDate < grupo.Key.PeriodDate &&
+                                    (h.HierroValor.HasValue || h.FerritinaValor.HasValue || h.SaturacionValor.HasValue))
+                        .OrderByDescending(h => h.PeriodDate)
+                        .FirstOrDefault();
+                    if (anterior != null)
+                    {
+                        snapshot.HierroValor    ??= anterior.HierroValor;
+                        snapshot.HierroUnidad   ??= anterior.HierroUnidad;
+                        snapshot.FerritinaValor  ??= anterior.FerritinaValor;
+                        snapshot.FerritinaUnidad ??= anterior.FerritinaUnidad;
+                        snapshot.SaturacionValor ??= anterior.SaturacionValor;
+                        snapshot.SaturacionUnidad ??= anterior.SaturacionUnidad;
                     }
                 }
 

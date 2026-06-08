@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using DataMedix.Application.DTOs;
+using DataMedix.Application.DTOs.HojaEpo;
 using DataMedix.Application.Interfaces;
 using DataMedix.Domain.Entities;
 
@@ -7,6 +8,176 @@ namespace DataMedix.Infrastructure.Excel
 {
     public class ExcelExporter : IExcelExporter
     {
+        public byte[] ExportarHojaEpo(
+            IEnumerable<HojaEpoRowDto> filas,
+            IEnumerable<DateTime> meses,
+            string periodo)
+        {
+            var filasList  = filas.ToList();
+            var mesesList  = meses.OrderBy(m => m).ToList();
+            var headerColor = XLColor.FromHtml("#4f46e5");
+            var mesColor    = XLColor.FromHtml("#7c3aed");
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Prescripción Sugerida");
+
+            // Columnas fijas + 11 por mes
+            string[] colsFijas = ["N°", "PACIENTE", "CÉDULA"];
+            string[] colsMes   = ["HB (g/dL)", "HIERRO (µg/dL)", "FERRIT. (ng/mL)",
+                                   "ISAT (%)", "EPO (UI/sem)", "AJ.EPO MÉDICO",
+                                   "HIERRO IV (mg/mes)", "AJ.HIERRO MÉDICO",
+                                   "ESTADO", "PATOLÓGICO", "ACCIÓN"];
+            int totalCols = colsFijas.Length + colsMes.Length * mesesList.Count;
+
+            // ── Fila 1: cabecera fija + grupos de mes ──────────────────────────
+            for (int c = 0; c < colsFijas.Length; c++)
+            {
+                var cell = ws.Cell(1, c + 1);
+                cell.Value = colsFijas[c];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Fill.BackgroundColor = headerColor;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+            }
+            // Merge rowspan para las 3 columnas fijas
+            for (int c = 1; c <= colsFijas.Length; c++)
+                ws.Range(1, c, 2, c).Merge();
+
+            for (int mi = 0; mi < mesesList.Count; mi++)
+            {
+                int startCol = colsFijas.Length + mi * colsMes.Length + 1;
+                int endCol   = startCol + colsMes.Length - 1;
+                var mesCell  = ws.Cell(1, startCol);
+                mesCell.Value = mesesList[mi].ToString("MMM yyyy").ToUpper();
+                mesCell.Style.Font.Bold = true;
+                mesCell.Style.Font.FontColor = XLColor.White;
+                mesCell.Style.Fill.BackgroundColor = mesColor;
+                mesCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                ws.Range(1, startCol, 1, endCol).Merge();
+            }
+
+            // ── Fila 2: sub-cabeceras por mes ─────────────────────────────────
+            for (int mi = 0; mi < mesesList.Count; mi++)
+            {
+                int startCol = colsFijas.Length + mi * colsMes.Length + 1;
+                for (int ci = 0; ci < colsMes.Length; ci++)
+                {
+                    var cell = ws.Cell(2, startCol + ci);
+                    cell.Value = colsMes[ci];
+                    cell.Style.Font.Bold = true;
+                    cell.Style.Font.FontColor = XLColor.White;
+                    cell.Style.Fill.BackgroundColor = headerColor;
+                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                    cell.Style.Font.FontSize = 8.5;
+                }
+            }
+
+            ws.Row(1).Height = 18;
+            ws.Row(2).Height = 28;
+            ws.SheetView.FreezeRows(2);
+
+            // ── Filas de datos ─────────────────────────────────────────────────
+            int row = 3;
+            int n   = 1;
+            foreach (var fila in filasList)
+            {
+                foreach (var mes in mesesList)
+                {
+                    fila.Meses.TryGetValue(mes, out var celda);
+
+                    ws.Cell(row, 1).Value = n++;
+                    ws.Cell(row, 2).Value = fila.NombrePaciente;
+                    ws.Cell(row, 3).Value = fila.Identificacion;
+
+                    if (celda != null)
+                    {
+                        int bc = colsFijas.Length + mesesList.IndexOf(mes) * colsMes.Length + 1;
+
+                        SetNum(ws, row, bc,     celda.HbValor,         "0.0");
+                        SetNum(ws, row, bc + 1, celda.HierroValor,     "0");
+                        SetNum(ws, row, bc + 2, celda.FerritinaValor,  "0");
+                        SetNum(ws, row, bc + 3, celda.SaturacionValor, "0.0");
+                        SetNum(ws, row, bc + 4, celda.EpoUiSemana,     "#,##0");
+                        ws.Cell(row, bc + 5).Value = celda.AjusteEpo   ?? "";
+                        SetNum(ws, row, bc + 6, celda.HierroMgMes,     "#,##0");
+                        ws.Cell(row, bc + 7).Value = celda.AjusteHierro ?? "";
+                        ws.Cell(row, bc + 8).Value = celda.EstadoPrescripcion ?? "";
+                        ws.Cell(row, bc + 9).Value = celda.HbValor.HasValue
+                            ? (celda.HbValor < 10 || celda.HbValor > 13 ? "Sí ⚠" : "No ✓")
+                            : "";
+                        ws.Cell(row, bc + 10).Value = celda.EpoAccion ?? "";
+
+                        // Color HB
+                        if (celda.HbValor.HasValue)
+                        {
+                            ws.Cell(row, bc).Style.Font.Bold = true;
+                            ws.Cell(row, bc).Style.Font.FontColor =
+                                celda.HbValor < 10  ? XLColor.FromHtml("#dc2626") :
+                                celda.HbValor > 13  ? XLColor.FromHtml("#d97706") :
+                                                      XLColor.FromHtml("#059669");
+                        }
+                    }
+
+                    if (row % 2 == 1)
+                        ws.Row(row).Style.Fill.BackgroundColor = XLColor.FromHtml("#f8fafc");
+                    row++;
+                    n = 1; // reset para el siguiente mes — usamos n por fila, no por grupo
+                }
+                // Corregir: N° por paciente, no por fila
+            }
+
+            // Re-numerar N° correctamente: 1 fila por paciente, repetida por mes
+            // Resetear: n ya es por fila de datos
+            // Simple: volver a numerar
+            int dataRow = 3;
+            int pnum = 1;
+            foreach (var fila in filasList)
+            {
+                for (int mi = 0; mi < mesesList.Count; mi++)
+                {
+                    ws.Cell(dataRow, 1).Value = pnum;
+                    dataRow++;
+                }
+                pnum++;
+            }
+
+            // ── Ajustar anchos ─────────────────────────────────────────────────
+            ws.Column(2).Width = 35;
+            ws.Column(3).Width = 14;
+            for (int mi = 0; mi < mesesList.Count; mi++)
+            {
+                int startCol = colsFijas.Length + mi * colsMes.Length + 1;
+                for (int ci = 0; ci < colsMes.Length; ci++)
+                    ws.Column(startCol + ci).Width = 13;
+            }
+
+            // Borde
+            if (row > 3)
+            {
+                var tableRange = ws.Range(1, 1, row - 1, totalCols);
+                tableRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                tableRange.Style.Border.InsideBorder  = XLBorderStyleValues.Hair;
+            }
+
+            wb.Properties.Title  = $"Prescripción Sugerida — {periodo}";
+            wb.Properties.Author = "DataMedix";
+
+            using var ms = new MemoryStream();
+            wb.SaveAs(ms);
+            return ms.ToArray();
+        }
+
+        private static void SetNum(IXLWorksheet ws, int row, int col, decimal? val, string fmt)
+        {
+            if (val.HasValue)
+            {
+                ws.Cell(row, col).Value = (double)val.Value;
+                ws.Cell(row, col).Style.NumberFormat.Format = fmt;
+            }
+        }
+
+
         public byte[] ExportarPrescripcionesMes(
             IEnumerable<PrescripcionSugerida> prescripciones,
             IEnumerable<SnapshotMensual> snapshots,
