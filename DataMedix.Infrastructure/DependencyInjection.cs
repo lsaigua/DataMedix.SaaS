@@ -44,6 +44,7 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
             services.AddScoped<IExcelReader, ExcelReader>();
             services.AddScoped<IExcelExporter, ExcelExporter>();
+            services.AddScoped<IDepuracionService, DepuracionService>();
 
             // ── Motor de reglas (Singleton — stateless, thread-safe) ───────────
             // IMemoryCache está registrado desde AddMemoryCache() en Program.cs

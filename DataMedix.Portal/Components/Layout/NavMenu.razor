@@ -154,6 +154,18 @@
                     </span>
                     Auditoría
                 </NavLink>
+                <NavLink href="/admin/depuracion" class="dm-nav-link dm-nav-link-danger" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6M14 11v6"/>
+                            <path d="M9 6V4h6v2"/>
+                        </svg>
+                    </span>
+                    Depuración de Datos
+                </NavLink>
             </Authorized>
         </AuthorizeView>
 
@@ -408,6 +420,14 @@
     .dm-nav-logout:hover {
         background: rgba(239,68,68,0.12);
         color: #f87171;
+    }
+
+    .dm-nav-link-danger {
+        color: #f87171;
+    }
+    .dm-nav-link-danger:hover {
+        background: rgba(239,68,68,0.12);
+        color: #fca5a5;
     }
 
     .dm-nav-legal {

@@ -1,0 +1,475 @@
+@page "/admin/depuracion"
+@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs
+
+@inject AuthenticationStateProvider AuthState
+@inject IDepuracionService DepuracionService
+
+<PageTitle>Depuración de Datos | DataMedix</PageTitle>
+
+<!-- Header -->
+<div class="dep-header">
+    <div class="dep-header-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+            <path d="M9 6V4h6v2"/>
+        </svg>
+    </div>
+    <div>
+        <h1 class="dep-title">Depuración de Datos</h1>
+        <p class="dep-subtitle">Elimina permanentemente todos los datos clínicos y de importación de un período</p>
+    </div>
+</div>
+
+<!-- Zona de peligro -->
+<div class="dep-danger-banner">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <span>Esta operación es <strong>irreversible</strong>. Los datos eliminados no podrán recuperarse. Úsela solo cuando sea estrictamente necesario.</span>
+</div>
+
+<!-- Selector de período -->
+<div class="dep-card">
+    <h2 class="dep-card-title">1. Seleccionar período a eliminar</h2>
+
+    <div class="dep-filters">
+        <div class="dep-field">
+            <label class="dep-label">Año</label>
+            <select class="dep-select" @bind="_año">
+                @for (int y = DateTime.Today.Year; y >= 2020; y--)
+                {
+                    <option value="@y">@y</option>
+                }
+            </select>
+        </div>
+        <div class="dep-field">
+            <label class="dep-label">Mes</label>
+            <select class="dep-select" @bind="_mes">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM"))</option>
+                }
+            </select>
+        </div>
+        <button class="dep-btn dep-btn-preview" @onclick="VerVistaPrevia" disabled="@_cargando">
+            @if (_cargando)
+            {
+                <span class="dep-spinner"></span>
+                <span>Consultando...</span>
+            }
+            else
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <span>Ver vista previa</span>
+            }
+        </button>
+    </div>
+
+    @if (_errorMensaje != null)
+    {
+        <div class="dep-error">@_errorMensaje</div>
+    }
+</div>
+
+<!-- Vista previa de conteos -->
+@if (_conteo != null)
+{
+    <div class="dep-card">
+        <h2 class="dep-card-title">2. Datos a eliminar — <strong>@_conteo.NombrePeriodo</strong></h2>
+
+        @if (!_conteo.TieneDatos)
+        {
+            <div class="dep-empty">No hay datos registrados para el período seleccionado.</div>
+        }
+        else
+        {
+            <table class="dep-table">
+                <thead>
+                    <tr>
+                        <th>Módulo</th>
+                        <th>Registros</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>Resultados de laboratorio</td><td class="dep-count">@_conteo.ResultadosLaboratorio.ToString("N0")</td></tr>
+                    <tr><td>Snapshots mensuales</td><td class="dep-count">@_conteo.Snapshots.ToString("N0")</td></tr>
+                    <tr><td>Detalles de snapshot</td><td class="dep-count">@_conteo.SnapshotDetalles.ToString("N0")</td></tr>
+                    <tr><td>Prescripciones sugeridas</td><td class="dep-count">@_conteo.PrescripcionesSugeridas.ToString("N0")</td></tr>
+                    <tr><td>Prescripciones finales</td><td class="dep-count">@_conteo.PrescripcionesFinales.ToString("N0")</td></tr>
+                    <tr><td>Lotes de importación</td><td class="dep-count">@_conteo.LotesImportacion.ToString("N0")</td></tr>
+                    <tr><td>Detalles de importación</td><td class="dep-count">@_conteo.DetallesImportacion.ToString("N0")</td></tr>
+                    <tr><td>Errores de importación</td><td class="dep-count">@_conteo.ErroresImportacion.ToString("N0")</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr class="dep-total">
+                        <td>Total registros a eliminar</td>
+                        <td class="dep-count">@_conteo.TotalRegistros.ToString("N0")</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <!-- Confirmación doble -->
+            <div class="dep-confirm-box">
+                <h3 class="dep-confirm-title">3. Confirmar eliminación</h3>
+                <p class="dep-confirm-text">
+                    Para confirmar, escriba <strong>ELIMINAR</strong> en el campo de abajo y haga clic en el botón.
+                </p>
+                <input class="dep-input @(_confirmInvalido ? "dep-input-error" : "")"
+                       placeholder="Escriba ELIMINAR aquí"
+                       value="@_confirmTexto"
+                       @oninput="OnConfirmInput" />
+
+                @if (_confirmInvalido)
+                {
+                    <div class="dep-field-error">Debe escribir exactamente ELIMINAR para continuar.</div>
+                }
+
+                <button class="dep-btn dep-btn-delete" @onclick="EjecutarEliminacion"
+                        disabled="@(_eliminando)">
+                    @if (_eliminando)
+                    {
+                        <span class="dep-spinner"></span>
+                        <span>Eliminando...</span>
+                    }
+                    else
+                    {
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        </svg>
+                        <span>Eliminar @_conteo.TotalRegistros.ToString("N0") registros definitivamente</span>
+                    }
+                </button>
+            </div>
+        }
+    </div>
+}
+
+<!-- Resultado de la operación -->
+@if (_resultado != null)
+{
+    <div class="dep-result @(_resultadoOk ? "dep-result-ok" : "dep-result-err")">
+        @if (_resultadoOk)
+        {
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+        }
+        else
+        {
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+        }
+        <span>@_resultado</span>
+    </div>
+}
+
+@code {
+    private int _año = DateTime.Today.Year;
+    private int _mes = DateTime.Today.Month;
+
+    private bool _cargando   = false;
+    private bool _eliminando = false;
+
+    private DepuracionConteoDto? _conteo;
+    private string? _errorMensaje;
+
+    private string _confirmTexto  = "";
+    private bool   _confirmInvalido = false;
+
+    private string? _resultado;
+    private bool    _resultadoOk;
+
+    private void OnConfirmInput(ChangeEventArgs e)
+    {
+        _confirmTexto   = e.Value?.ToString() ?? "";
+        _confirmInvalido = false;
+    }
+
+    private async Task VerVistaPrevia()
+    {
+        _cargando     = true;
+        _errorMensaje = null;
+        _conteo       = null;
+        _resultado    = null;
+        _confirmTexto = "";
+        StateHasChanged();
+
+        try
+        {
+            var auth    = await AuthState.GetAuthenticationStateAsync();
+            var tenant  = auth.User.FindFirst("tenant_id")?.Value;
+            if (!Guid.TryParse(tenant, out var tenantId)) return;
+
+            _conteo = await DepuracionService.ContarDatosPeriodoAsync(tenantId, _año, _mes);
+        }
+        catch (Exception ex)
+        {
+            _errorMensaje = $"Error al consultar datos: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task EjecutarEliminacion()
+    {
+        if (_confirmTexto.Trim() != "ELIMINAR")
+        {
+            _confirmInvalido = true;
+            return;
+        }
+
+        _eliminando   = true;
+        _resultado    = null;
+        _resultadoOk  = false;
+        StateHasChanged();
+
+        try
+        {
+            var auth    = await AuthState.GetAuthenticationStateAsync();
+            var tenant  = auth.User.FindFirst("tenant_id")?.Value;
+            var usuario = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(tenant, out var tenantId) ||
+                !Guid.TryParse(usuario, out var usuarioId)) return;
+
+            var total = await DepuracionService.EliminarPeriodoAsync(tenantId, _año, _mes, usuarioId);
+
+            _resultadoOk  = true;
+            _resultado    = $"Se eliminaron {total:N0} registros del período {new DateTime(_año, _mes, 1):MMMM yyyy} correctamente.";
+            _conteo       = null;
+            _confirmTexto = "";
+        }
+        catch (Exception ex)
+        {
+            _resultadoOk = false;
+            _resultado   = $"Error al eliminar datos: {ex.Message}";
+        }
+        finally
+        {
+            _eliminando = false;
+        }
+    }
+}
+
+<style>
+    .dep-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .dep-header-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #dc2626, #991b1b);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .dep-header-icon svg { width: 24px; height: 24px; }
+    .dep-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 0.2rem; }
+    .dep-subtitle { font-size: 0.85rem; color: #64748b; margin: 0; }
+
+    .dep-danger-banner {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-left: 4px solid #dc2626;
+        border-radius: 8px;
+        padding: 0.875rem 1rem;
+        font-size: 0.875rem;
+        color: #991b1b;
+        margin-bottom: 1.5rem;
+    }
+    .dep-danger-banner svg { width: 20px; height: 20px; flex-shrink: 0; color: #dc2626; }
+
+    .dep-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+    }
+    .dep-card-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 1.25rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .dep-filters {
+        display: flex;
+        align-items: flex-end;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .dep-field { display: flex; flex-direction: column; gap: 0.35rem; }
+    .dep-label { font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .dep-select {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        color: #1e293b;
+        background: white;
+        min-width: 120px;
+    }
+
+    .dep-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 1.1rem;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: all 0.15s;
+    }
+    .dep-btn svg { width: 16px; height: 16px; }
+    .dep-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .dep-btn-preview {
+        background: #0ea5e9;
+        color: white;
+    }
+    .dep-btn-preview:hover:not(:disabled) { background: #0284c7; }
+
+    .dep-btn-delete {
+        background: #dc2626;
+        color: white;
+        margin-top: 1rem;
+    }
+    .dep-btn-delete:hover:not(:disabled) { background: #b91c1c; }
+
+    .dep-error {
+        margin-top: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        color: #dc2626;
+    }
+
+    .dep-empty {
+        padding: 1.5rem;
+        text-align: center;
+        color: #94a3b8;
+        font-size: 0.875rem;
+    }
+
+    .dep-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+        margin-bottom: 1.25rem;
+    }
+    .dep-table th {
+        padding: 0.5rem 0.75rem;
+        background: #f8fafc;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.05em;
+        border-bottom: 2px solid #e2e8f0;
+        text-align: left;
+    }
+    .dep-table td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+    }
+    .dep-table tr:hover td { background: #f8fafc; }
+    .dep-count { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .dep-total td {
+        background: #fef2f2;
+        font-weight: 800;
+        color: #991b1b;
+        border-top: 2px solid #fecaca;
+    }
+
+    .dep-confirm-box {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 10px;
+        padding: 1.25rem;
+    }
+    .dep-confirm-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #92400e;
+        margin: 0 0 0.5rem;
+    }
+    .dep-confirm-text {
+        font-size: 0.875rem;
+        color: #78350f;
+        margin: 0 0 0.875rem;
+    }
+    .dep-input {
+        width: 100%;
+        max-width: 320px;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        color: #1e293b;
+        background: white;
+        box-sizing: border-box;
+    }
+    .dep-input:focus { outline: none; border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,0.15); }
+    .dep-input-error { border-color: #dc2626; }
+    .dep-field-error { font-size: 0.75rem; color: #dc2626; margin-top: 0.25rem; }
+
+    .dep-result {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+        border-radius: 10px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+    }
+    .dep-result svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .dep-result-ok  { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .dep-result-err { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+    .dep-spinner {
+        display: inline-block;
+        width: 14px; height: 14px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: dep-spin 0.6s linear infinite;
+    }
+    @@keyframes dep-spin { to { transform: rotate(360deg); } }
+</style>
