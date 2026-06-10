@@ -161,6 +161,64 @@ namespace DataMedix.Infrastructure.Excel
         }
 
 
+        public byte[] ReconstruirArchivoLote(IEnumerable<ImportacionDetalle> detalles, string nombreArchivo)
+        {
+            var rows = detalles.ToList();
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Resultados");
+
+            string[] headers = ["FECHA ORDEN", "PLAN SALUD", "TIPO ATENCIÓN",
+                                 "IDENTIFICACIÓN", "PACIENTE", "EXAMEN",
+                                 "PARÁMETRO", "RESULTADO", "UNIDAD"];
+
+            for (int c = 0; c < headers.Length; c++)
+            {
+                var cell = ws.Cell(1, c + 1);
+                cell.Value = headers[c];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1e3a5f");
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+            ws.Row(1).Height = 18;
+            ws.SheetView.FreezeRows(1);
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var d   = rows[i];
+                int row = i + 2;
+                ws.Cell(row, 1).Value = d.FechaOrdenRaw    ?? "";
+                ws.Cell(row, 2).Value = d.PlanSaludRaw     ?? "";
+                ws.Cell(row, 3).Value = d.TipoAtencionRaw  ?? "";
+                ws.Cell(row, 4).Value = d.IdentificacionRaw ?? "";
+                ws.Cell(row, 5).Value = d.PacienteRaw      ?? "";
+                ws.Cell(row, 6).Value = d.ExamenRaw        ?? "";
+                ws.Cell(row, 7).Value = d.ParametroRaw     ?? "";
+                ws.Cell(row, 8).Value = d.ResultadoRaw     ?? "";
+                ws.Cell(row, 9).Value = d.UnidadMedidaRaw  ?? "";
+                if (row % 2 == 0)
+                    ws.Row(row).Style.Fill.BackgroundColor = XLColor.FromHtml("#f8fafc");
+            }
+
+            ws.Columns(1, headers.Length).AdjustToContents();
+            ws.Column(5).Width = Math.Min(ws.Column(5).Width, 40);
+
+            if (rows.Count > 0)
+            {
+                var rng = ws.Range(1, 1, rows.Count + 1, headers.Length);
+                rng.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                rng.Style.Border.InsideBorder  = XLBorderStyleValues.Hair;
+            }
+
+            wb.Properties.Title  = nombreArchivo;
+            wb.Properties.Author = "DataMedix";
+
+            using var ms = new MemoryStream();
+            wb.SaveAs(ms);
+            return ms.ToArray();
+        }
+
         public byte[] ExportarPrescripcionesMes(
             IEnumerable<PrescripcionSugerida> prescripciones,
             IEnumerable<SnapshotMensual> snapshots,

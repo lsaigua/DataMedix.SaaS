@@ -83,6 +83,13 @@ namespace DataMedix.Infrastructure.Repositories
             _db.LotesImportacion.Update(lote);
             await _db.SaveChangesAsync();
         }
+
+        public async Task<List<ImportacionDetalle>> GetDetallesAsync(Guid loteId) =>
+            await _db.ImportacionDetalles
+                .Where(d => d.LoteId == loteId)
+                .OrderBy(d => d.NumeroFila)
+                .AsNoTracking()
+                .ToListAsync();
     }
 
     public class ParametroClinicoRepository : IParametroClinicoRepository
@@ -287,7 +294,7 @@ namespace DataMedix.Infrastructure.Repositories
             var rows = await _db.SnapshotsMensuales
                 .Where(s => s.TenantId == tenantId &&
                             ids.Contains(s.PacienteId) &&
-                            s.PeriodDate > desde &&
+                            s.PeriodDate >= desde &&
                             s.PeriodDate < hasta &&
                             s.Activo)
                 .OrderByDescending(s => s.PeriodDate)

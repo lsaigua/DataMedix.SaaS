@@ -14,6 +14,8 @@ namespace DataMedix.Application.Interfaces
         Task<List<ImportacionError>> GetErroresByLoteAsync(Guid loteId);
         Task IgnorarErrorAsync(Guid errorId);
         Task CancelarLoteAsync(LoteImportacion lote);
+        /// <summary>Retorna las filas crudas del lote para reconstruir/descargar el archivo original.</summary>
+        Task<List<ImportacionDetalle>> GetDetallesAsync(Guid loteId);
     }
 
     public interface IParametroClinicoRepository

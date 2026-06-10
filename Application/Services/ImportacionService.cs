@@ -292,11 +292,18 @@ namespace DataMedix.Application.Services
                 snapshot.TipoAtencion = primerRes.TipoAtencion ?? snapshot.TipoAtencion;
                 snapshot.UpdatedAt    = DateTime.UtcNow;
 
-                // Reset de valores clínicos: el snapshot refleja SOLO la última carga
-                snapshot.HbValor        = null; snapshot.HbUnidad        = null;
-                snapshot.HierroValor    = null; snapshot.HierroUnidad    = null;
-                snapshot.FerritinaValor = null; snapshot.FerritinaUnidad = null;
-                snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null;
+                // Reset SOLO los parámetros presentes en esta carga para que una reimportación
+                // parcial (p.ej. solo HB) no borre los valores previos (p.ej. ISAT/Ferritina
+                // medidos en el mes anterior y ya guardados por carry-forward).
+                var codigosPresentes = grupo
+                    .Where(r => r.ParametroClinico != null)
+                    .Select(r => r.ParametroClinico!.Codigo)
+                    .ToHashSet();
+
+                if (codigosPresentes.Contains("HB"))   { snapshot.HbValor   = null; snapshot.HbUnidad   = null; }
+                if (codigosPresentes.Contains("FE"))   { snapshot.HierroValor   = null; snapshot.HierroUnidad   = null; }
+                if (codigosPresentes.Contains("FERR")) { snapshot.FerritinaValor  = null; snapshot.FerritinaUnidad  = null; }
+                if (codigosPresentes.Contains("ISAT")) { snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null; }
 
                 // Mapear parámetros clave por código (nav prop ParametroClinico asignado al crear)
                 foreach (var res in grupo.Where(r => r.ParametroClinico != null))

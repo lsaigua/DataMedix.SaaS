@@ -5,9 +5,12 @@
 @using DataMedix.Domain.Entities
 @using System.Security.Claims
 
+@using Microsoft.JSInterop
 @inject ILoteImportacionRepository LoteRepo
+@inject IExcelExporter ExcelExporter
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Lotes de Carga | DataMedix</PageTitle>
 
@@ -161,6 +164,12 @@ else
                                             ⚠️ @lote.FilasError
                                         </button>
                                     }
+                                    <button class="dm-btn-icon dm-btn-icon-dl"
+                                            @onclick="() => DescargarArchivoAsync(lote)"
+                                            disabled="@(_descargandoId == lote.Id)"
+                                            title="Descargar archivo original">
+                                        @(_descargandoId == lote.Id ? "⏳" : "⬇️")
+                                    </button>
                                     <a href="/historial-clinico" class="dm-btn-icon" title="Ver resultados del período">
                                         📈
                                     </a>
@@ -459,6 +468,9 @@ else
 
     .dm-btn-danger { background: #dc2626; color: white; border: none; }
     .dm-btn-danger:hover:not(:disabled) { background: #b91c1c; }
+    .dm-btn-icon-dl { color: #0ea5e9; }
+    .dm-btn-icon-dl:hover:not(:disabled) { background: #e0f2fe; color: #0284c7; }
+    .dm-btn-icon-dl:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 
 @code {
@@ -470,6 +482,7 @@ else
     private bool ModalErroresVisible = false;
     private bool CargandoErrores = false;
     private bool CargandoAccion = false;
+    private Guid? _descargandoId;
     private int PaginaActual = 1;
     private const int TamanoPagina = 30;
     private string FiltroEstado = string.Empty;
@@ -579,6 +592,39 @@ else
         finally
         {
             CargandoAccion = false;
+        }
+    }
+
+    private async Task DescargarArchivoAsync(LoteImportacion lote)
+    {
+        if (_descargandoId.HasValue) return;
+        _descargandoId = lote.Id;
+        StateHasChanged();
+        try
+        {
+            var detalles = await LoteRepo.GetDetallesAsync(lote.Id);
+            if (!detalles.Any())
+            {
+                await JS.InvokeVoidAsync("alert", "Este lote no tiene filas almacenadas para descargar.");
+                return;
+            }
+            var bytes  = await Task.Run(() =>
+                ExcelExporter.ReconstruirArchivoLote(detalles, lote.NombreArchivoOriginal));
+            var base64 = Convert.ToBase64String(bytes);
+            var nombre = System.IO.Path.GetFileNameWithoutExtension(lote.NombreArchivoOriginal)
+                         + "_descargado.xlsx";
+            await JS.InvokeVoidAsync("downloadFileFromBase64", nombre, base64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error descargando archivo: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al generar el archivo: {ex.Message}");
+        }
+        finally
+        {
+            _descargandoId = null;
+            StateHasChanged();
         }
     }
 

@@ -15,5 +15,7 @@ namespace DataMedix.Application.Interfaces
             IEnumerable<HojaEpoRowDto> filas,
             IEnumerable<DateTime> meses,
             string periodo);
+        /// <summary>Reconstruye el archivo Excel original a partir de las filas crudas del lote.</summary>
+        byte[] ReconstruirArchivoLote(IEnumerable<ImportacionDetalle> detalles, string nombreArchivo);
     }
 }
