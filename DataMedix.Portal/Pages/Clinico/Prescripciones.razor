@@ -200,7 +200,7 @@ else
                         <div class="dm-snap-param">
                             <span class="dm-snap-label">Ferritina</span>
                             <span class="@ValorClaseFerr(snap.FerritinaValor)">
-                                @(snap.FerritinaValor.HasValue ? $"{snap.FerritinaValor:F0} ng/mL" : "—")
+                                @(snap.FerritinaValor.HasValue ? $"{snap.FerritinaValor:F1} ng/mL" : "—")
                             </span>
                         </div>
                         <div class="dm-snap-param">
@@ -212,7 +212,7 @@ else
                         <div class="dm-snap-param">
                             <span class="dm-snap-label">Hierro</span>
                             <span class="dm-valor-neutro">
-                                @(snap.HierroValor.HasValue ? $"{snap.HierroValor:F0} ug/dL" : "—")
+                                @(snap.HierroValor.HasValue ? $"{snap.HierroValor:F2} µg/dL" : "—")
                             </span>
                         </div>
                     </div>

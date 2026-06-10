@@ -96,8 +96,8 @@ namespace DataMedix.Infrastructure.Excel
                     if (celda != null)
                     {
                         SetNum(ws, row, bc,     celda.HbValor,         "0.0");
-                        SetNum(ws, row, bc + 1, celda.HierroValor,     "0");
-                        SetNum(ws, row, bc + 2, celda.FerritinaValor,  "0");
+                        SetNum(ws, row, bc + 1, celda.HierroValor,     "0.00");
+                        SetNum(ws, row, bc + 2, celda.FerritinaValor,  "0.0");
                         SetNum(ws, row, bc + 3, celda.SaturacionValor, "0.0");
                         SetNum(ws, row, bc + 4, celda.EpoUiSemana,     "#,##0");
                         ws.Cell(row, bc + 5).Value  = celda.AjusteEpo   ?? "";
@@ -278,9 +278,9 @@ namespace DataMedix.Infrastructure.Excel
 
                 // Formato numérico
                 ws.Cell(r, 5).Style.NumberFormat.Format  = "0.0";
-                ws.Cell(r, 6).Style.NumberFormat.Format  = "0";
+                ws.Cell(r, 6).Style.NumberFormat.Format  = "0.0";
                 ws.Cell(r, 7).Style.NumberFormat.Format  = "0.0";
-                ws.Cell(r, 8).Style.NumberFormat.Format  = "0";
+                ws.Cell(r, 8).Style.NumberFormat.Format  = "0.00";
                 ws.Cell(r, 9).Style.NumberFormat.Format  = "#,##0";
                 ws.Cell(r, 11).Style.NumberFormat.Format = "#,##0";
 

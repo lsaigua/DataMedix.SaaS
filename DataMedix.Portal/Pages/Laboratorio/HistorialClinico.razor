@@ -157,7 +157,7 @@ else
                                 @if (snap.HierroValor.HasValue)
                                 {
                                     <span class="@ClaseValor(snap.HierroValor.Value, 60m, 170m)">
-                                        @snap.HierroValor.Value.ToString("F0")
+                                        @snap.HierroValor.Value.ToString("F2")
                                     </span>
                                 }
                                 else { <span class="dm-sin-dato">—</span> }
@@ -166,7 +166,7 @@ else
                                 @if (snap.FerritinaValor.HasValue)
                                 {
                                     <span class="@ClaseValor(snap.FerritinaValor.Value, 200m, 500m)">
-                                        @snap.FerritinaValor.Value.ToString("F0")
+                                        @snap.FerritinaValor.Value.ToString("F1")
                                     </span>
                                 }
                                 else { <span class="dm-sin-dato">—</span> }

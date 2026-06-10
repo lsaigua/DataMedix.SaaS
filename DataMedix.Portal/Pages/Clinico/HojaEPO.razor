@@ -219,10 +219,10 @@ else
                                 @FmtDec(celda.HbValor, "F1")
                             </td>
                             <!-- Hierro sérico -->
-                            <td class="epo-td epo-td-center">@FmtDec(celda.HierroValor)</td>
+                            <td class="epo-td epo-td-center">@FmtDec(celda.HierroValor, "F2")</td>
                             <!-- Ferritina -->
                             <td class="epo-td epo-td-center @FerrClase(celda.FerritinaValor)">
-                                @FmtDec(celda.FerritinaValor, "F0")
+                                @FmtDec(celda.FerritinaValor, "F1")
                             </td>
                             <!-- ISAT/Saturación -->
                             <td class="epo-td epo-td-center @IsatClase(celda.SaturacionValor)">

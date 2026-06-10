@@ -33,7 +33,9 @@ namespace DataMedix.Infrastructure.Excel
                         NombrePaciente = row.Cell(5).GetString().Trim(),
                         Examen = row.Cell(6).GetString().Trim(),
                         Parametro = row.Cell(7).GetString().Trim(),
-                        ResultadoTexto = row.Cell(8).GetString().Trim(),
+                        // Leer como número cuando la celda es numérica para preservar decimales.
+                        // GetString() en una celda con formato "0" devolvería "71" en lugar de "71.41".
+                        ResultadoTexto = LeerResultado(row.Cell(8)),
                         UnidadMedida = row.Cell(9).GetString().Trim(),
                     };
 
@@ -61,6 +63,16 @@ namespace DataMedix.Infrastructure.Excel
             }
 
             return await Task.FromResult(resultados);
+        }
+
+        private static string LeerResultado(IXLCell cell)
+        {
+            // Cuando la celda es numérica, leer el valor double real (no el texto formateado).
+            // Si la celda tiene formato "0" y valor 71.41, GetString() retorna "71" — incorrecto.
+            if (cell.DataType == XLDataType.Number)
+                return cell.GetDouble().ToString(CultureInfo.InvariantCulture);
+
+            return cell.GetString().Trim();
         }
 
         private static DateTime? ParseDate(IXLCell cell)
