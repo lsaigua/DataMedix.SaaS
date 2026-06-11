@@ -99,9 +99,9 @@ namespace DataMedix.Infrastructure.Excel
                         SetNum(ws, row, bc + 1, celda.HierroValor,     "0.00");
                         SetNum(ws, row, bc + 2, celda.FerritinaValor,  "0.0");
                         SetNum(ws, row, bc + 3, celda.SaturacionValor, "0.0");
-                        SetNum(ws, row, bc + 4, celda.EpoUiSemana,     "#,##0");
+                        SetNum(ws, row, bc + 4, celda.EpoEfectivo,    "#,##0");
                         ws.Cell(row, bc + 5).Value  = celda.AjusteEpo   ?? "";
-                        SetNum(ws, row, bc + 6, celda.HierroMgMes,     "#,##0");
+                        SetNum(ws, row, bc + 6, celda.HierroEfectivo, "#,##0");
                         ws.Cell(row, bc + 7).Value  = celda.AjusteHierro ?? "";
                         ws.Cell(row, bc + 8).Value  = celda.EstadoPrescripcion ?? "";
                         ws.Cell(row, bc + 9).Value  = celda.HbValor.HasValue

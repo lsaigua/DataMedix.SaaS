@@ -132,10 +132,11 @@ namespace DataMedix.Application.Services
             var hbVals = row.Meses.Values.Where(c => c.HbValor.HasValue).Select(c => c.HbValor!.Value).ToList();
             row.PromedioHb = hbVals.Count > 0 ? Math.Round(hbVals.Average(), 1) : null;
 
-            var epoVals = row.Meses.Values.Where(c => c.EpoUiSemana.HasValue).Select(c => c.EpoUiSemana!.Value).ToList();
+            // Usar dosis efectiva: ajuste médico tiene precedencia sobre el calculado
+            var epoVals = row.Meses.Values.Where(c => c.EpoEfectivo.HasValue).Select(c => c.EpoEfectivo!.Value).ToList();
             row.PromedioEpo = epoVals.Count > 0 ? Math.Round(epoVals.Average(), 0) : null;
 
-            var hierroVals = row.Meses.Values.Where(c => c.HierroMgMes.HasValue).Select(c => c.HierroMgMes!.Value).ToList();
+            var hierroVals = row.Meses.Values.Where(c => c.HierroEfectivo.HasValue).Select(c => c.HierroEfectivo!.Value).ToList();
             row.PromedioHierro = hierroVals.Count > 0 ? Math.Round(hierroVals.Average(), 0) : null;
             row.SumaHierro     = hierroVals.Count > 0 ? hierroVals.Sum() : null;
         }

@@ -228,13 +228,19 @@ else
                             <td class="epo-td epo-td-center @IsatClase(celda.SaturacionValor)">
                                 @FmtDec(celda.SaturacionValor, "F1")
                             </td>
-                            <!-- EPO calculado -->
+                            <!-- EPO efectivo (calculado o ajuste médico) -->
                             <td class="epo-td epo-td-center epo-cell-calc">
-                                @if (celda.EpoUiSemana.HasValue)
+                                @if (celda.EpoEfectivo.HasValue)
                                 {
-                                    <span class="epo-calc-value @AccionClase(celda.EpoAccion)">
-                                        @celda.EpoUiSemana.Value.ToString("N0")
+                                    bool epoEsAjuste = celda.AjusteEpoDecimal.HasValue;
+                                    <span class="epo-calc-value @(epoEsAjuste ? "epo-valor-ajustado" : AccionClase(celda.EpoAccion))"
+                                          title="@(epoEsAjuste ? "Dosis prescrita por médico" : "Dosis calculada")">
+                                        @celda.EpoEfectivo.Value.ToString("N0")
                                     </span>
+                                    @if (epoEsAjuste && celda.EpoUiSemana.HasValue)
+                                    {
+                                        <br/><span class="epo-calc-original" title="Calculado: @celda.EpoUiSemana.Value.ToString("N0") UI/sem">(@celda.EpoUiSemana.Value.ToString("N0"))</span>
+                                    }
                                 }
                                 else { <span class="epo-no-data">—</span> }
                             </td>
@@ -258,13 +264,19 @@ else
                                     @(celda.AjusteEpo ?? "—")
                                 </td>
                             }
-                            <!-- Hierro calculado -->
+                            <!-- Hierro efectivo (calculado o ajuste médico) -->
                             <td class="epo-td epo-td-center epo-cell-calc">
-                                @if (celda.HierroMgMes.HasValue)
+                                @if (celda.HierroEfectivo.HasValue)
                                 {
-                                    <span class="epo-calc-value @AccionClase(celda.HierroAccion)">
-                                        @celda.HierroMgMes.Value.ToString("N0")
+                                    bool hierroEsAjuste = celda.AjusteHierroDecimal.HasValue;
+                                    <span class="epo-calc-value @(hierroEsAjuste ? "epo-valor-ajustado" : AccionClase(celda.HierroAccion))"
+                                          title="@(hierroEsAjuste ? "Dosis prescrita por médico" : "Dosis calculada")">
+                                        @celda.HierroEfectivo.Value.ToString("N0")
                                     </span>
+                                    @if (hierroEsAjuste && celda.HierroMgMes.HasValue)
+                                    {
+                                        <br/><span class="epo-calc-original" title="Calculado: @celda.HierroMgMes.Value.ToString("N0") mg/mes">(@celda.HierroMgMes.Value.ToString("N0"))</span>
+                                    }
                                 }
                                 else { <span class="epo-no-data">—</span> }
                             </td>
@@ -508,6 +520,10 @@ else
     .epo-cell-calc { background: #f8fafc; }
     .epo-calc-value { font-weight: 700; }
     .epo-no-data { color: #cbd5e1; font-size: 0.75rem; }
+    /* Celda con dosis prescrita por médico (override del calculado) */
+    .epo-valor-ajustado { color: #7c3aed; font-weight: 800; }
+    /* Valor calculado original mostrado debajo del ajuste médico */
+    .epo-calc-original { font-size: 0.62rem; color: #94a3b8; line-height: 1; }
 
     /* Ajuste cells */
     .epo-cell-ajuste-filled { background: #f5f3ff; color: #5b21b6; font-weight: 700; cursor: pointer;
