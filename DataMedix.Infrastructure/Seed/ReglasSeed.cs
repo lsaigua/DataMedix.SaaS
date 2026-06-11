@@ -257,6 +257,16 @@ namespace DataMedix.Infrastructure.Seed
             // Se aplican DESPUÉS de determinar las dosis base (prioridad 400+)
             // ================================================================
 
+            // MOD-EPO-ESCALAR: Escalamiento EPO +6000 por no-respuesta (Paso B del protocolo)
+            // Condiciones: no es primer mes AND HB_previa < 10 AND HB_actual <= HB_previa
+            // Acción: sumar 6000 UI/sem con cap en 18000 (parámetros cantidad/maximo en AccionJson)
+            new() {
+                Codigo = "MOD-EPO-ESCALAR", Nombre = "Modificador escalamiento EPO — +6000 por no respuesta",
+                Tipo = TipoRegla.Modificador, Prioridad = 401,
+                CondicionesJson = """{"operator":"AND","conditions":[{"param":"es_primer_mes","op":"=","value":false},{"param":"hb_previa","op":"<","value":10},{"param":"hb_no_crecio_desde_previa","op":"=","value":true}]}""",
+                AccionJson = """{"tipo":"MODIFICADOR","aplicar":"escalar_epo","cantidad":6000,"maximo":18000,"mensaje":"Escalamiento EPO +6000 UI/sem por no respuesta (HB previa <10 sin mejora)."}"""
+            },
+
             // MOD-MES-IMPAR: Reducir dosis hierro en mes impar (tabla BAJA)
             // Condición Ferritina<850 excluye la condición #13 (FE-R11: ferropenia funcional con
             // ferritina alta) donde BAJA=ALTA=400 y no debe reducirse.

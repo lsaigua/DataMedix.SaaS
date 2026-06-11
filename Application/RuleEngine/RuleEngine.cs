@@ -55,19 +55,6 @@ namespace DataMedix.Application.RuleEngine
                 }
             }
 
-            // Escalamiento EPO por no-respuesta (Paso B de la especificación):
-            // Si no es primer mes, HB_previa < 10, HB_actual <= HB_previa y la base < 18000 → +6000 (cap 18000).
-            if (!ctx.EsPrimerMes
-                && ctx.HbPrevia.HasValue
-                && ctx.HbPrevia.Value < 10
-                && ctx.Hb.HasValue
-                && ctx.Hb.Value <= ctx.HbPrevia.Value
-                && result.EpoUiSemana.HasValue
-                && result.EpoUiSemana.Value < 18000)
-            {
-                result.EpoUiSemana = Math.Min(18000, result.EpoUiSemana.Value + 6000);
-            }
-
             // Cálculo alternativo de Ganzoni (referencia, no reemplaza regla principal)
             if (ctx.PesoKg.HasValue && ctx.Hb.HasValue)
                 result.HierroGanzoniMg = CalcularGanzoni(ctx.PesoKg.Value, ctx.Hb.Value);
@@ -116,16 +103,29 @@ namespace DataMedix.Application.RuleEngine
         {
             var action = rule.ParsedAction!;
 
-            // R: Reducir dosis de hierro en mes impar
-            if (action.Aplicar == "reducir_dosis_hierro" &&
-                result.HierroMgMes.HasValue &&
-                action.Mapeo is not null)
+            switch (action.Aplicar)
             {
-                var key = ((int)result.HierroMgMes.Value).ToString();
-                if (action.Mapeo.TryGetValue(key, out var nuevaDosis))
-                    result.HierroMgMes = nuevaDosis;
+                // Tabla BAJA en mes impar: mapeo de dosis original → dosis reducida
+                case "reducir_dosis_hierro" when result.HierroMgMes.HasValue && action.Mapeo is not null:
+                {
+                    var key = ((int)result.HierroMgMes.Value).ToString();
+                    if (action.Mapeo.TryGetValue(key, out var nuevaDosis))
+                        result.HierroMgMes = nuevaDosis;
+                    result.ModificadoresAplicados.Add(rule.Codigo);
+                    break;
+                }
 
-                result.ModificadoresAplicados.Add(rule.Codigo);
+                // Escalamiento EPO por no-respuesta: suma 'cantidad' con cap en 'maximo'
+                case "escalar_epo" when result.EpoUiSemana.HasValue && action.Cantidad.HasValue:
+                {
+                    var maximo = action.Maximo ?? decimal.MaxValue;
+                    if (result.EpoUiSemana.Value < maximo)
+                    {
+                        result.EpoUiSemana = Math.Min(maximo, result.EpoUiSemana.Value + action.Cantidad.Value);
+                        result.ModificadoresAplicados.Add(rule.Codigo);
+                    }
+                    break;
+                }
             }
         }
 

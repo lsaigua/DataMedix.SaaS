@@ -439,56 +439,75 @@ namespace DataMedix.Tests.RuleEngine
         [Fact]
         public async Task EPO_Escalamiento_HbPreviaBaja_HbActualNoMejora_Suma6000()
         {
-            // HB_previa=9.5 (<10), HB_actual=9.3 (<=previa) → base EPO-06=12000 → escala a 18000
+            // HB_previa=9.5 (<10), HB_actual=9.3 (<=previa) → base EPO-06=12000 → MOD-EPO-ESCALAR suma 6000 → 18000
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
                     .ConHb(9.3m).ConHbPrevia(9.5m)
                     .Build());
-            r.EpoUiSemana.Should().Be(18000); // 12000 + 6000 = 18000
+            r.EpoUiSemana.Should().Be(18000);
+            r.ModificadoresAplicados.Should().Contain("MOD-EPO-ESCALAR");
         }
 
         [Fact]
         public async Task EPO_Escalamiento_HbPreviaBaja_HbActualMejora_NoEscala()
         {
-            // HB_actual=10.5 > HB_previa=9.5 → mejora → no escala
+            // HB_actual=10.5 > HB_previa=9.5 → hb_no_crecio=false → MOD-EPO-ESCALAR no aplica
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
                     .ConHb(10.5m).ConHbPrevia(9.5m)
                     .Build());
-            r.EpoUiSemana.Should().Be(8000); // EPO-05 normal, sin escalamiento
+            r.EpoUiSemana.Should().Be(8000); // EPO-05 sin escalamiento
+            r.ModificadoresAplicados.Should().NotContain("MOD-EPO-ESCALAR");
         }
 
         [Fact]
         public async Task EPO_Escalamiento_EsPrimerMes_NoEscala()
         {
-            // Primer mes del paciente → nunca escala aunque HB sea baja
+            // es_primer_mes=true → condición no cumplida → sin escalamiento
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
                     .ConHb(9.3m).EsPrimerMes(true)
                     .Build());
-            r.EpoUiSemana.Should().Be(12000); // EPO-06, sin escalamiento
+            r.EpoUiSemana.Should().Be(12000); // EPO-06 sin escalamiento
+            r.ModificadoresAplicados.Should().NotContain("MOD-EPO-ESCALAR");
         }
 
         [Fact]
         public async Task EPO_Escalamiento_HbPreviaMayor10_NoEscala()
         {
-            // HB_previa=10.5 (>=10) → condición HB_previa<10 no cumplida → no escala
+            // HB_previa=10.5 (>=10) → condición hb_previa<10 no cumplida → sin escalamiento
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
                     .ConHb(9.5m).ConHbPrevia(10.5m)
                     .Build());
-            r.EpoUiSemana.Should().Be(12000); // EPO-06 normal, sin escalamiento
+            r.EpoUiSemana.Should().Be(12000); // EPO-06 sin escalamiento
+            r.ModificadoresAplicados.Should().NotContain("MOD-EPO-ESCALAR");
         }
 
         [Fact]
-        public async Task EPO_Escalamiento_BaseYa18000_NoSobrepasa()
+        public async Task EPO_Escalamiento_BaseYa18000_CapRespetado()
         {
-            // Base = 18000 (EPO-07), escalar daría >18000 → cap en 18000
+            // Base = 18000 (EPO-07) → MOD-EPO-ESCALAR no aplica (cap=18000, base ya en max)
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
                     .ConHb(7.5m).ConHbPrevia(7.8m)
                     .Build());
-            r.EpoUiSemana.Should().Be(18000); // ya en máximo, no sobrepasa
+            r.EpoUiSemana.Should().Be(18000);
+            r.ModificadoresAplicados.Should().NotContain("MOD-EPO-ESCALAR");
+        }
+
+        [Fact]
+        public async Task EPO_Escalamiento_Base6000_Suma6000_Resultado12000()
+        {
+            // HB_actual=11.3, HB_previa=9.0 → HB no mejora? NO (11.3>9.0) → no escala
+            // Verificar que la condición hb_no_crecio sea estrictamente <=
+            // HB_actual=9.0, HB_previa=9.0 (igual, no mejora) → escala 12000+6000=18000
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create()
+                    .ConHb(9.0m).ConHbPrevia(9.0m)
+                    .Build());
+            r.EpoUiSemana.Should().Be(18000); // 12000 + 6000 (HB igual = no mejoró)
+            r.ModificadoresAplicados.Should().Contain("MOD-EPO-ESCALAR");
         }
 
         // ═══════════════════════════════════════════════════════════════════════

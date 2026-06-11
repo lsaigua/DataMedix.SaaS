@@ -29,15 +29,19 @@ namespace DataMedix.Application.RuleEngine
                 ["meses_en_dialisis"]     = ctx => (decimal?)ctx.MesesEnDialisis,
                 ["epo_ui_semana_actual"]  = ctx => ctx.EpoUiSemanaActual,
                 ["meses_sin_mejora_hb"]   = ctx => (decimal?)ctx.MesesSinMejoraHb,
+                ["hb_previa"]             = ctx => ctx.HbPrevia,
             };
 
         // Params booleanos
-        private static readonly Dictionary<string, Func<EvaluationContext, bool>> BoolParams =
+        private static readonly Dictionary<string, Func<EvaluationContext, bool?>> BoolParams =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                ["primera_vez_hierro"]   = ctx => ctx.PrimeraVezHierro,
-                ["mes_actual_es_impar"]  = ctx => ctx.MesActualEsImpar,
-                ["perfil_hierro_actual"] = ctx => ctx.PerfilHierroActual,
+                ["primera_vez_hierro"]          = ctx => ctx.PrimeraVezHierro,
+                ["mes_actual_es_impar"]         = ctx => ctx.MesActualEsImpar,
+                ["perfil_hierro_actual"]        = ctx => ctx.PerfilHierroActual,
+                ["es_primer_mes"]               = ctx => ctx.EsPrimerMes,
+                // Null cuando falta HB actual o previa → condición no se cumple (safe)
+                ["hb_no_crecio_desde_previa"]   = ctx => ctx.HbNoCrecioDesdePrevia,
             };
 
         /// <summary>Evalúa el nodo raíz contra el contexto. false si nodo es null.</summary>
@@ -74,12 +78,13 @@ namespace DataMedix.Application.RuleEngine
                     value.Value.ValueKind != JsonValueKind.False)
                     return false;
 
-                var ctxVal    = boolGetter(ctx);
+                var ctxVal = boolGetter(ctx);
+                if (!ctxVal.HasValue) return false; // dato ausente → condición no cumplida
                 var targetVal = value.Value.GetBoolean();
                 return op switch
                 {
-                    "="  => ctxVal == targetVal,
-                    "!=" => ctxVal != targetVal,
+                    "="  => ctxVal.Value == targetVal,
+                    "!=" => ctxVal.Value != targetVal,
                     _    => false
                 };
             }

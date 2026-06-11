@@ -48,5 +48,13 @@ namespace DataMedix.Domain.RuleEngine
         /// <summary>Mapa de dosis original → dosis reducida (mes impar): "1000"→600, "600"→400, etc.</summary>
         [JsonPropertyName("mapeo")]
         public Dictionary<string, decimal>? Mapeo { get; set; }
+
+        /// <summary>Cantidad a sumar/escalar en modificadores numéricos (escalar_epo).</summary>
+        [JsonPropertyName("cantidad")]
+        public decimal? Cantidad { get; set; }
+
+        /// <summary>Valor máximo al que se puede llegar tras aplicar el modificador.</summary>
+        [JsonPropertyName("maximo")]
+        public decimal? Maximo { get; set; }
     }
 }

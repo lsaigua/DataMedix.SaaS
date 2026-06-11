@@ -53,5 +53,13 @@ namespace DataMedix.Application.RuleEngine
 
         /// <summary>True si es el primer mes registrado del paciente (sin HB en historial anterior).</summary>
         public bool EsPrimerMes { get; set; }
+
+        /// <summary>
+        /// True cuando Hb actual ≤ Hb previa (el paciente no mejoró respecto al mes anterior).
+        /// Null si alguno de los dos valores falta.
+        /// Requerido para evaluar la condición de escalamiento EPO en el motor de reglas.
+        /// </summary>
+        public bool? HbNoCrecioDesdePrevia =>
+            Hb.HasValue && HbPrevia.HasValue ? Hb.Value <= HbPrevia.Value : null;
     }
 }
