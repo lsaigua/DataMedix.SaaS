@@ -25,10 +25,18 @@ namespace DataMedix.Application.DTOs.HojaEpo
         public decimal? AjusteEpoDecimal    => decimal.TryParse(AjusteEpo,    out var v) ? v : null;
         public decimal? AjusteHierroDecimal => decimal.TryParse(AjusteHierro, out var v) ? v : null;
 
-        // Dosis efectiva: el ajuste médico tiene precedencia sobre el calculado.
-        // Si el médico puso 1000 en Aj.Hierro, el paciente recibe 1000 (no calculado+1000).
-        public decimal? EpoEfectivo    => AjusteEpoDecimal    ?? EpoUiSemana;
-        public decimal? HierroEfectivo => AjusteHierroDecimal ?? HierroMgMes;
+        // Dosis efectiva: ADITIVA — calculado + ajuste médico.
+        // EPO: base 4000 + ajuste médico 2000 = 6000 UI/sem que recibe el paciente.
+        // Si solo existe uno de los dos, se usa ese valor directamente.
+        public decimal? EpoEfectivo =>
+            (EpoUiSemana.HasValue || AjusteEpoDecimal.HasValue)
+            ? (EpoUiSemana ?? 0) + (AjusteEpoDecimal ?? 0)
+            : null;
+
+        public decimal? HierroEfectivo =>
+            (HierroMgMes.HasValue || AjusteHierroDecimal.HasValue)
+            ? (HierroMgMes ?? 0) + (AjusteHierroDecimal ?? 0)
+            : null;
 
         // IDs para operaciones de guardado
         public Guid? PrescripcionSugeridaId { get; set; }

@@ -55,6 +55,19 @@ namespace DataMedix.Application.RuleEngine
                 }
             }
 
+            // Escalamiento EPO por no-respuesta (Paso B de la especificación):
+            // Si no es primer mes, HB_previa < 10, HB_actual <= HB_previa y la base < 18000 → +6000 (cap 18000).
+            if (!ctx.EsPrimerMes
+                && ctx.HbPrevia.HasValue
+                && ctx.HbPrevia.Value < 10
+                && ctx.Hb.HasValue
+                && ctx.Hb.Value <= ctx.HbPrevia.Value
+                && result.EpoUiSemana.HasValue
+                && result.EpoUiSemana.Value < 18000)
+            {
+                result.EpoUiSemana = Math.Min(18000, result.EpoUiSemana.Value + 6000);
+            }
+
             // Cálculo alternativo de Ganzoni (referencia, no reemplaza regla principal)
             if (ctx.PesoKg.HasValue && ctx.Hb.HasValue)
                 result.HierroGanzoniMg = CalcularGanzoni(ctx.PesoKg.Value, ctx.Hb.Value);

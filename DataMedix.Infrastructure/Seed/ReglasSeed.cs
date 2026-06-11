@@ -173,6 +173,24 @@ namespace DataMedix.Infrastructure.Seed
                 AccionJson = """{"tipo":"HIERRO","hierro_mg_mes":200,"dosis_individual_mg":200,"recomendar":true,"mensaje":"Mantenimiento por reservas bajas."}"""
             },
 
+            // FE-R13: Hb<11.5 + TSAT [20,30) + Ferritina [500,850) — 200 mg/mes
+            // Condición #4 de la especificación — ALTA=200 BAJA=200 (sin reducción en mes impar)
+            new() {
+                Codigo = "FE-R13", Nombre = "Hb<11.5 + TSAT 20-30 + Ferritina 500-850 — 200 mg/mes",
+                Tipo = TipoRegla.Hierro, Prioridad = 212,
+                CondicionesJson = """{"operator":"AND","conditions":[{"param":"Hb","op":"<","value":11.5},{"param":"TSAT","op":"between","value":[20,30],"inclusive":"left"},{"param":"Ferritina","op":"between","value":[500,850],"inclusive":"left"}]}""",
+                AccionJson = """{"tipo":"HIERRO","hierro_mg_mes":200,"dosis_individual_mg":200,"recomendar":true,"mensaje":"Ferropenia funcional con reservas intermedias — mantenimiento."}"""
+            },
+
+            // FE-R14: Hb [10,11.5) + TSAT [20,30) + Ferritina<500 — 400 mg/mes (ALTA); 200 en mes impar (BAJA via modificador)
+            // Condición #5 de la especificación — cubre el gap entre FE-R07 (Hb<10) y las reglas de Hb>=11.5
+            new() {
+                Codigo = "FE-R14", Nombre = "Hb 10-11.5 + TSAT 20-30 + Ferritina<500 — 400 mg/mes",
+                Tipo = TipoRegla.Hierro, Prioridad = 213,
+                CondicionesJson = """{"operator":"AND","conditions":[{"param":"Hb","op":"between","value":[10,11.5],"inclusive":"left"},{"param":"TSAT","op":"between","value":[20,30],"inclusive":"left"},{"param":"Ferritina","op":"<","value":500}]}""",
+                AccionJson = """{"tipo":"HIERRO","hierro_mg_mes":400,"dosis_individual_mg":200,"recomendar":true,"mensaje":"Anemia moderada con ferropenia — dosis intermedia."}"""
+            },
+
             // ================================================================
             // BLOQUE 3 — ALERTAS CLÍNICAS
             // Todas las alertas que apliquen se acumulan (no hay "primera gana")
@@ -239,12 +257,14 @@ namespace DataMedix.Infrastructure.Seed
             // Se aplican DESPUÉS de determinar las dosis base (prioridad 400+)
             // ================================================================
 
-            // MOD-MES-IMPAR: Reducir dosis hierro en mes impar sin perfil nuevo
+            // MOD-MES-IMPAR: Reducir dosis hierro en mes impar (tabla BAJA)
+            // Condición Ferritina<850 excluye la condición #13 (FE-R11: ferropenia funcional con
+            // ferritina alta) donde BAJA=ALTA=400 y no debe reducirse.
             new() {
                 Codigo = "MOD-MES-IMPAR", Nombre = "Modificador mes impar — Reducir dosis hierro",
                 Tipo = TipoRegla.Modificador, Prioridad = 400,
-                CondicionesJson = """{"operator":"AND","conditions":[{"param":"mes_actual_es_impar","op":"=","value":true},{"param":"perfil_hierro_actual","op":"=","value":false}]}""",
-                AccionJson = """{"tipo":"MODIFICADOR","aplicar":"reducir_dosis_hierro","mapeo":{"1000":600,"600":400,"400":200,"200":200},"mensaje":"Mes impar sin nuevo perfil de hierro — mantener esquema reducido si Hb y perfil estables."}"""
+                CondicionesJson = """{"operator":"AND","conditions":[{"param":"mes_actual_es_impar","op":"=","value":true},{"param":"Ferritina","op":"<","value":850}]}""",
+                AccionJson = """{"tipo":"MODIFICADOR","aplicar":"reducir_dosis_hierro","mapeo":{"1000":600,"600":400,"400":200,"200":200},"mensaje":"Mes impar — esquema BAJA según paridad mensual."}"""
             },
         ];
     }

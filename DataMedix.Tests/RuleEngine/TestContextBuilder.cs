@@ -44,6 +44,8 @@ namespace DataMedix.Tests.RuleEngine
         public TestContextBuilder SinFerritina()                      { _ctx.Ferritina = null; return this; }
         /// <summary>Fuerza perfil_hierro_actual=false sin anular TSAT/Ferritina (para testear el modificador).</summary>
         public TestContextBuilder SinPerfilHierroActual()             { _ctx.PerfilHierroActual = false; return this; }
+        public TestContextBuilder ConHbPrevia(decimal hbPrevia)       { _ctx.HbPrevia = hbPrevia; _ctx.EsPrimerMes = false; return this; }
+        public TestContextBuilder EsPrimerMes(bool val = true)        { _ctx.EsPrimerMes = val; _ctx.HbPrevia = null; return this; }
 
         public EvaluationContext Build() => _ctx;
     }

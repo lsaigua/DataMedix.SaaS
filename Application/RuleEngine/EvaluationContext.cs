@@ -47,5 +47,11 @@ namespace DataMedix.Application.RuleEngine
 
         /// <summary>True si hay perfil de hierro (TSAT + Ferritina) en el período actual.</summary>
         public bool PerfilHierroActual { get; set; }
+
+        /// <summary>Hemoglobina del mes inmediatamente anterior. Null si es el primer mes o sin datos previos.</summary>
+        public decimal? HbPrevia { get; set; }
+
+        /// <summary>True si es el primer mes registrado del paciente (sin HB en historial anterior).</summary>
+        public bool EsPrimerMes { get; set; }
     }
 }

@@ -168,6 +168,14 @@ namespace DataMedix.Application.Services
                 ctx.MesesEnDialisis = Math.Max(0, (int)(diff.TotalDays / 30.44));
             }
 
+            // HB previa: último snapshot anterior que tenga HB (para escalación EPO)
+            var snapPrevioConHb = historial
+                .Where(h => h.PeriodDate < periodDate && h.HbValor.HasValue)
+                .OrderByDescending(h => h.PeriodDate)
+                .FirstOrDefault();
+            ctx.HbPrevia    = snapPrevioConHb?.HbValor;
+            ctx.EsPrimerMes = snapPrevioConHb == null;
+
             // Valores adicionales desde SnapshotMensualDetalle (Potasio, PTH, Peso, etc.)
             if (snapshot.Detalles is { Count: > 0 })
             {

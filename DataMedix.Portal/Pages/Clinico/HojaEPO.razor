@@ -228,18 +228,21 @@ else
                             <td class="epo-td epo-td-center @IsatClase(celda.SaturacionValor)">
                                 @FmtDec(celda.SaturacionValor, "F1")
                             </td>
-                            <!-- EPO efectivo (calculado o ajuste médico) -->
+                            <!-- EPO efectiva = calculado + ajuste médico (aditivo) -->
                             <td class="epo-td epo-td-center epo-cell-calc">
                                 @if (celda.EpoEfectivo.HasValue)
                                 {
-                                    bool epoEsAjuste = celda.AjusteEpoDecimal.HasValue;
-                                    <span class="epo-calc-value @(epoEsAjuste ? "epo-valor-ajustado" : AccionClase(celda.EpoAccion))"
-                                          title="@(epoEsAjuste ? "Dosis prescrita por médico" : "Dosis calculada")">
+                                    bool tieneAjEpo = celda.AjusteEpoDecimal.HasValue;
+                                    string titleEpo = tieneAjEpo
+                                        ? $"Calculado: {(celda.EpoUiSemana ?? 0):N0} + Ajuste: {celda.AjusteEpoDecimal!.Value:N0} = {celda.EpoEfectivo.Value:N0} UI/sem"
+                                        : "Dosis calculada";
+                                    <span class="epo-calc-value @(tieneAjEpo ? "epo-valor-ajustado" : AccionClase(celda.EpoAccion))"
+                                          title="@titleEpo">
                                         @celda.EpoEfectivo.Value.ToString("N0")
                                     </span>
-                                    @if (epoEsAjuste && celda.EpoUiSemana.HasValue)
+                                    @if (tieneAjEpo && celda.EpoUiSemana.HasValue)
                                     {
-                                        <br/><span class="epo-calc-original" title="Calculado: @celda.EpoUiSemana.Value.ToString("N0") UI/sem">(@celda.EpoUiSemana.Value.ToString("N0"))</span>
+                                        <br/><span class="epo-calc-original">@celda.EpoUiSemana.Value.ToString("N0")+@celda.AjusteEpoDecimal!.Value.ToString("N0")</span>
                                     }
                                 }
                                 else { <span class="epo-no-data">—</span> }
@@ -264,18 +267,21 @@ else
                                     @(celda.AjusteEpo ?? "—")
                                 </td>
                             }
-                            <!-- Hierro efectivo (calculado o ajuste médico) -->
+                            <!-- Hierro efectivo = calculado + ajuste médico (aditivo) -->
                             <td class="epo-td epo-td-center epo-cell-calc">
                                 @if (celda.HierroEfectivo.HasValue)
                                 {
-                                    bool hierroEsAjuste = celda.AjusteHierroDecimal.HasValue;
-                                    <span class="epo-calc-value @(hierroEsAjuste ? "epo-valor-ajustado" : AccionClase(celda.HierroAccion))"
-                                          title="@(hierroEsAjuste ? "Dosis prescrita por médico" : "Dosis calculada")">
+                                    bool tieneAjFe = celda.AjusteHierroDecimal.HasValue;
+                                    string titleFe = tieneAjFe
+                                        ? $"Calculado: {(celda.HierroMgMes ?? 0):N0} + Ajuste: {celda.AjusteHierroDecimal!.Value:N0} = {celda.HierroEfectivo.Value:N0} mg/mes"
+                                        : "Dosis calculada";
+                                    <span class="epo-calc-value @(tieneAjFe ? "epo-valor-ajustado" : AccionClase(celda.HierroAccion))"
+                                          title="@titleFe">
                                         @celda.HierroEfectivo.Value.ToString("N0")
                                     </span>
-                                    @if (hierroEsAjuste && celda.HierroMgMes.HasValue)
+                                    @if (tieneAjFe && celda.HierroMgMes.HasValue)
                                     {
-                                        <br/><span class="epo-calc-original" title="Calculado: @celda.HierroMgMes.Value.ToString("N0") mg/mes">(@celda.HierroMgMes.Value.ToString("N0"))</span>
+                                        <br/><span class="epo-calc-original">@celda.HierroMgMes.Value.ToString("N0")+@celda.AjusteHierroDecimal!.Value.ToString("N0")</span>
                                     }
                                 }
                                 else { <span class="epo-no-data">—</span> }

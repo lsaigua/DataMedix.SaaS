@@ -358,12 +358,11 @@ namespace DataMedix.Tests.RuleEngine
         [Fact]
         public async Task Modificador_MesImpar_Reduce1000a600()
         {
-            // FE-R01 da 1000 mg; modifier (mes impar + sin perfil) → 600 mg
-            // PerfilHierroActual se fuerza a false en el contexto aunque TSAT/Ferritina están presentes
+            // FE-R01 da 1000 mg; mes impar con Ferritina<850 → modificador reduce a 600
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
                     .ConHb(10.0m).ConTSAT(15m).ConFerritina(150m)
-                    .MesImpar(true).SinPerfilHierroActual()
+                    .MesImpar(true)
                     .Build());
             r.ModificadoresAplicados.Should().Contain("MOD-MES-IMPAR");
             r.HierroMgMes.Should().Be(600);
@@ -376,22 +375,120 @@ namespace DataMedix.Tests.RuleEngine
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
                     .ConHb(10.0m).ConTSAT(15m).ConFerritina(150m)
-                    .MesImpar(false).SinPerfilHierroActual()
+                    .MesImpar(false)
                     .Build());
             r.ModificadoresAplicados.Should().NotContain("MOD-MES-IMPAR");
             r.HierroMgMes.Should().Be(1000);
         }
 
         [Fact]
-        public async Task Modificador_MesImpar_ConPerfilHierro_NoReduce()
+        public async Task Modificador_MesImpar_FerritinaAlta_NoReduce()
         {
-            // Aunque es mes impar, perfil_hierro_actual=true → modificador no aplica
+            // Condición #13: Hb<10, TSAT<20, Ferritina>=850 → FE-R11 da 400 mg.
+            // El modificador no aplica cuando Ferritina>=850 (ALTA=BAJA=400 por especificación).
             var r = await _engine.EvaluateAsync(
                 TestContextBuilder.Create()
-                    .ConHb(10.0m).ConTSAT(15m).ConFerritina(150m)
-                    .MesImpar(true) // PerfilHierroActual sigue siendo true (default)
+                    .ConHb(9.0m).ConTSAT(15m).ConFerritina(900m)
+                    .MesImpar(true)
                     .Build());
             r.ModificadoresAplicados.Should().NotContain("MOD-MES-IMPAR");
+            r.HierroMgMes.Should().Be(400);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // NUEVAS REGLAS FE-R13 y FE-R14 (condiciones #4 y #5 de la especificación)
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [Fact]
+        public async Task FE_R13_HbBajaMedia_TSATMedia_FerrIntermedia_200mg()
+        {
+            // FE-R13 (p=212): Hb<11.5 AND TSAT [20,30) AND Ferritina [500,850) → 200 mg
+            // Cubre el gap del spec condición #4 (antes devolvía 0)
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create().ConHb(11.0m).ConTSAT(25m).ConFerritina(600m).Build());
+            r.ReglaHierroCodigo.Should().Be("FE-R13");
+            r.HierroMgMes.Should().Be(200);
+        }
+
+        [Fact]
+        public async Task FE_R14_HbMedia_TSATMedia_FerrBaja_400mg()
+        {
+            // FE-R14 (p=213): Hb [10,11.5) AND TSAT [20,30) AND Ferritina<500 → 400 mg
+            // Cubre el gap del spec condición #5 (antes devolvía 0)
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create().ConHb(10.5m).ConTSAT(25m).ConFerritina(350m).Build());
+            r.ReglaHierroCodigo.Should().Be("FE-R14");
+            r.HierroMgMes.Should().Be(400);
+        }
+
+        [Fact]
+        public async Task FE_R14_MesImpar_Reduce400a200()
+        {
+            // FE-R14 da 400 mg; mes impar con Ferritina<850 → modificador reduce a 200 (BAJA)
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create().ConHb(10.5m).ConTSAT(25m).ConFerritina(350m)
+                    .MesImpar(true).Build());
+            r.ReglaHierroCodigo.Should().Be("FE-R14");
+            r.HierroMgMes.Should().Be(200);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // ESCALAMIENTO EPO +6000 POR NO RESPUESTA
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [Fact]
+        public async Task EPO_Escalamiento_HbPreviaBaja_HbActualNoMejora_Suma6000()
+        {
+            // HB_previa=9.5 (<10), HB_actual=9.3 (<=previa) → base EPO-06=12000 → escala a 18000
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create()
+                    .ConHb(9.3m).ConHbPrevia(9.5m)
+                    .Build());
+            r.EpoUiSemana.Should().Be(18000); // 12000 + 6000 = 18000
+        }
+
+        [Fact]
+        public async Task EPO_Escalamiento_HbPreviaBaja_HbActualMejora_NoEscala()
+        {
+            // HB_actual=10.5 > HB_previa=9.5 → mejora → no escala
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create()
+                    .ConHb(10.5m).ConHbPrevia(9.5m)
+                    .Build());
+            r.EpoUiSemana.Should().Be(8000); // EPO-05 normal, sin escalamiento
+        }
+
+        [Fact]
+        public async Task EPO_Escalamiento_EsPrimerMes_NoEscala()
+        {
+            // Primer mes del paciente → nunca escala aunque HB sea baja
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create()
+                    .ConHb(9.3m).EsPrimerMes(true)
+                    .Build());
+            r.EpoUiSemana.Should().Be(12000); // EPO-06, sin escalamiento
+        }
+
+        [Fact]
+        public async Task EPO_Escalamiento_HbPreviaMayor10_NoEscala()
+        {
+            // HB_previa=10.5 (>=10) → condición HB_previa<10 no cumplida → no escala
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create()
+                    .ConHb(9.5m).ConHbPrevia(10.5m)
+                    .Build());
+            r.EpoUiSemana.Should().Be(12000); // EPO-06 normal, sin escalamiento
+        }
+
+        [Fact]
+        public async Task EPO_Escalamiento_BaseYa18000_NoSobrepasa()
+        {
+            // Base = 18000 (EPO-07), escalar daría >18000 → cap en 18000
+            var r = await _engine.EvaluateAsync(
+                TestContextBuilder.Create()
+                    .ConHb(7.5m).ConHbPrevia(7.8m)
+                    .Build());
+            r.EpoUiSemana.Should().Be(18000); // ya en máximo, no sobrepasa
         }
 
         // ═══════════════════════════════════════════════════════════════════════
