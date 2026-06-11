@@ -100,12 +100,21 @@ namespace DataMedix.Infrastructure
                         created_by       UUID
                     );");
 
-                // 3. Seed reglas clínicas (idempotente)
-                var hayReglas = await db.ReglasClinicas.AnyAsync();
-                if (!hayReglas)
+                // 3. Seed reglas clínicas — idempotente por código.
+                // Inserta solo las reglas que aún no existen (por codigo UNIQUE).
+                // Las reglas ya existentes no se modifican, preservando ediciones manuales en producción.
+                // Para MODIFICAR una regla existente, ejecutar 004_sync_reglas_clinicas.sql manualmente.
+                var codigosExistentes = await db.ReglasClinicas
+                    .Select(r => r.Codigo)
+                    .ToHashSetAsync();
+
+                var reglasNuevas = ReglasSeed.GetReglas()
+                    .Where(r => !codigosExistentes.Contains(r.Codigo))
+                    .ToList();
+
+                if (reglasNuevas.Count > 0)
                 {
-                    var reglas = ReglasSeed.GetReglas();
-                    await db.ReglasClinicas.AddRangeAsync(reglas);
+                    await db.ReglasClinicas.AddRangeAsync(reglasNuevas);
                     await db.SaveChangesAsync();
                 }
             }
