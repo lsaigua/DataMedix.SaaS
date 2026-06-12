@@ -6,64 +6,89 @@
 @using System.Security.Claims
 
 @inject IPacienteRepository PacienteRepo
+@inject IUnitOfWork UoW
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
 
 <PageTitle>Pacientes | DataMedix</PageTitle>
 
-<div class="dm-page-header">
+<!-- Header -->
+<div class="pac-header">
     <div>
-        <h1 class="dm-page-title">Pacientes</h1>
-        <p class="dm-page-subtitle">@TotalPacientes paciente(s) registrados</p>
+        <h1 class="pac-title">Pacientes</h1>
+        <p class="pac-subtitle">@TotalPacientes paciente(s) registrados</p>
     </div>
+    <button class="pac-btn pac-btn-primary" @onclick="AbrirModalCrear">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Nuevo Paciente
+    </button>
 </div>
 
+<!-- Toasts -->
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="pac-toast pac-toast-error">⚠ @_error <button @onclick="() => _error = string.Empty">✕</button></div>
+}
+@if (!string.IsNullOrEmpty(_exito))
+{
+    <div class="pac-toast pac-toast-success">✓ @_exito <button @onclick="() => _exito = string.Empty">✕</button></div>
+}
+
 <!-- Filtros -->
-<div class="dm-filters-bar">
-    <div class="dm-search-box">
-        <span class="dm-search-icon">🔍</span>
-        <input type="text" class="dm-search-input" placeholder="Buscar por nombre o cédula..."
+<div class="pac-filters-bar">
+    <div class="pac-search-box">
+        <span class="pac-search-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+        </span>
+        <input type="text" class="pac-search-input" placeholder="Buscar por nombre o cédula..."
                @bind="BusquedaTexto" @bind:event="oninput" @onkeyup="BuscarDebounced" />
         @if (!string.IsNullOrEmpty(BusquedaTexto))
         {
-            <button class="dm-clear-btn" @onclick="LimpiarBusqueda">✕</button>
+            <button class="pac-clear-btn" @onclick="LimpiarBusqueda">✕</button>
         }
     </div>
 </div>
 
-<!-- Tabla de pacientes -->
+<!-- Tabla -->
 @if (Cargando)
 {
-    <div class="dm-loading-container">
-        <div class="dm-spinner"></div>
+    <div class="pac-loading">
+        <div class="pac-spinner"></div>
         <p>Cargando pacientes...</p>
     </div>
 }
 else if (!ListaPacientes.Any())
 {
-    <div class="dm-empty-state">
-        <div class="dm-empty-icon">👥</div>
-        <h3 class="dm-empty-title">
-            @(string.IsNullOrEmpty(BusquedaTexto)
-                ? "No hay pacientes registrados"
-                : "No se encontraron pacientes")
+    <div class="pac-empty">
+        <div class="pac-empty-icon">👥</div>
+        <h3 class="pac-empty-title">
+            @(string.IsNullOrEmpty(BusquedaTexto) ? "No hay pacientes registrados" : "No se encontraron pacientes")
         </h3>
-        <p class="dm-empty-desc">
+        <p class="pac-empty-desc">
             @(string.IsNullOrEmpty(BusquedaTexto)
-                ? "Los pacientes se crean automáticamente al importar resultados de laboratorio."
+                ? "Puede crear pacientes manualmente o importar resultados desde Excel."
                 : $"No hay pacientes que coincidan con \"{BusquedaTexto}\".")
         </p>
         @if (string.IsNullOrEmpty(BusquedaTexto))
         {
-            <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar Resultados</a>
+            <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap">
+                <button class="pac-btn pac-btn-primary" @onclick="AbrirModalCrear">+ Nuevo Paciente</button>
+                <a href="/laboratorio/importar" class="pac-btn pac-btn-outline">📤 Importar Excel</a>
+            </div>
         }
     </div>
 }
 else
 {
-    <div class="dm-card dm-card-table">
-        <div class="dm-table-responsive">
-            <table class="dm-table">
+    <div class="pac-card">
+        <div class="pac-table-wrap">
+            <table class="pac-table">
                 <thead>
                     <tr>
                         <th>Identificación</th>
@@ -80,17 +105,15 @@ else
                     @foreach (var p in ListaPacientes)
                     {
                         <tr>
+                            <td><span class="pac-ident">@p.Identificacion</span></td>
                             <td>
-                                <span class="dm-ident">@p.Identificacion</span>
-                            </td>
-                            <td>
-                                <div class="dm-paciente-cell">
-                                    <div class="dm-avatar">@InicialPaciente(p)</div>
+                                <div class="pac-cell-paciente">
+                                    <div class="pac-avatar">@InicialPaciente(p)</div>
                                     <div>
-                                        <div class="dm-nombre">@p.NombreCompleto</div>
+                                        <div class="pac-nombre">@p.NombreCompleto</div>
                                         @if (!string.IsNullOrEmpty(p.MedicoResponsable))
                                         {
-                                            <div class="dm-medico">Dr. @p.MedicoResponsable</div>
+                                            <div class="pac-medico">Dr. @p.MedicoResponsable</div>
                                         }
                                     </div>
                                 </div>
@@ -101,23 +124,54 @@ else
                             <td>
                                 @if (p.MesesEnDialisis.HasValue)
                                 {
-                                    <span class="dm-tiempo-dialisis">
-                                        @FormatarMeses(p.MesesEnDialisis.Value)
-                                    </span>
+                                    <span class="pac-badge-dialisis">@FormatarMeses(p.MesesEnDialisis.Value)</span>
                                 }
                                 else { <span>—</span> }
                             </td>
                             <td>
-                                <span class="dm-badge @(p.Activo ? "dm-badge-activo" : "dm-badge-inactivo")">
+                                <span class="pac-badge @(p.Activo ? "pac-badge-activo" : "pac-badge-inactivo")">
                                     @(p.Activo ? "Activo" : "Inactivo")
                                 </span>
                             </td>
                             <td>
-                                <div class="dm-acciones">
-                                    <a href="/historial-clinico/@p.Id"
-                                       class="dm-btn-icon" title="Ver historial clínico">📈</a>
-                                    <a href="/prescripciones/@p.Id"
-                                       class="dm-btn-icon" title="Ver prescripciones">💊</a>
+                                <div class="pac-acciones">
+                                    <a href="/laboratorio/manual?pacienteId=@p.Id"
+                                       class="pac-btn-icon pac-btn-icon-lab" title="Ingresar resultados manualmente">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 1-2-2V9m0 0h18"/>
+                                        </svg>
+                                    </a>
+                                    <a href="/historial-clinico/@p.Id" class="pac-btn-icon" title="Historial clínico">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                                        </svg>
+                                    </a>
+                                    <a href="/prescripciones/@p.Id" class="pac-btn-icon" title="Prescripciones">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                        </svg>
+                                    </a>
+                                    <button class="pac-btn-icon pac-btn-icon-edit" title="Editar paciente"
+                                            @onclick="() => AbrirModalEditar(p)">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                        </svg>
+                                    </button>
+                                    <button class="pac-btn-icon pac-btn-icon-del" title="Desactivar paciente"
+                                            @onclick="() => PedirConfirmarEliminar(p)">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="3 6 5 6 21 6"/>
+                                            <path d="M19 6l-1 14H6L5 6"/>
+                                            <path d="M10 11v6M14 11v6"/>
+                                            <path d="M9 6V4h6v2"/>
+                                        </svg>
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -126,181 +180,537 @@ else
             </table>
         </div>
 
-        <!-- Paginación -->
         @if (TotalPaginas > 1)
         {
-            <div class="dm-pagination">
-                <button class="dm-pag-btn" @onclick="PaginaAnterior" disabled="@(PaginaActual <= 1)">←</button>
-                <span class="dm-pag-info">Página @PaginaActual de @TotalPaginas</span>
-                <button class="dm-pag-btn" @onclick="PaginaSiguiente" disabled="@(PaginaActual >= TotalPaginas)">→</button>
+            <div class="pac-pagination">
+                <button class="pac-pag-btn" @onclick="PaginaAnterior" disabled="@(PaginaActual <= 1)">←</button>
+                <span class="pac-pag-info">Página @PaginaActual de @TotalPaginas</span>
+                <button class="pac-pag-btn" @onclick="PaginaSiguiente" disabled="@(PaginaActual >= TotalPaginas)">→</button>
             </div>
         }
     </div>
 }
 
+<!-- ═══ MODAL CREAR / EDITAR ═══ -->
+@if (_mostrarModal)
+{
+    <div class="pac-overlay" @onclick="CerrarModal">
+        <div class="pac-modal" @onclick:stopPropagation="true">
+            <div class="pac-modal-header">
+                <h2 class="pac-modal-title">@(_editando ? "Editar Paciente" : "Nuevo Paciente")</h2>
+                <button class="pac-modal-close" @onclick="CerrarModal">✕</button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="pac-modal-alert">⚠ @_modalError</div>
+            }
+
+            <div class="pac-modal-body">
+                <!-- DATOS PERSONALES -->
+                <div class="pac-section-label">Datos Personales</div>
+                <div class="pac-form-grid">
+                    <div class="pac-form-group pac-col-span-2">
+                        <label>Identificación (Cédula) *</label>
+                        <input type="text" class="pac-input @(_campoRequerido == "identificacion" ? "pac-input-error" : "")"
+                               placeholder="0000000000"
+                               @bind="_form.Identificacion" maxlength="20" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Primer Nombre *</label>
+                        <input type="text" class="pac-input" placeholder="Primer nombre"
+                               @bind="_form.PrimerNombre" maxlength="150" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Segundo Nombre</label>
+                        <input type="text" class="pac-input" placeholder="Segundo nombre"
+                               @bind="_form.SegundoNombre" maxlength="150" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Primer Apellido *</label>
+                        <input type="text" class="pac-input" placeholder="Primer apellido"
+                               @bind="_form.PrimerApellido" maxlength="150" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Segundo Apellido</label>
+                        <input type="text" class="pac-input" placeholder="Segundo apellido"
+                               @bind="_form.SegundoApellido" maxlength="150" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Fecha de Nacimiento</label>
+                        <input type="date" class="pac-input" @bind="_form.FechaNacimiento" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Género</label>
+                        <select class="pac-input" @bind="_form.Genero">
+                            <option value="">— Seleccionar —</option>
+                            <option value="M">Masculino</option>
+                            <option value="F">Femenino</option>
+                            <option value="O">Otro</option>
+                        </select>
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Email</label>
+                        <input type="email" class="pac-input" placeholder="correo@ejemplo.com"
+                               @bind="_form.Email" maxlength="200" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Teléfono</label>
+                        <input type="tel" class="pac-input" placeholder="0999999999"
+                               @bind="_form.Telefono" maxlength="20" />
+                    </div>
+                </div>
+
+                <!-- DATOS CLÍNICOS -->
+                <div class="pac-section-label" style="margin-top:1.25rem">Datos Clínicos</div>
+                <div class="pac-form-grid">
+                    <div class="pac-form-group">
+                        <label>Plan de Salud</label>
+                        <input type="text" class="pac-input" placeholder="Ej: IESS, MSP, Privado"
+                               @bind="_form.PlanSalud" maxlength="200" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Tipo de Atención</label>
+                        <input type="text" class="pac-input" placeholder="Ej: Hemodiálisis"
+                               @bind="_form.TipoAtencion" maxlength="200" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Fecha Ingreso a Diálisis</label>
+                        <input type="date" class="pac-input" @bind="_form.FechaIngreso" />
+                    </div>
+                    <div class="pac-form-group">
+                        <label>Médico Responsable</label>
+                        <input type="text" class="pac-input" placeholder="Nombre del médico"
+                               @bind="_form.MedicoResponsable" maxlength="300" />
+                    </div>
+                    <div class="pac-form-group pac-col-span-2">
+                        <label>Observaciones</label>
+                        <textarea class="pac-input pac-textarea" placeholder="Notas clínicas adicionales..."
+                                  @bind="_form.Observaciones" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pac-modal-footer">
+                <button class="pac-btn pac-btn-ghost" @onclick="CerrarModal">Cancelar</button>
+                <button class="pac-btn pac-btn-primary" @onclick="GuardarPacienteAsync" disabled="@_guardando">
+                    @if (_guardando) { <span class="pac-spinner-sm"></span> }
+                    @(_editando ? "Guardar Cambios" : "Crear Paciente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ═══ MODAL CONFIRMAR ELIMINAR ═══ -->
+@if (_pacienteAEliminar != null)
+{
+    <div class="pac-overlay" @onclick="() => _pacienteAEliminar = null">
+        <div class="pac-modal pac-modal-sm" @onclick:stopPropagation="true">
+            <div class="pac-modal-header">
+                <h2 class="pac-modal-title">Desactivar Paciente</h2>
+                <button class="pac-modal-close" @onclick="() => _pacienteAEliminar = null">✕</button>
+            </div>
+            <div class="pac-modal-body">
+                <p style="margin:0 0 0.5rem">¿Confirma desactivar al paciente?</p>
+                <p class="pac-confirm-nombre">@_pacienteAEliminar.NombreCompleto</p>
+                <p class="pac-confirm-ident">Cédula: @_pacienteAEliminar.Identificacion</p>
+                <p class="pac-confirm-aviso">
+                    El historial clínico y las prescripciones se conservan.
+                    El paciente no aparecerá en búsquedas ni listas activas.
+                </p>
+            </div>
+            <div class="pac-modal-footer">
+                <button class="pac-btn pac-btn-ghost" @onclick="() => _pacienteAEliminar = null">Cancelar</button>
+                <button class="pac-btn pac-btn-danger" @onclick="EliminarConfirmadoAsync" disabled="@_guardando">
+                    @if (_guardando) { <span class="pac-spinner-sm"></span> }
+                    Sí, desactivar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
-    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
-    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
-    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+    /* ─── Layout ─────────────────────────────────────────────────────────────── */
+    .pac-header    { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; }
+    .pac-title     { font-size:1.75rem; font-weight:700; color:#1e293b; margin:0; }
+    .pac-subtitle  { color:#64748b; margin:.25rem 0 0; font-size:.9rem; }
 
-    .dm-filters-bar { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; }
+    /* ─── Filtros ─────────────────────────────────────────────────────────────── */
+    .pac-filters-bar { display:flex; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+    .pac-search-box  { display:flex; align-items:center; gap:.5rem; background:white;
+                       border:1.5px solid #e2e8f0; border-radius:10px; padding:.5rem .875rem;
+                       flex:1; min-width:280px; max-width:400px; transition:border-color .2s; }
+    .pac-search-box:focus-within { border-color:#0ea5e9; }
+    .pac-search-icon { color:#94a3b8; display:flex; }
+    .pac-search-input { border:none; outline:none; flex:1; font-size:.9rem; color:#1e293b; background:transparent; }
+    .pac-clear-btn { background:none; border:none; color:#94a3b8; cursor:pointer; padding:0; font-size:.9rem; }
+    .pac-clear-btn:hover { color:#374151; }
 
-    .dm-search-box { display: flex; align-items: center; gap: 0.5rem; background: white;
-                     border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.5rem 0.875rem;
-                     flex: 1; min-width: 280px; max-width: 400px; transition: border-color 0.2s; }
-    .dm-search-box:focus-within { border-color: #0ea5e9; }
-    .dm-search-icon { color: #94a3b8; }
-    .dm-search-input { border: none; outline: none; flex: 1; font-size: 0.9rem; color: #1e293b;
-                       background: transparent; }
-    .dm-clear-btn { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0;
-                    font-size: 0.9rem; line-height: 1; }
-    .dm-clear-btn:hover { color: #374151; }
+    /* ─── Tabla ───────────────────────────────────────────────────────────────── */
+    .pac-card         { background:white; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); overflow:hidden; }
+    .pac-table-wrap   { overflow-x:auto; }
+    .pac-table        { width:100%; border-collapse:collapse; font-size:.875rem; }
+    .pac-table th     { background:#f8fafc; color:#374151; font-weight:700; text-align:left;
+                        padding:.875rem 1rem; border-bottom:2px solid #e2e8f0;
+                        white-space:nowrap; font-size:.78rem; text-transform:uppercase; letter-spacing:.03em; }
+    .pac-table td     { padding:.875rem 1rem; border-bottom:1px solid #f1f5f9; color:#374151; vertical-align:middle; }
+    .pac-table tbody tr:hover { background:#f8fafc; }
+    .pac-table tbody tr:last-child td { border-bottom:none; }
 
-    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
-    .dm-card-table { padding: 0; }
+    .pac-ident        { font-family:monospace; font-size:.85rem; font-weight:600; }
+    .pac-cell-paciente { display:flex; align-items:center; gap:.75rem; }
+    .pac-avatar       { width:36px; height:36px; background:linear-gradient(135deg,#0ea5e9,#8b5cf6);
+                        border-radius:50%; display:flex; align-items:center; justify-content:center;
+                        color:white; font-weight:700; font-size:.9rem; flex-shrink:0; }
+    .pac-nombre       { font-weight:600; color:#1e293b; }
+    .pac-medico       { font-size:.75rem; color:#94a3b8; }
 
-    .dm-table-responsive { overflow-x: auto; }
-    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
-                   padding: 0.875rem 1rem; border-bottom: 2px solid #e2e8f0;
-                   white-space: nowrap; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
-    .dm-table td { padding: 0.875rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
-    .dm-table tbody tr:hover { background: #f8fafc; }
-    .dm-table tbody tr:last-child td { border-bottom: none; }
+    .pac-badge-dialisis { background:#eff6ff; color:#1d4ed8; padding:.2rem .6rem;
+                          border-radius:99px; font-size:.8rem; font-weight:600; white-space:nowrap; }
+    .pac-badge         { padding:.25rem .75rem; border-radius:99px; font-size:.75rem; font-weight:700; }
+    .pac-badge-activo  { background:#d1fae5; color:#065f46; }
+    .pac-badge-inactivo { background:#fee2e2; color:#991b1b; }
 
-    .dm-ident { font-family: monospace; font-size: 0.85rem; color: #374151; font-weight: 600; }
+    /* ─── Acciones ────────────────────────────────────────────────────────────── */
+    .pac-acciones    { display:flex; gap:.35rem; align-items:center; }
+    .pac-btn-icon    { display:inline-flex; align-items:center; justify-content:center;
+                       padding:.35rem; border-radius:6px; border:none; background:none; cursor:pointer;
+                       color:#64748b; text-decoration:none; transition:background .15s, color .15s; }
+    .pac-btn-icon:hover      { background:#f1f5f9; color:#1e293b; }
+    .pac-btn-icon-lab:hover  { background:#eff6ff; color:#1d4ed8; }
+    .pac-btn-icon-edit:hover { background:#fef3c7; color:#b45309; }
+    .pac-btn-icon-del:hover  { background:#fee2e2; color:#dc2626; }
 
-    .dm-paciente-cell { display: flex; align-items: center; gap: 0.75rem; }
-    .dm-avatar { width: 36px; height: 36px; background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
-                 border-radius: 50%; display: flex; align-items: center; justify-content: center;
-                 color: white; font-weight: 700; font-size: 0.9rem; flex-shrink: 0; }
-    .dm-nombre { font-weight: 600; color: #1e293b; }
-    .dm-medico { font-size: 0.75rem; color: #94a3b8; }
+    /* ─── Paginación ──────────────────────────────────────────────────────────── */
+    .pac-pagination { display:flex; align-items:center; justify-content:center; gap:1rem;
+                      padding:1rem; border-top:1px solid #f1f5f9; }
+    .pac-pag-btn    { background:white; border:1.5px solid #e2e8f0; border-radius:8px;
+                      padding:.375rem .875rem; cursor:pointer; font-weight:700; font-size:.9rem; }
+    .pac-pag-btn:disabled   { opacity:.4; cursor:not-allowed; }
+    .pac-pag-btn:not(:disabled):hover { border-color:#0ea5e9; color:#0ea5e9; }
+    .pac-pag-info   { color:#64748b; font-size:.875rem; }
 
-    .dm-tiempo-dialisis { background: #eff6ff; color: #1d4ed8; padding: 0.2rem 0.6rem;
-                          border-radius: 99px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+    /* ─── Estados vacío/carga ─────────────────────────────────────────────────── */
+    .pac-empty       { text-align:center; padding:4rem 2rem; color:#64748b; }
+    .pac-empty-icon  { font-size:3rem; margin-bottom:1rem; }
+    .pac-empty-title { font-size:1.25rem; font-weight:700; color:#374151; margin-bottom:.5rem; }
+    .pac-empty-desc  { margin-bottom:1.5rem; }
+    .pac-loading     { display:flex; flex-direction:column; align-items:center; padding:3rem; color:#64748b; gap:1rem; }
+    .pac-spinner     { width:40px; height:40px; border:3px solid #e2e8f0; border-top-color:#0ea5e9;
+                       border-radius:50%; animation:pac-spin .8s linear infinite; }
+    .pac-spinner-sm  { width:14px; height:14px; border:2px solid rgba(255,255,255,.4); border-top-color:white;
+                       border-radius:50%; animation:pac-spin .8s linear infinite; display:inline-block; margin-right:.4rem; }
+    @@keyframes pac-spin { to { transform:rotate(360deg); } }
 
-    .dm-badge { padding: 0.25rem 0.75rem; border-radius: 99px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
-    .dm-badge-activo { background: #d1fae5; color: #065f46; }
-    .dm-badge-inactivo { background: #fee2e2; color: #991b1b; }
+    /* ─── Botones ─────────────────────────────────────────────────────────────── */
+    .pac-btn         { display:inline-flex; align-items:center; gap:.5rem; padding:.625rem 1.25rem;
+                       border-radius:8px; font-weight:600; font-size:.875rem;
+                       text-decoration:none; cursor:pointer; border:none; transition:background .15s; }
+    .pac-btn-primary { background:#0ea5e9; color:white; }
+    .pac-btn-primary:hover { background:#0284c7; color:white; }
+    .pac-btn-outline { background:white; color:#374151; border:1.5px solid #e2e8f0; }
+    .pac-btn-outline:hover { border-color:#0ea5e9; color:#0ea5e9; }
+    .pac-btn-ghost   { background:transparent; color:#64748b; }
+    .pac-btn-ghost:hover { background:#f1f5f9; color:#374151; }
+    .pac-btn-danger  { background:#dc2626; color:white; }
+    .pac-btn-danger:hover { background:#b91c1c; }
+    .pac-btn:disabled { opacity:.6; cursor:not-allowed; }
 
-    .dm-acciones { display: flex; gap: 0.5rem; align-items: center; }
-    .dm-btn-icon { font-size: 1.1rem; padding: 0.25rem 0.4rem; border-radius: 6px; text-decoration: none;
-                   transition: background 0.15s; }
-    .dm-btn-icon:hover { background: #f1f5f9; }
+    /* ─── Toasts ──────────────────────────────────────────────────────────────── */
+    .pac-toast         { display:flex; align-items:center; gap:.75rem; padding:.75rem 1rem;
+                         border-radius:8px; margin-bottom:1rem; font-size:.875rem; font-weight:500; }
+    .pac-toast button  { margin-left:auto; background:none; border:none; cursor:pointer; font-size:1rem; opacity:.7; }
+    .pac-toast-error   { background:#fee2e2; color:#991b1b; }
+    .pac-toast-success { background:#d1fae5; color:#065f46; }
 
-    .dm-pagination { display: flex; align-items: center; justify-content: center; gap: 1rem;
-                     padding: 1rem; border-top: 1px solid #f1f5f9; }
-    .dm-pag-btn { background: white; border: 1.5px solid #e2e8f0; border-radius: 8px;
-                  padding: 0.375rem 0.875rem; cursor: pointer; font-weight: 700; font-size: 0.9rem; }
-    .dm-pag-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .dm-pag-btn:not(:disabled):hover { border-color: #0ea5e9; color: #0ea5e9; }
-    .dm-pag-info { color: #64748b; font-size: 0.875rem; }
+    /* ─── Modal ───────────────────────────────────────────────────────────────── */
+    .pac-overlay     { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000;
+                       display:flex; align-items:center; justify-content:center; padding:1rem; }
+    .pac-modal       { background:white; border-radius:14px; width:100%; max-width:680px;
+                       max-height:90vh; display:flex; flex-direction:column;
+                       box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .pac-modal-sm    { max-width:420px; }
+    .pac-modal-header { display:flex; justify-content:space-between; align-items:center;
+                        padding:1.25rem 1.5rem; border-bottom:1px solid #f1f5f9; }
+    .pac-modal-title  { font-size:1.1rem; font-weight:700; color:#1e293b; margin:0; }
+    .pac-modal-close  { background:none; border:none; font-size:1.1rem; cursor:pointer; color:#94a3b8;
+                        line-height:1; padding:.25rem; border-radius:4px; }
+    .pac-modal-close:hover { background:#f1f5f9; color:#374151; }
+    .pac-modal-body   { padding:1.5rem; overflow-y:auto; flex:1; }
+    .pac-modal-footer { padding:1.25rem 1.5rem; border-top:1px solid #f1f5f9;
+                        display:flex; justify-content:flex-end; gap:.75rem; }
+    .pac-modal-alert  { background:#fee2e2; color:#991b1b; padding:.75rem 1rem;
+                        border-radius:8px; font-size:.875rem; margin-bottom:1rem; }
 
-    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
-    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
-    .dm-empty-title { font-size: 1.25rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
-    .dm-empty-desc { margin-bottom: 1.5rem; }
+    /* ─── Form dentro del modal ───────────────────────────────────────────────── */
+    .pac-section-label { font-size:.75rem; font-weight:700; text-transform:uppercase;
+                         letter-spacing:.05em; color:#94a3b8; margin-bottom:.75rem; }
+    .pac-form-grid     { display:grid; grid-template-columns:1fr 1fr; gap:.875rem; }
+    .pac-col-span-2    { grid-column:span 2; }
+    .pac-form-group    { display:flex; flex-direction:column; gap:.35rem; }
+    .pac-form-group label { font-size:.8rem; font-weight:600; color:#374151; }
+    .pac-input         { padding:.55rem .75rem; border:1.5px solid #e2e8f0; border-radius:8px;
+                         font-size:.875rem; color:#1e293b; outline:none; transition:border-color .2s;
+                         background:white; width:100%; box-sizing:border-box; }
+    .pac-input:focus   { border-color:#0ea5e9; }
+    .pac-input-error   { border-color:#dc2626; }
+    .pac-textarea      { resize:vertical; min-height:56px; }
 
-    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: #64748b; gap: 1rem; }
-    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
-                  border-radius: 50%; animation: spin 0.8s linear infinite; }
-    @@keyframes spin { to { transform: rotate(360deg); } }
+    /* ─── Confirmación eliminar ───────────────────────────────────────────────── */
+    .pac-confirm-nombre  { font-weight:700; color:#1e293b; font-size:1rem; margin:.25rem 0; }
+    .pac-confirm-ident   { font-family:monospace; color:#64748b; font-size:.875rem; margin-bottom:.75rem; }
+    .pac-confirm-aviso   { background:#fef9c3; color:#713f12; border-radius:8px; padding:.625rem .875rem;
+                           font-size:.8rem; margin:0; }
 
-    .dm-btn { padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
-              text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; border: none; }
-    .dm-btn-primary { background: #0ea5e9; color: white; }
-    .dm-btn-primary:hover { background: #0284c7; color: white; }
+    @@media (max-width:600px) {
+        .pac-form-grid { grid-template-columns:1fr; }
+        .pac-col-span-2 { grid-column:span 1; }
+        .pac-modal { max-width:100%; }
+    }
 </style>
 
 @code {
+    // ── Estado general ───────────────────────────────────────────────────────
     private List<Paciente> ListaPacientes = new();
-    private bool Cargando = true;
-    private string BusquedaTexto = string.Empty;
-    private int TotalPacientes = 0;
-    private int PaginaActual = 1;
-    private int TotalPaginas = 1;
-    private const int TamanoPagina = 25;
-    private Guid TenantId;
+    private bool     Cargando       = true;
+    private string   BusquedaTexto  = string.Empty;
+    private int      TotalPacientes = 0;
+    private int      PaginaActual   = 1;
+    private int      TotalPaginas   = 1;
+    private const int TamanoPagina  = 25;
+    private Guid     TenantId;
+    private Guid     UsuarioId;
     private System.Threading.CancellationTokenSource? _debounce;
+
+    // ── Estado de modales ─────────────────────────────────────────────────────
+    private bool      _mostrarModal  = false;
+    private bool      _editando      = false;
+    private bool      _guardando     = false;
+    private string    _error         = string.Empty;
+    private string    _exito         = string.Empty;
+    private string    _modalError    = string.Empty;
+    private string?   _campoRequerido;
+    private Paciente? _pacienteAEliminar;
+    private Guid?     _pacienteEditId;
+
+    // ── Formulario ────────────────────────────────────────────────────────────
+    private PacienteForm _form = new();
 
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthState.GetAuthenticationStateAsync();
-        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
-        TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
-
+        var tenantStr  = auth.User.FindFirst("tenant_id")?.Value;
+        var usuarioStr = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        TenantId  = Guid.TryParse(tenantStr,  out var t) ? t : Guid.Empty;
+        UsuarioId = Guid.TryParse(usuarioStr, out var u) ? u : Guid.Empty;
         await CargarPacientesAsync();
     }
+
+    // ── Carga y paginación ────────────────────────────────────────────────────
 
     private async Task CargarPacientesAsync()
     {
         Cargando = true;
         StateHasChanged();
-
         try
         {
             TotalPacientes = await PacienteRepo.CountAsync(TenantId, BusquedaTexto);
-            TotalPaginas = (int)Math.Ceiling((double)TotalPacientes / TamanoPagina);
-
-            if (PaginaActual > TotalPaginas && TotalPaginas > 0) PaginaActual = 1;
-
+            TotalPaginas   = Math.Max(1, (int)Math.Ceiling((double)TotalPacientes / TamanoPagina));
+            if (PaginaActual > TotalPaginas) PaginaActual = 1;
             ListaPacientes = await PacienteRepo.GetAllAsync(TenantId, BusquedaTexto, PaginaActual, TamanoPagina);
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error cargando pacientes: {ex.Message}");
-            ListaPacientes = new();
-        }
-        finally
-        {
-            Cargando = false;
-        }
+        finally { Cargando = false; }
     }
 
     private async Task BuscarDebounced()
     {
-        _debounce?.Cancel();
-        _debounce?.Dispose();
+        _debounce?.Cancel(); _debounce?.Dispose();
         _debounce = new System.Threading.CancellationTokenSource();
         var token = _debounce.Token;
-        try
-        {
-            await Task.Delay(400, token);
-            PaginaActual = 1;
-            await CargarPacientesAsync();
-        }
+        try { await Task.Delay(400, token); PaginaActual = 1; await CargarPacientesAsync(); }
         catch (TaskCanceledException) { }
     }
 
     private async Task LimpiarBusqueda()
-    {
-        BusquedaTexto = string.Empty;
-        PaginaActual = 1;
-        await CargarPacientesAsync();
-    }
+    { BusquedaTexto = string.Empty; PaginaActual = 1; await CargarPacientesAsync(); }
 
     private async Task PaginaAnterior()
-    {
-        if (PaginaActual > 1) { PaginaActual--; await CargarPacientesAsync(); }
-    }
+    { if (PaginaActual > 1) { PaginaActual--; await CargarPacientesAsync(); } }
 
     private async Task PaginaSiguiente()
+    { if (PaginaActual < TotalPaginas) { PaginaActual++; await CargarPacientesAsync(); } }
+
+    // ── Modales crear / editar ─────────────────────────────────────────────────
+
+    private void AbrirModalCrear()
     {
-        if (PaginaActual < TotalPaginas) { PaginaActual++; await CargarPacientesAsync(); }
+        _form           = new PacienteForm();
+        _editando       = false;
+        _pacienteEditId = null;
+        _modalError     = string.Empty;
+        _campoRequerido = null;
+        _mostrarModal   = true;
     }
 
-    private static string InicialPaciente(Paciente p)
+    private void AbrirModalEditar(Paciente p)
     {
-        var letra = !string.IsNullOrEmpty(p.PrimerNombre) ? p.PrimerNombre[0].ToString() : "?";
-        return letra.ToUpper();
+        _form = new PacienteForm
+        {
+            Identificacion    = p.Identificacion,
+            PrimerNombre      = p.PrimerNombre,
+            SegundoNombre     = p.SegundoNombre,
+            PrimerApellido    = p.PrimerApellido,
+            SegundoApellido   = p.SegundoApellido,
+            FechaNacimiento   = p.FechaNacimiento,
+            Genero            = p.Genero,
+            Email             = p.Email,
+            Telefono          = p.Telefono,
+            PlanSalud         = p.PlanSalud,
+            TipoAtencion      = p.TipoAtencion,
+            FechaIngreso      = p.FechaIngreso,
+            MedicoResponsable = p.MedicoResponsable,
+            Observaciones     = p.Observaciones,
+        };
+        _editando       = true;
+        _pacienteEditId = p.Id;
+        _modalError     = string.Empty;
+        _campoRequerido = null;
+        _mostrarModal   = true;
     }
 
-    private static string FormatarMeses(int meses)
+    private void CerrarModal()
     {
-        if (meses < 12) return $"{meses} mes(es)";
-        var anios = meses / 12;
-        var resto = meses % 12;
-        return resto > 0 ? $"{anios} año(s) {resto} mes(es)" : $"{anios} año(s)";
+        _mostrarModal = false;
+        _modalError   = string.Empty;
+    }
+
+    private async Task GuardarPacienteAsync()
+    {
+        _modalError     = string.Empty;
+        _campoRequerido = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Identificacion))
+        { _modalError = "La identificación es requerida."; _campoRequerido = "identificacion"; return; }
+        if (string.IsNullOrWhiteSpace(_form.PrimerNombre))
+        { _modalError = "El primer nombre es requerido."; return; }
+        if (string.IsNullOrWhiteSpace(_form.PrimerApellido))
+        { _modalError = "El primer apellido es requerido."; return; }
+
+        _guardando = true;
+        try
+        {
+            if (_editando && _pacienteEditId.HasValue)
+            {
+                var p = await PacienteRepo.GetByIdAsync(TenantId, _pacienteEditId.Value);
+                if (p is null) { _modalError = "Paciente no encontrado."; return; }
+
+                p.Identificacion    = _form.Identificacion.Trim();
+                p.PrimerNombre      = _form.PrimerNombre.Trim();
+                p.SegundoNombre     = _form.SegundoNombre?.Trim();
+                p.PrimerApellido    = _form.PrimerApellido.Trim();
+                p.SegundoApellido   = _form.SegundoApellido?.Trim();
+                p.FechaNacimiento   = _form.FechaNacimiento;
+                p.Genero            = _form.Genero;
+                p.Email             = _form.Email?.Trim();
+                p.Telefono          = _form.Telefono?.Trim();
+                p.PlanSalud         = _form.PlanSalud?.Trim();
+                p.TipoAtencion      = _form.TipoAtencion?.Trim();
+                p.FechaIngreso      = _form.FechaIngreso;
+                p.MedicoResponsable = _form.MedicoResponsable?.Trim();
+                p.Observaciones     = _form.Observaciones?.Trim();
+                p.UpdatedAt         = DateTime.UtcNow;
+
+                await PacienteRepo.UpdateAsync(p);
+                await UoW.SaveChangesAsync();
+                _exito = $"Paciente «{p.NombreCompleto}» actualizado.";
+            }
+            else
+            {
+                // Verificar duplicado
+                var existente = await PacienteRepo.GetByIdentificacionAsync(TenantId, _form.Identificacion.Trim());
+                if (existente != null)
+                { _modalError = $"Ya existe un paciente con identificación {_form.Identificacion}."; return; }
+
+                var nuevo = new Paciente
+                {
+                    TenantId          = TenantId,
+                    Identificacion    = _form.Identificacion.Trim(),
+                    PrimerNombre      = _form.PrimerNombre.Trim(),
+                    SegundoNombre     = _form.SegundoNombre?.Trim(),
+                    PrimerApellido    = _form.PrimerApellido.Trim(),
+                    SegundoApellido   = _form.SegundoApellido?.Trim(),
+                    FechaNacimiento   = _form.FechaNacimiento,
+                    Genero            = _form.Genero,
+                    Email             = _form.Email?.Trim(),
+                    Telefono          = _form.Telefono?.Trim(),
+                    PlanSalud         = _form.PlanSalud?.Trim(),
+                    TipoAtencion      = _form.TipoAtencion?.Trim(),
+                    FechaIngreso      = _form.FechaIngreso,
+                    MedicoResponsable = _form.MedicoResponsable?.Trim(),
+                    Observaciones     = _form.Observaciones?.Trim(),
+                    CreatedBy         = UsuarioId,
+                };
+                await PacienteRepo.AddAsync(nuevo);
+                await UoW.SaveChangesAsync();
+                _exito = $"Paciente «{nuevo.NombreCompleto}» creado exitosamente.";
+            }
+
+            _mostrarModal = false;
+            await CargarPacientesAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = $"Error al guardar: {ex.Message}";
+        }
+        finally { _guardando = false; }
+    }
+
+    // ── Eliminar (soft delete) ─────────────────────────────────────────────────
+
+    private void PedirConfirmarEliminar(Paciente p) => _pacienteAEliminar = p;
+
+    private async Task EliminarConfirmadoAsync()
+    {
+        if (_pacienteAEliminar is null) return;
+        _guardando = true;
+        try
+        {
+            await PacienteRepo.DeleteAsync(TenantId, _pacienteAEliminar.Id);
+            await UoW.SaveChangesAsync();
+            _exito = $"Paciente «{_pacienteAEliminar.NombreCompleto}» desactivado.";
+            _pacienteAEliminar = null;
+            await CargarPacientesAsync();
+        }
+        catch (Exception ex) { _error = $"Error al desactivar: {ex.Message}"; }
+        finally { _guardando = false; }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private static string InicialPaciente(Paciente p) =>
+        (!string.IsNullOrEmpty(p.PrimerNombre) ? p.PrimerNombre[0].ToString() : "?").ToUpper();
+
+    private static string FormatarMeses(int m) =>
+        m < 12 ? $"{m}m" : $"{m / 12}a {m % 12}m".Replace(" 0m", "");
+
+    // ── Clase interna del formulario ───────────────────────────────────────────
+    private class PacienteForm
+    {
+        public string    Identificacion    { get; set; } = string.Empty;
+        public string    PrimerNombre      { get; set; } = string.Empty;
+        public string?   SegundoNombre     { get; set; }
+        public string    PrimerApellido    { get; set; } = string.Empty;
+        public string?   SegundoApellido   { get; set; }
+        public DateTime? FechaNacimiento   { get; set; }
+        public string?   Genero            { get; set; }
+        public string?   Email             { get; set; }
+        public string?   Telefono          { get; set; }
+        public string?   PlanSalud         { get; set; }
+        public string?   TipoAtencion      { get; set; }
+        public DateTime? FechaIngreso      { get; set; }
+        public string?   MedicoResponsable { get; set; }
+        public string?   Observaciones     { get; set; }
     }
 }

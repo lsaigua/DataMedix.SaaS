@@ -10,5 +10,9 @@ namespace DataMedix.Application.Interfaces
         Task<int> CountAsync(Guid tenantId, string? busqueda = null);
         Task AddAsync(Paciente paciente);
         Task UpdateAsync(Paciente paciente);
+        /// <summary>Soft-delete: desactiva el paciente sin eliminar registros clínicos históricos.</summary>
+        Task DeleteAsync(Guid tenantId, Guid pacienteId);
+        /// <summary>Lista simplificada para selectores/autocomplete — sin paginación.</summary>
+        Task<List<Paciente>> GetActivosAsync(Guid tenantId, string? busqueda = null);
     }
 }

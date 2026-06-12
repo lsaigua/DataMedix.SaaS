@@ -69,5 +69,33 @@ namespace DataMedix.Infrastructure.Repositories
             _db.Pacientes.Update(paciente);
             await Task.CompletedTask;
         }
+
+        public async Task DeleteAsync(Guid tenantId, Guid pacienteId)
+        {
+            var paciente = await _db.Pacientes.FirstOrDefaultAsync(p =>
+                p.TenantId == tenantId && p.Id == pacienteId);
+            if (paciente != null)
+            {
+                paciente.Activo = false;
+                paciente.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        public async Task<List<Paciente>> GetActivosAsync(Guid tenantId, string? busqueda = null)
+        {
+            var q = _db.Pacientes.Where(p => p.TenantId == tenantId && p.Activo);
+            if (!string.IsNullOrWhiteSpace(busqueda))
+            {
+                var b = busqueda.Trim().ToUpper();
+                q = q.Where(p =>
+                    p.Identificacion.Contains(b) ||
+                    p.PrimerNombre.ToUpper().Contains(b) ||
+                    p.PrimerApellido.ToUpper().Contains(b));
+            }
+            return await q
+                .OrderBy(p => p.PrimerApellido).ThenBy(p => p.PrimerNombre)
+                .Take(50)
+                .ToListAsync();
+        }
     }
 }

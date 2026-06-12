@@ -1,0 +1,501 @@
+@page "/laboratorio/manual"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.DTOs.EntradaManual
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+@using System.Security.Claims
+
+@inject IEntradaManualService EntradaManual
+@inject IPacienteRepository PacienteRepo
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Ingreso Manual de Resultados | DataMedix</PageTitle>
+
+<div class="im-header">
+    <div>
+        <h1 class="im-title">Ingreso Manual de Resultados</h1>
+        <p class="im-subtitle">Para pacientes que no envían resultados por Excel</p>
+    </div>
+    <a href="/pacientes" class="im-btn im-btn-ghost">← Volver a Pacientes</a>
+</div>
+
+<!-- Toasts -->
+@if (_resultado != null)
+{
+    <div class="im-toast @(_resultado.Exitoso ? "im-toast-ok" : "im-toast-err")">
+        @if (_resultado.Exitoso)
+        {
+            <strong>✓ Resultados guardados</strong>
+            <span>— @_resultado.NombrePaciente · @NombreMes(_resultado.PeriodoMes) @_resultado.PeriodoAnio</span>
+            @if (_resultado.PrescripcionBloqueada)
+            {
+                <span class="im-toast-warn"> · La prescripción ya fue aprobada; no se regeneró.</span>
+            }
+        }
+        else
+        {
+            <strong>⚠ Error:</strong>
+            <span>@_resultado.MensajeError</span>
+        }
+        <button @onclick="() => _resultado = null">✕</button>
+    </div>
+}
+
+<div class="im-layout">
+    <!-- ══ PANEL IZQUIERDO: selección paciente + período ══ -->
+    <div class="im-sidebar">
+        <div class="im-card">
+            <div class="im-card-title">1. Seleccionar Paciente</div>
+
+            @if (_pacienteSeleccionado == null)
+            {
+                <div class="im-search-wrap">
+                    <input type="text" class="im-input" placeholder="Buscar por nombre o cédula..."
+                           @bind="_busqueda" @bind:event="oninput"
+                           @onkeyup="BuscarPacientesAsync" />
+                </div>
+
+                @if (_buscando)
+                {
+                    <div class="im-loading-sm"><div class="im-spinner-sm"></div> Buscando...</div>
+                }
+                else if (_resultadosBusqueda.Any())
+                {
+                    <div class="im-search-results">
+                        @foreach (var p in _resultadosBusqueda)
+                        {
+                            <button class="im-search-item" @onclick="() => SeleccionarPaciente(p)">
+                                <div class="im-si-nombre">@p.NombreCompleto</div>
+                                <div class="im-si-ident">@p.Identificacion</div>
+                            </button>
+                        }
+                    </div>
+                }
+                else if (_busquedaRealizada && !_buscando)
+                {
+                    <p class="im-no-results">Sin resultados. Puede <a href="/pacientes">crear el paciente</a> primero.</p>
+                }
+            }
+            else
+            {
+                <div class="im-paciente-sel">
+                    <div class="im-ps-avatar">@_pacienteSeleccionado.PrimerNombre[0]</div>
+                    <div class="im-ps-info">
+                        <div class="im-ps-nombre">@_pacienteSeleccionado.NombreCompleto</div>
+                        <div class="im-ps-ident">@_pacienteSeleccionado.Identificacion</div>
+                        @if (!string.IsNullOrEmpty(_pacienteSeleccionado.PlanSalud))
+                        {
+                            <div class="im-ps-plan">@_pacienteSeleccionado.PlanSalud</div>
+                        }
+                    </div>
+                    <button class="im-ps-change" title="Cambiar paciente" @onclick="LimpiarPaciente">✕</button>
+                </div>
+            }
+        </div>
+
+        <div class="im-card">
+            <div class="im-card-title">2. Período</div>
+            <div class="im-periodo-grid">
+                <div class="im-form-group">
+                    <label>Mes</label>
+                    <select class="im-input" @bind="_mes">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            <option value="@m">@NombreMes(m)</option>
+                        }
+                    </select>
+                </div>
+                <div class="im-form-group">
+                    <label>Año</label>
+                    <select class="im-input" @bind="_anio">
+                        @for (int a = DateTime.Today.Year; a >= DateTime.Today.Year - 3; a--)
+                        {
+                            <option value="@a">@a</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            @if (_pacienteSeleccionado != null)
+            {
+                <button class="im-btn-cargar-existente im-btn im-btn-outline"
+                        @onclick="CargarSnapshotExistenteAsync">
+                    🔍 Cargar datos existentes
+                </button>
+            }
+        </div>
+
+        @if (_snapshotExistente != null)
+        {
+            <div class="im-card im-card-info">
+                <div class="im-card-title">Datos previos (@NombreMes(_mes) @_anio)</div>
+                <div class="im-prev-item">Hb: <strong>@FormatVal(_snapshotExistente.HbValor, _snapshotExistente.HbUnidad)</strong></div>
+                <div class="im-prev-item">Hierro: <strong>@FormatVal(_snapshotExistente.HierroValor, _snapshotExistente.HierroUnidad)</strong></div>
+                <div class="im-prev-item">Ferritina: <strong>@FormatVal(_snapshotExistente.FerritinaValor, _snapshotExistente.FerritinaUnidad)</strong></div>
+                <div class="im-prev-item">TSAT: <strong>@FormatVal(_snapshotExistente.SaturacionValor, _snapshotExistente.SaturacionUnidad)</strong></div>
+                @if (_snapshotExistente.EsDatosPeriodoAnterior)
+                {
+                    <p class="im-prev-note">ℹ Panel de hierro copiado de período anterior.</p>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- ══ PANEL DERECHO: formulario de resultados ══ -->
+    <div class="im-main">
+        <div class="im-card">
+            <div class="im-card-title">3. Resultados de Laboratorio</div>
+
+            @if (_pacienteSeleccionado == null)
+            {
+                <div class="im-placeholder">
+                    <span>👈</span>
+                    <p>Primero seleccione un paciente</p>
+                </div>
+            }
+            else
+            {
+                <!-- Panel principal -->
+                <div class="im-section-label">Panel Principal (EPO)</div>
+                <div class="im-campos-grid">
+                    <div class="im-field">
+                        <label>Hemoglobina (Hb)</label>
+                        <div class="im-input-unit">
+                            <input type="number" step="0.1" min="0" max="25" class="im-input"
+                                   placeholder="ej: 10.5" @bind="_form.HbValor" />
+                            <span class="im-unit">g/dL</span>
+                        </div>
+                        <div class="im-field-hint">Rango normal: 10–12 g/dL (HD)</div>
+                    </div>
+                    <div class="im-field">
+                        <label>Hierro Sérico</label>
+                        <div class="im-input-unit">
+                            <input type="number" step="1" min="0" max="500" class="im-input"
+                                   placeholder="ej: 65" @bind="_form.HierroValor" />
+                            <span class="im-unit">µg/dL</span>
+                        </div>
+                        <div class="im-field-hint">Normal: 60–170 µg/dL</div>
+                    </div>
+                    <div class="im-field">
+                        <label>Ferritina</label>
+                        <div class="im-input-unit">
+                            <input type="number" step="1" min="0" max="10000" class="im-input"
+                                   placeholder="ej: 250" @bind="_form.FerritinaValor" />
+                            <span class="im-unit">ng/mL</span>
+                        </div>
+                        <div class="im-field-hint">Objetivo: 200–500 ng/mL</div>
+                    </div>
+                    <div class="im-field">
+                        <label>Saturación de Transferrina (TSAT)</label>
+                        <div class="im-input-unit">
+                            <input type="number" step="0.1" min="0" max="100" class="im-input"
+                                   placeholder="ej: 25" @bind="_form.SaturacionValor" />
+                            <span class="im-unit">%</span>
+                        </div>
+                        <div class="im-field-hint">Objetivo: 20–40%</div>
+                    </div>
+                </div>
+
+                <!-- Parámetros adicionales -->
+                <details class="im-extras">
+                    <summary class="im-extras-toggle">
+                        Parámetros adicionales (Potasio, Albúmina, Peso)
+                        <span class="im-extras-badge">opcional</span>
+                    </summary>
+                    <div class="im-campos-grid" style="margin-top:.875rem">
+                        <div class="im-field">
+                            <label>Potasio</label>
+                            <div class="im-input-unit">
+                                <input type="number" step="0.1" min="0" max="20" class="im-input"
+                                       placeholder="ej: 5.2" @bind="_form.PotasioValor" />
+                                <span class="im-unit">mEq/L</span>
+                            </div>
+                            <div class="im-field-hint">Normal: 3.5–5.5 mEq/L</div>
+                        </div>
+                        <div class="im-field">
+                            <label>Albúmina</label>
+                            <div class="im-input-unit">
+                                <input type="number" step="0.1" min="0" max="10" class="im-input"
+                                       placeholder="ej: 3.8" @bind="_form.AlbuminaValor" />
+                                <span class="im-unit">g/dL</span>
+                            </div>
+                            <div class="im-field-hint">Normal: 3.5–5.0 g/dL</div>
+                        </div>
+                        <div class="im-field">
+                            <label>Peso</label>
+                            <div class="im-input-unit">
+                                <input type="number" step="0.1" min="0" max="300" class="im-input"
+                                       placeholder="ej: 70" @bind="_form.PesoKgValor" />
+                                <span class="im-unit">kg</span>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="im-alert-err">⚠ @_error</div>
+                }
+
+                <div class="im-actions">
+                    <button class="im-btn im-btn-ghost" @onclick="LimpiarFormulario">
+                        Limpiar campos
+                    </button>
+                    <button class="im-btn im-btn-primary" @onclick="GuardarAsync" disabled="@_guardando">
+                        @if (_guardando) { <span class="im-spinner-sm"></span> }
+                        Guardar y Generar Prescripción
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    /* ─── Layout ──────────────────────────────────────────────────────────────── */
+    .im-header    { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem; }
+    .im-title     { font-size:1.75rem; font-weight:700; color:#1e293b; margin:0; }
+    .im-subtitle  { color:#64748b; margin:.25rem 0 0; font-size:.9rem; }
+    .im-layout    { display:grid; grid-template-columns:320px 1fr; gap:1.25rem; align-items:start; }
+    @@media(max-width:768px) { .im-layout { grid-template-columns:1fr; } }
+
+    /* ─── Cards ───────────────────────────────────────────────────────────────── */
+    .im-card        { background:white; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); padding:1.25rem; margin-bottom:1rem; }
+    .im-card-info   { background:#eff6ff; border:1.5px solid #bfdbfe; }
+    .im-card-title  { font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+                      color:#94a3b8; margin-bottom:.875rem; }
+
+    /* ─── Búsqueda ────────────────────────────────────────────────────────────── */
+    .im-search-wrap   { margin-bottom:.75rem; }
+    .im-search-results { display:flex; flex-direction:column; gap:.25rem; max-height:220px; overflow-y:auto;
+                          border:1.5px solid #e2e8f0; border-radius:8px; }
+    .im-search-item   { background:none; border:none; text-align:left; padding:.625rem .875rem; cursor:pointer;
+                         border-bottom:1px solid #f1f5f9; transition:background .15s; }
+    .im-search-item:last-child { border-bottom:none; }
+    .im-search-item:hover { background:#f8fafc; }
+    .im-si-nombre     { font-weight:600; color:#1e293b; font-size:.875rem; }
+    .im-si-ident      { font-size:.75rem; color:#94a3b8; font-family:monospace; }
+    .im-no-results    { font-size:.8rem; color:#94a3b8; margin:.5rem 0 0; }
+    .im-no-results a  { color:#0ea5e9; }
+    .im-loading-sm    { display:flex; align-items:center; gap:.5rem; color:#94a3b8; font-size:.8rem; padding:.5rem 0; }
+
+    /* ─── Paciente seleccionado ────────────────────────────────────────────────── */
+    .im-paciente-sel  { display:flex; align-items:center; gap:.75rem; background:#f8fafc;
+                         border-radius:8px; padding:.75rem; }
+    .im-ps-avatar     { width:38px; height:38px; background:linear-gradient(135deg,#0ea5e9,#8b5cf6);
+                         border-radius:50%; display:flex; align-items:center; justify-content:center;
+                         color:white; font-weight:800; font-size:1rem; flex-shrink:0; }
+    .im-ps-info       { flex:1; min-width:0; }
+    .im-ps-nombre     { font-weight:700; color:#1e293b; font-size:.9rem; }
+    .im-ps-ident      { font-family:monospace; font-size:.75rem; color:#94a3b8; }
+    .im-ps-plan       { font-size:.72rem; color:#64748b; margin-top:.1rem; }
+    .im-ps-change     { background:none; border:none; color:#94a3b8; cursor:pointer; font-size:.9rem;
+                         padding:.25rem; border-radius:4px; flex-shrink:0; }
+    .im-ps-change:hover { background:#e2e8f0; color:#374151; }
+
+    /* ─── Período ────────────────────────────────────────────────────────────── */
+    .im-periodo-grid { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.75rem; }
+    .im-btn-cargar-existente { width:100%; justify-content:center; font-size:.8rem; }
+
+    /* ─── Datos previos ──────────────────────────────────────────────────────── */
+    .im-prev-item  { font-size:.8rem; color:#1e40af; padding:.15rem 0; }
+    .im-prev-item strong { font-weight:700; }
+    .im-prev-note  { font-size:.75rem; color:#1d4ed8; background:#dbeafe; border-radius:6px;
+                     padding:.35rem .6rem; margin:.5rem 0 0; }
+
+    /* ─── Formulario de resultados ───────────────────────────────────────────── */
+    .im-section-label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+                         color:#94a3b8; margin-bottom:.875rem; }
+    .im-campos-grid   { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+    @@media(max-width:600px) { .im-campos-grid { grid-template-columns:1fr; } }
+    .im-field         { display:flex; flex-direction:column; gap:.35rem; }
+    .im-field label   { font-size:.8rem; font-weight:600; color:#374151; }
+    .im-input-unit    { display:flex; align-items:center; gap:0; }
+    .im-input-unit .im-input { border-radius:8px 0 0 8px; flex:1; }
+    .im-unit          { background:#f8fafc; border:1.5px solid #e2e8f0; border-left:none;
+                         border-radius:0 8px 8px 0; padding:.55rem .625rem; font-size:.8rem;
+                         color:#64748b; white-space:nowrap; font-weight:600; }
+    .im-field-hint    { font-size:.72rem; color:#94a3b8; }
+
+    .im-extras        { margin-top:1.25rem; border-top:1px solid #f1f5f9; padding-top:1rem; }
+    .im-extras-toggle { font-size:.85rem; font-weight:600; color:#374151; cursor:pointer; list-style:none;
+                         display:flex; align-items:center; gap:.625rem; }
+    .im-extras-toggle::-webkit-details-marker { display:none; }
+    .im-extras-badge  { background:#f1f5f9; color:#64748b; font-size:.7rem; padding:.15rem .5rem;
+                         border-radius:99px; font-weight:600; }
+    .im-alert-err     { background:#fee2e2; color:#991b1b; border-radius:8px; padding:.75rem 1rem;
+                         font-size:.875rem; margin-top:1rem; }
+
+    .im-actions       { display:flex; justify-content:flex-end; gap:.75rem; margin-top:1.5rem;
+                         padding-top:1rem; border-top:1px solid #f1f5f9; flex-wrap:wrap; }
+
+    .im-placeholder   { display:flex; flex-direction:column; align-items:center; padding:3rem 1rem;
+                         color:#94a3b8; gap:.5rem; }
+    .im-placeholder span { font-size:2.5rem; }
+    .im-placeholder p { margin:0; font-size:.9rem; }
+
+    /* ─── Botones ─────────────────────────────────────────────────────────────── */
+    .im-btn         { display:inline-flex; align-items:center; gap:.5rem; padding:.625rem 1.25rem;
+                      border-radius:8px; font-weight:600; font-size:.875rem; text-decoration:none;
+                      cursor:pointer; border:none; transition:background .15s; }
+    .im-btn-primary { background:#0ea5e9; color:white; }
+    .im-btn-primary:hover { background:#0284c7; color:white; }
+    .im-btn-outline { background:white; color:#374151; border:1.5px solid #e2e8f0; }
+    .im-btn-outline:hover { border-color:#0ea5e9; color:#0ea5e9; }
+    .im-btn-ghost   { background:transparent; color:#64748b; }
+    .im-btn-ghost:hover { background:#f1f5f9; color:#374151; }
+    .im-btn:disabled { opacity:.6; cursor:not-allowed; }
+
+    /* ─── Toast ───────────────────────────────────────────────────────────────── */
+    .im-toast       { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; padding:.75rem 1rem;
+                      border-radius:8px; margin-bottom:1rem; font-size:.875rem; font-weight:500; }
+    .im-toast button { margin-left:auto; background:none; border:none; cursor:pointer; font-size:1rem; opacity:.7; }
+    .im-toast-ok    { background:#d1fae5; color:#065f46; }
+    .im-toast-err   { background:#fee2e2; color:#991b1b; }
+    .im-toast-warn  { color:#92400e; }
+
+    /* ─── Inputs comunes ─────────────────────────────────────────────────────── */
+    .im-input       { padding:.55rem .75rem; border:1.5px solid #e2e8f0; border-radius:8px;
+                      font-size:.875rem; color:#1e293b; outline:none; transition:border-color .2s;
+                      background:white; width:100%; box-sizing:border-box; }
+    .im-input:focus { border-color:#0ea5e9; }
+    .im-form-group  { display:flex; flex-direction:column; gap:.35rem; }
+    .im-form-group label { font-size:.78rem; font-weight:600; color:#374151; }
+
+    /* ─── Spinner ─────────────────────────────────────────────────────────────── */
+    .im-spinner-sm  { width:14px; height:14px; border:2px solid rgba(255,255,255,.4);
+                      border-top-color:white; border-radius:50%; animation:im-spin .8s linear infinite;
+                      display:inline-block; margin-right:.4rem; }
+    @@keyframes im-spin { to { transform:rotate(360deg); } }
+</style>
+
+@code {
+    [Parameter][SupplyParameterFromQuery] public string? PacienteId { get; set; }
+
+    private Guid TenantId;
+    private Guid UsuarioId;
+
+    // ── Búsqueda de paciente ──────────────────────────────────────────────────
+    private string  _busqueda          = string.Empty;
+    private bool    _buscando          = false;
+    private bool    _busquedaRealizada = false;
+    private List<Paciente> _resultadosBusqueda = new();
+    private Paciente? _pacienteSeleccionado;
+    private System.Threading.CancellationTokenSource? _debounce;
+
+    // ── Período ───────────────────────────────────────────────────────────────
+    private int _mes  = DateTime.Today.Month;
+    private int _anio = DateTime.Today.Year;
+
+    // ── Formulario ────────────────────────────────────────────────────────────
+    private EntradaManualDto _form = new();
+    private bool   _guardando      = false;
+    private string _error          = string.Empty;
+    private ResultadoEntradaManualDto? _resultado;
+    private SnapshotMensual?           _snapshotExistente;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        TenantId  = Guid.TryParse(auth.User.FindFirst("tenant_id")?.Value, out var t) ? t : Guid.Empty;
+        UsuarioId = Guid.TryParse(auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var u) ? u : Guid.Empty;
+
+        if (!string.IsNullOrEmpty(PacienteId) && Guid.TryParse(PacienteId, out var pid))
+        {
+            var p = await PacienteRepo.GetByIdAsync(TenantId, pid);
+            if (p != null) SeleccionarPaciente(p);
+        }
+    }
+
+    // ── Búsqueda ──────────────────────────────────────────────────────────────
+
+    private async Task BuscarPacientesAsync()
+    {
+        _debounce?.Cancel(); _debounce?.Dispose();
+        _debounce = new System.Threading.CancellationTokenSource();
+        var token = _debounce.Token;
+        try
+        {
+            await Task.Delay(350, token);
+            if (string.IsNullOrWhiteSpace(_busqueda)) { _resultadosBusqueda.Clear(); return; }
+            _buscando = true; StateHasChanged();
+            _resultadosBusqueda = await PacienteRepo.GetActivosAsync(TenantId, _busqueda);
+            _busquedaRealizada  = true;
+        }
+        catch (TaskCanceledException) { }
+        finally { _buscando = false; }
+    }
+
+    private void SeleccionarPaciente(Paciente p)
+    {
+        _pacienteSeleccionado = p;
+        _resultadosBusqueda.Clear();
+        _busqueda = string.Empty;
+        _snapshotExistente = null;
+    }
+
+    private void LimpiarPaciente()
+    {
+        _pacienteSeleccionado = null;
+        _snapshotExistente    = null;
+        _busquedaRealizada    = false;
+        LimpiarFormulario();
+    }
+
+    // ── Carga de snapshot existente ───────────────────────────────────────────
+
+    private async Task CargarSnapshotExistenteAsync()
+    {
+        if (_pacienteSeleccionado == null) return;
+        _snapshotExistente = await EntradaManual.GetSnapshotAsync(
+            TenantId, _pacienteSeleccionado.Id, _anio, _mes);
+
+        if (_snapshotExistente != null)
+        {
+            _form.HbValor        = _snapshotExistente.HbValor;
+            _form.HierroValor    = _snapshotExistente.HierroValor;
+            _form.FerritinaValor = _snapshotExistente.FerritinaValor;
+            _form.SaturacionValor = _snapshotExistente.SaturacionValor;
+        }
+    }
+
+    // ── Guardar ───────────────────────────────────────────────────────────────
+
+    private async Task GuardarAsync()
+    {
+        _error = string.Empty;
+        if (_pacienteSeleccionado == null) { _error = "Seleccione un paciente."; return; }
+        if (!_form.TieneAlgunValor)        { _error = "Ingrese al menos un resultado."; return; }
+
+        _guardando = true;
+        try
+        {
+            _form.PacienteId  = _pacienteSeleccionado.Id;
+            _form.PeriodoAnio = _anio;
+            _form.PeriodoMes  = _mes;
+            _resultado = await EntradaManual.ProcesarAsync(_form, TenantId, UsuarioId);
+            if (_resultado.Exitoso) LimpiarFormulario();
+        }
+        finally { _guardando = false; }
+    }
+
+    private void LimpiarFormulario()
+    {
+        _form = new EntradaManualDto();
+        _error = string.Empty;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static string NombreMes(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo",  6 => "Junio",   7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+
+    private static string FormatVal(decimal? val, string? unidad) =>
+        val.HasValue ? $"{val:G} {unidad}".Trim() : "—";
+}
