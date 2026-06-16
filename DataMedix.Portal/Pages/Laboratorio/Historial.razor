@@ -15,9 +15,7 @@
 
 <PageTitle>Resultados Crudos | DataMedix</PageTitle>
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     HEADER
-════════════════════════════════════════════════════════════════════════ -->
+<!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
 <div class="hr-header">
     <div>
         <h1 class="hr-title">Resultados Crudos</h1>
@@ -29,27 +27,12 @@
         </p>
     </div>
     <div class="hr-header-actions">
-        <!-- Toggle Vista -->
         <div class="hr-vista-toggle">
-            <button class="hr-vista-btn @(_vista == "pivot" ? "hr-vista-active" : "")"
-                    @onclick="() => SetVista('p')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-                </svg>
-                Pivot
+            <button class="hr-vista-btn @(_vista == "pivot" ? "hr-vista-active" : "")" @onclick="() => SetVista('p')">
+                ⊞ Pivot
             </button>
-            <button class="hr-vista-btn @(_vista == "lista" ? "hr-vista-active" : "")"
-                    @onclick="() => SetVista('l')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-                    <line x1="8" y1="18" x2="21" y2="18"/>
-                    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
-                    <line x1="3" y1="18" x2="3.01" y2="18"/>
-                </svg>
-                Lista
+            <button class="hr-vista-btn @(_vista == "lista" ? "hr-vista-active" : "")" @onclick="() => SetVista('l')">
+                ☰ Lista
             </button>
         </div>
         <button class="hr-btn hr-btn-outline" @onclick="RefrescarAsync" disabled="@Cargando">🔄</button>
@@ -60,167 +43,240 @@
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     ERROR
-════════════════════════════════════════════════════════════════════════ -->
 @if (ErrorMensaje != null)
 {
     <div class="hr-error-banner">⚠ @ErrorMensaje <button @onclick="() => ErrorMensaje = null">✕</button></div>
 }
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     VISTA PIVOT
-════════════════════════════════════════════════════════════════════════ -->
+<!-- ═══ VISTA PIVOT ════════════════════════════════════════════════════════════ -->
 @if (_vista == "pivot")
 {
-    <!-- Filtros pivot -->
-    <div class="hr-card hr-filters-card">
-        <div class="hr-pivot-filters">
-            <div class="hr-filter-group">
-                <label>Período</label>
-                <div class="hr-date-pair">
-                    <select class="hr-select" @bind="_pivotMes" @bind:after="CargarPivotAsync">
-                        @for (int m = 1; m <= 12; m++) { var mes = m;
-                            <option value="@mes">@NombreMes(mes)</option> }
-                    </select>
-                    <select class="hr-select" @bind="_pivotAnio" @bind:after="CargarPivotAsync">
-                        @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var an = a;
-                            <option value="@an">@an</option> }
-                    </select>
+    <div class="hr-pivot-layout">
+
+        <!-- ── PANEL DE SLICERS (izquierda) ── -->
+        <aside class="hr-slicers-panel">
+
+            <!-- Tipo de Atención -->
+            <div class="hr-slicer">
+                <div class="hr-slicer-title">
+                    <span>Tipo de Atención</span>
+                    @if (_filtrosTipo.Any())
+                    {
+                        <button class="hr-slicer-clear" title="Limpiar"
+                                @onclick="() => { _filtrosTipo.Clear(); FiltrarPivot(); }">✕</button>
+                    }
                 </div>
-            </div>
-            <div class="hr-filter-group">
-                <label>Tipo de Atención</label>
-                <select class="hr-select" @bind="_filtroTipo" @bind:after="FiltrarPivot">
-                    <option value="">Todos</option>
+                <div class="hr-slicer-body">
                     @foreach (var t in _tiposAtencion)
                     {
-                        <option value="@t">@t</option>
+                        var tipo = t;
+                        <button class="hr-slicer-chip @SlicerChipClass(_filtrosTipo, tipo)"
+                                @onclick="() => ToggleTipo(tipo)">@tipo</button>
                     }
-                </select>
+                    @if (!_tiposAtencion.Any())
+                    {
+                        <span class="hr-slicer-empty">Sin datos</span>
+                    }
+                </div>
             </div>
-            <div class="hr-filter-group">
-                <label>Paciente</label>
+
+            <!-- Parámetro -->
+            <div class="hr-slicer">
+                <div class="hr-slicer-title">
+                    <span>Parámetro</span>
+                    @if (_filtrosParametroKeys.Any())
+                    {
+                        <button class="hr-slicer-clear" title="Mostrar todos"
+                                @onclick="() => { _filtrosParametroKeys.Clear(); ActualizarColumnasVisibles(); StateHasChanged(); }">✕</button>
+                    }
+                </div>
+                <div class="hr-slicer-body hr-slicer-scroll">
+                    @foreach (var col in _columnasPivot)
+                    {
+                        var key = col.Key;
+                        <button class="hr-slicer-chip @SlicerChipClass(_filtrosParametroKeys, key)"
+                                title="@col.Nombre"
+                                @onclick="() => ToggleParametro(key)">@col.Nombre</button>
+                    }
+                    @if (!_columnasPivot.Any())
+                    {
+                        <span class="hr-slicer-empty">Sin datos</span>
+                    }
+                </div>
+            </div>
+
+            <!-- Año -->
+            <div class="hr-slicer">
+                <div class="hr-slicer-title"><span>Año</span></div>
+                <div class="hr-slicer-body">
+                    @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--)
+                    {
+                        var an = a;
+                        <button class="hr-slicer-chip @(_pivotAnio == an ? "hr-chip-on" : "hr-chip-neutral")"
+                                @onclick="async () => { _pivotAnio = an; await CargarPivotAsync(); }">@an</button>
+                    }
+                </div>
+            </div>
+
+            <!-- Mes -->
+            <div class="hr-slicer">
+                <div class="hr-slicer-title"><span>Mes</span></div>
+                <div class="hr-slicer-body hr-slicer-body-grid">
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        var mes = m;
+                        <button class="hr-slicer-chip @(_pivotMes == mes ? "hr-chip-on" : "hr-chip-neutral")"
+                                @onclick="async () => { _pivotMes = mes; await CargarPivotAsync(); }">@NombreMes3(mes)</button>
+                    }
+                </div>
+            </div>
+
+            <!-- Fecha Orden (siempre día 1 del mes) -->
+            <div class="hr-slicer">
+                <div class="hr-slicer-title"><span>Fecha Orden</span></div>
+                <div class="hr-slicer-body hr-slicer-scroll">
+                    @for (int m = 12; m >= 1; m--)
+                    {
+                        var mes = m;
+                        <button class="hr-slicer-chip @(_pivotMes == mes ? "hr-chip-on" : "hr-chip-neutral")"
+                                title="@NombreMes(mes) @_pivotAnio"
+                                @onclick="async () => { _pivotMes = mes; await CargarPivotAsync(); }">
+                            @(new DateTime(_pivotAnio, mes, 1).ToString("d/M/yyyy"))
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Estadísticas rápidas -->
+            <div class="hr-slicer-stats">
+                <span>@_filasPivot.Count pacientes</span>
+                <span>@_columnasVisibles.Count parámetros</span>
+            </div>
+
+        </aside>
+
+        <!-- ── ÁREA PRINCIPAL (derecha) ── -->
+        <div class="hr-pivot-main">
+
+            <!-- Buscador paciente -->
+            <div class="hr-pivot-searchbar">
                 <div class="hr-search-wrap">
-                    <input type="text" class="hr-input" placeholder="Nombre o cédula..."
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    <input type="text" class="hr-input" placeholder="Buscar paciente (nombre o cédula)…"
                            @bind="_filtroNombrePivot" @bind:event="oninput"
                            @onkeyup="OnBusquedaPivotChange" />
                     @if (!string.IsNullOrEmpty(_filtroNombrePivot))
                     {
-                        <button class="hr-clear-btn" @onclick="() => { _filtroNombrePivot = string.Empty; FiltrarPivot(); }">✕</button>
+                        <button class="hr-clear-btn"
+                                @onclick="() => { _filtroNombrePivot = string.Empty; FiltrarPivot(); }">✕</button>
                     }
                 </div>
             </div>
-            <div class="hr-filter-group">
-                <label>&nbsp;</label>
-                <span class="hr-meta-count">
-                    <strong>@_filasPivot.Count</strong> paciente(s) · <strong>@_columnasPivot.Count</strong> parámetro(s)
-                </span>
-            </div>
-        </div>
-    </div>
 
-    @if (Cargando)
-    {
-        <div class="hr-loading">
-            <div class="hr-spinner"></div>
-            <p>Cargando resultados de @NombreMes(_pivotMes) @_pivotAnio...</p>
-        </div>
-    }
-    else if (!_rawResultados.Any())
-    {
-        <div class="hr-empty">
-            <div class="hr-empty-icon">🔬</div>
-            <h3>Sin resultados para @NombreMes(_pivotMes) @_pivotAnio</h3>
-            <p>Importa un archivo de laboratorio o ingresa resultados manualmente para este período.</p>
-            <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
-                <a href="/laboratorio/importar" class="hr-btn hr-btn-primary">📤 Importar Excel</a>
-                <a href="/laboratorio/manual" class="hr-btn hr-btn-outline">✏ Ingreso Manual</a>
-            </div>
-        </div>
-    }
-    else if (!_filasPivot.Any())
-    {
-        <div class="hr-empty">
-            <div class="hr-empty-icon">🔍</div>
-            <h3>Sin coincidencias</h3>
-            <p>Ajusta los filtros para ver resultados.</p>
-        </div>
-    }
-    else
-    {
-        <div class="hr-card hr-pivot-card">
-            <div class="hr-pivot-scroll">
-                <table class="hr-pivot-table">
-                    <thead>
-                        <tr>
-                            <th class="hr-th-fixed hr-th-tipo">Tipo At.</th>
-                            <th class="hr-th-fixed hr-th-cedula">Cédula</th>
-                            <th class="hr-th-fixed hr-th-paciente">Paciente</th>
-                            @foreach (var col in _columnasPivot)
-                            {
-                                <th class="hr-th-param" title="@col.Nombre (@col.Codigo)">
-                                    @col.NombreCorto
-                                </th>
-                            }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var fila in PaginaPivot)
-                        {
-                            <tr class="@(fila.TienePatologico ? "hr-row-pato" : "")">
-                                <td class="hr-td-fixed">
-                                    <span class="hr-badge-tipo">@(fila.TipoAtencion ?? "—")</span>
-                                </td>
-                                <td class="hr-td-fixed">
-                                    <code class="hr-ident">@fila.Identificacion</code>
-                                </td>
-                                <td class="hr-td-fixed hr-td-nombre">@fila.Nombre</td>
-                                @foreach (var col in _columnasPivot)
-                                {
-                                    @if (fila.Celdas.TryGetValue(col.Key, out var celda))
-                                    {
-                                        <td class="@(celda.EsPatologico ? "hr-cell-pato" : "hr-cell-ok")"
-                                            title="@celda.Unidad @(celda.EsPatologico ? "· PATOLÓGICO" : "")">
-                                            @(celda.Valor?.ToString("G5") ?? celda.Texto ?? "—")
-                                        </td>
-                                    }
-                                    else
-                                    {
-                                        <td class="hr-cell-empty">—</td>
-                                    }
-                                }
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-
-            @if (TotalPaginasPivot > 1)
+            @if (Cargando)
             {
-                <div class="hr-pagination">
-                    <button class="hr-btn hr-btn-sm hr-btn-outline"
-                            @onclick="PivotAnterior" disabled="@(_pivotPagina <= 1)">←</button>
-                    <span class="hr-pag-info">
-                        Pacientes @((_pivotPagina-1)*PivotTamano+1)–@Math.Min(_pivotPagina*PivotTamano,_filasPivot.Count)
-                        de @_filasPivot.Count
-                    </span>
-                    <button class="hr-btn hr-btn-sm hr-btn-outline"
-                            @onclick="PivotSiguiente" disabled="@(_pivotPagina >= TotalPaginasPivot)">→</button>
+                <div class="hr-loading">
+                    <div class="hr-spinner"></div>
+                    <p>Cargando @NombreMes(_pivotMes) @_pivotAnio…</p>
                 </div>
             }
-        </div>
+            else if (!_rawResultados.Any())
+            {
+                <div class="hr-empty">
+                    <div class="hr-empty-icon">🔬</div>
+                    <h3>Sin resultados para @NombreMes(_pivotMes) @_pivotAnio</h3>
+                    <p>Importa un archivo o ingresa resultados manualmente para este período.</p>
+                    <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
+                        <a href="/laboratorio/importar" class="hr-btn hr-btn-primary">📤 Importar Excel</a>
+                        <a href="/laboratorio/manual" class="hr-btn hr-btn-outline">✏ Ingreso Manual</a>
+                    </div>
+                </div>
+            }
+            else if (!_filasPivot.Any())
+            {
+                <div class="hr-empty">
+                    <div class="hr-empty-icon">🔍</div>
+                    <h3>Sin coincidencias</h3>
+                    <p>Ajusta los filtros del panel izquierdo para ver resultados.</p>
+                </div>
+            }
+            else
+            {
+                <div class="hr-card hr-pivot-card">
+                    <div class="hr-pivot-scroll">
+                        <table class="hr-pivot-table">
+                            <thead>
+                                <tr>
+                                    <th class="hr-th-fixed hr-th-tipo">Tipo At.</th>
+                                    <th class="hr-th-fixed hr-th-cedula">Cédula</th>
+                                    <th class="hr-th-fixed hr-th-paciente">Paciente</th>
+                                    @foreach (var col in _columnasVisibles)
+                                    {
+                                        <th class="hr-th-param" title="@col.Nombre (@col.Codigo)">
+                                            @col.NombreCorto
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var fila in PaginaPivot)
+                                {
+                                    <tr class="@(fila.TienePatologico ? "hr-row-pato" : "")">
+                                        <td class="hr-td-fixed">
+                                            <span class="hr-badge-tipo">@(fila.TipoAtencion ?? "—")</span>
+                                        </td>
+                                        <td class="hr-td-fixed">
+                                            <code class="hr-ident">@fila.Identificacion</code>
+                                        </td>
+                                        <td class="hr-td-fixed hr-td-nombre">@fila.Nombre</td>
+                                        @foreach (var col in _columnasVisibles)
+                                        {
+                                            @if (fila.Celdas.TryGetValue(col.Key, out var celda))
+                                            {
+                                                <td class="@(celda.EsPatologico ? "hr-cell-pato" : "hr-cell-ok")"
+                                                    title="@celda.Unidad @(celda.EsPatologico ? "· PATOLÓGICO" : "")">
+                                                    @(celda.Valor?.ToString("G5") ?? celda.Texto ?? "—")
+                                                </td>
+                                            }
+                                            else
+                                            {
+                                                <td class="hr-cell-empty">—</td>
+                                            }
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
 
-        <p class="hr-carry-note">
-            💡 Las celdas vacías (—) indican que el parámetro no se midió en este período.
-            El sistema usa automáticamente los valores del mes anterior para Hierro, Ferritina y TSAT al generar prescripciones.
-        </p>
-    }
+                    @if (TotalPaginasPivot > 1)
+                    {
+                        <div class="hr-pagination">
+                            <button class="hr-btn hr-btn-sm hr-btn-outline"
+                                    @onclick="PivotAnterior" disabled="@(_pivotPagina <= 1)">←</button>
+                            <span class="hr-pag-info">
+                                @((_pivotPagina - 1) * PivotTamano + 1)–@Math.Min(_pivotPagina * PivotTamano, _filasPivot.Count)
+                                de @_filasPivot.Count
+                            </span>
+                            <button class="hr-btn hr-btn-sm hr-btn-outline"
+                                    @onclick="PivotSiguiente" disabled="@(_pivotPagina >= TotalPaginasPivot)">→</button>
+                        </div>
+                    }
+                </div>
+
+                <p class="hr-carry-note">
+                    💡 Las celdas vacías (—) indican que el parámetro no se midió en este período.
+                    El sistema usa automáticamente los valores del mes anterior para Hierro, Ferritina y TSAT al generar prescripciones.
+                </p>
+            }
+        </div>
+    </div>
 }
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     VISTA LISTA (original)
-════════════════════════════════════════════════════════════════════════ -->
+<!-- ═══ VISTA LISTA (original) ════════════════════════════════════════════════ -->
 @if (_vista == "lista")
 {
     <div class="hr-card hr-filters-card">
@@ -380,9 +436,7 @@
     }
 }
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     ESTILOS
-════════════════════════════════════════════════════════════════════════ -->
+<!-- ═══ ESTILOS ═══════════════════════════════════════════════════════════════ -->
 <style>
     /* ─ Header ─────────────────────────────────────────────── */
     .hr-header        { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem; flex-wrap:wrap; gap:.75rem; }
@@ -397,17 +451,66 @@
                         font-size:.8rem; font-weight:600; color:#64748b; transition:all .15s; }
     .hr-vista-active  { background:white; color:#0ea5e9; box-shadow:0 1px 3px rgba(0,0,0,.1); }
 
-    /* ─ Filtros ─────────────────────────────────────────────── */
+    /* ─ Layout pivot con panel lateral ─────────────────────── */
+    .hr-pivot-layout  { display:grid; grid-template-columns:220px 1fr; gap:1rem; align-items:start; }
+    @@media (max-width:900px) {
+        .hr-pivot-layout { grid-template-columns:1fr; }
+    }
+
+    /* ─ Panel de slicers ────────────────────────────────────── */
+    .hr-slicers-panel { display:flex; flex-direction:column; gap:.625rem; position:sticky; top:.75rem; }
+
+    .hr-slicer        { background:white; border-radius:10px;
+                        box-shadow:0 1px 3px rgba(0,0,0,.08); overflow:hidden; }
+
+    .hr-slicer-title  { display:flex; justify-content:space-between; align-items:center;
+                        padding:.45rem .75rem; background:#f8fafc; border-bottom:1px solid #e2e8f0;
+                        font-size:.68rem; font-weight:700; text-transform:uppercase;
+                        letter-spacing:.05em; color:#475569; }
+
+    .hr-slicer-clear  { background:none; border:none; color:#94a3b8; cursor:pointer;
+                        font-size:.7rem; padding:0 .15rem; line-height:1;
+                        transition:color .1s; }
+    .hr-slicer-clear:hover { color:#dc2626; }
+
+    .hr-slicer-body   { padding:.375rem; display:flex; flex-direction:column; gap:.2rem; }
+    .hr-slicer-scroll { max-height:180px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#e2e8f0 transparent; }
+    .hr-slicer-body-grid { display:grid; grid-template-columns:1fr 1fr; gap:.2rem; }
+
+    .hr-slicer-chip   { width:100%; text-align:left; padding:.3rem .55rem;
+                        border-radius:5px; border:1.5px solid transparent;
+                        font-size:.75rem; cursor:pointer; transition:all .1s;
+                        white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                        line-height:1.3; }
+
+    /* Estados de chip */
+    .hr-chip-neutral  { background:white; color:#374151; border-color:#e2e8f0; }
+    .hr-chip-neutral:hover { background:#f1f5f9; border-color:#cbd5e1; }
+    .hr-chip-on       { background:#dbeafe; color:#1d4ed8; border-color:#93c5fd; font-weight:700; }
+    .hr-chip-off      { background:#f8fafc; color:#94a3b8; border-color:#f1f5f9; }
+    .hr-chip-off:hover { background:#f1f5f9; color:#64748b; }
+
+    .hr-slicer-empty  { font-size:.73rem; color:#94a3b8; padding:.25rem .55rem; font-style:italic; }
+
+    .hr-slicer-stats  { display:flex; justify-content:space-between;
+                        font-size:.7rem; color:#94a3b8; padding:.25rem .1rem; }
+
+    /* ─ Área pivot principal ────────────────────────────────── */
+    .hr-pivot-main    { min-width:0; }
+
+    .hr-pivot-searchbar { display:flex; align-items:center; gap:1rem;
+                          margin-bottom:.75rem; flex-wrap:wrap; }
+
+    /* ─ Filtros (lista) ─────────────────────────────────────── */
     .hr-card          { background:white; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.08);
                         overflow:hidden; margin-bottom:1rem; }
     .hr-filters-card  { padding:1rem 1.25rem; overflow:visible; }
-    .hr-pivot-filters { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.875rem; align-items:end; }
     .hr-list-filters  { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.875rem; align-items:end; }
     .hr-filter-group  { display:flex; flex-direction:column; gap:.3rem; }
     .hr-filter-group label { font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
 
     .hr-search-wrap   { display:flex; align-items:center; background:white; border:1.5px solid #e2e8f0;
-                        border-radius:8px; padding:0 .625rem; }
+                        border-radius:8px; padding:0 .625rem; flex:1; }
     .hr-search-wrap:focus-within { border-color:#0ea5e9; }
     .hr-input         { border:none; outline:none; font-size:.875rem; color:#374151;
                         padding:.5rem 0; background:transparent; width:100%; }
@@ -440,26 +543,25 @@
 
     /* columnas fijas a la izquierda */
     .hr-th-fixed, .hr-td-fixed { position:sticky; z-index:2; background:inherit; }
-    .hr-th-tipo,  .hr-th-tipo  { left:0;      min-width:90px; text-align:left; }
-    .hr-th-cedula              { left:90px;   min-width:110px; text-align:left; }
-    .hr-th-paciente            { left:200px;  min-width:200px; text-align:left; }
-    .hr-td-fixed:first-child   { left:0;      background:inherit; }
-    /* bg matching para las fijas */
+    .hr-th-tipo   { left:0;     min-width:90px;  text-align:left; }
+    .hr-th-cedula { left:90px;  min-width:110px; text-align:left; }
+    .hr-th-paciente { left:200px; min-width:200px; text-align:left; }
+    .hr-td-fixed:nth-child(1) { left:0; }
+    .hr-td-fixed:nth-child(2) { left:90px; }
+    .hr-td-fixed:nth-child(3) { left:200px; }
     .hr-pivot-table thead .hr-th-fixed { background:#f8fafc !important; z-index:3; }
     .hr-pivot-table tbody tr td.hr-td-fixed { z-index:1; }
 
-    .hr-th-param      { min-width:80px; max-width:110px; }
+    .hr-th-param      { min-width:80px; max-width:120px; }
     .hr-td-nombre     { font-weight:600; color:#1e293b; text-align:left; }
 
     .hr-cell-ok       { color:#374151; }
     .hr-cell-pato     { color:#dc2626; font-weight:700; background:#fff5f5; }
     .hr-cell-empty    { color:#cbd5e1; }
-
     .hr-row-pato td   { background:#fff8f8; }
 
     .hr-badge-tipo    { display:inline-block; background:#f1f5f9; color:#475569;
                         padding:.15rem .5rem; border-radius:6px; font-size:.72rem; font-weight:600; }
-
     .hr-carry-note    { font-size:.78rem; color:#64748b; text-align:center; margin-top:.5rem; }
 
     /* ─ Lista table ─────────────────────────────────────────── */
@@ -530,22 +632,25 @@
 
 @code {
     // ── Modo vista ─────────────────────────────────────────────────────────────
-    private string _vista = "pivot"; // "pivot" | "lista"
+    private string _vista = "pivot";
     private Guid TenantId;
 
     // ── Pivot state ────────────────────────────────────────────────────────────
     private int _pivotMes  = DateTime.Today.Month;
     private int _pivotAnio = DateTime.Today.Year;
-    private string _filtroTipo        = "";
-    private string _filtroNombrePivot = "";
-    private List<ResultadoLaboratorio> _rawResultados = new();
-    private List<PivotFila>   _filasPivot    = new();
-    private List<PivotColumna> _columnasPivot = new();
-    private List<string> _tiposAtencion = new();
+    private HashSet<string> _filtrosTipo          = new();
+    private HashSet<string> _filtrosParametroKeys = new();
+    private string          _filtroNombrePivot    = "";
+    private List<ResultadoLaboratorio> _rawResultados  = new();
+    private List<PivotFila>            _filasPivot     = new();
+    private List<PivotColumna>         _columnasPivot  = new();
+    private List<PivotColumna>         _columnasVisibles = new();
+    private List<string>               _tiposAtencion  = new();
     private int _pivotPagina = 1;
     private const int PivotTamano = 50;
     private int TotalPaginasPivot => Math.Max(1, (int)Math.Ceiling(_filasPivot.Count / (double)PivotTamano));
-    private List<PivotFila> PaginaPivot => _filasPivot.Skip((_pivotPagina - 1) * PivotTamano).Take(PivotTamano).ToList();
+    private List<PivotFila> PaginaPivot =>
+        _filasPivot.Skip((_pivotPagina - 1) * PivotTamano).Take(PivotTamano).ToList();
 
     // ── Lista state ────────────────────────────────────────────────────────────
     private List<ResultadoLaboratorio> Resultados  = new();
@@ -558,6 +663,7 @@
     private bool    Cargando           = true;
     private string? ErrorMensaje;
     private System.Threading.CancellationTokenSource? _debounce;
+    private System.Threading.CancellationTokenSource? _pivotDebounce;
 
     protected override async Task OnInitializedAsync()
     {
@@ -572,7 +678,6 @@
     }
 
     // ── Cambio de vista ────────────────────────────────────────────────────────
-
     private async Task SetVista(char v)
     {
         _vista = v == 'p' ? "pivot" : "lista";
@@ -586,10 +691,11 @@
         else await CargarListaAsync();
     }
 
-    // ── PIVOT: carga y construcción ───────────────────────────────────────────
-
+    // ── PIVOT: carga desde DB ─────────────────────────────────────────────────
     private async Task CargarPivotAsync()
     {
+        // Limpiar filtro de parámetros al cambiar período (columnas pueden cambiar)
+        _filtrosParametroKeys.Clear();
         Cargando = true;
         ErrorMensaje = null;
         StateHasChanged();
@@ -602,19 +708,25 @@
                 Tamano   = 10_000
             };
             _rawResultados = await ResultadoRepo.GetForExportAsync(TenantId, filtro);
-            _tiposAtencion = _rawResultados.Select(r => r.TipoAtencion).Where(x => x != null)
-                                           .Distinct().OrderBy(x => x).Select(x => x!).ToList();
+            _tiposAtencion = _rawResultados
+                .Select(r => r.TipoAtencion).Where(x => x != null)
+                .Distinct().OrderBy(x => x).Select(x => x!).ToList();
             ConstruirPivot();
         }
         catch (Exception ex) { ErrorMensaje = ex.Message; }
         finally { Cargando = false; }
     }
 
+    // ── PIVOT: construcción en memoria (sin DB) ───────────────────────────────
     private void ConstruirPivot()
     {
         var datos = _rawResultados.AsEnumerable();
-        if (!string.IsNullOrEmpty(_filtroTipo))
-            datos = datos.Where(r => r.TipoAtencion == _filtroTipo);
+
+        // Filtro por tipo de atención (multi-select: si nada seleccionado = todos)
+        if (_filtrosTipo.Any())
+            datos = datos.Where(r => r.TipoAtencion != null && _filtrosTipo.Contains(r.TipoAtencion));
+
+        // Filtro por nombre/cédula de paciente
         if (!string.IsNullOrWhiteSpace(_filtroNombrePivot))
         {
             var b = _filtroNombrePivot.Trim().ToUpperInvariant();
@@ -624,22 +736,22 @@
         }
         var lista = datos.ToList();
 
-        // Columnas: un PivotColumna por parámetro único (por ParametroClinicoId o ParametroRaw)
+        // Columnas: un PivotColumna por parámetro único
         _columnasPivot = lista
             .GroupBy(r => r.ParametroClinicoId.HasValue
                 ? r.ParametroClinicoId.Value.ToString()
                 : "__" + (r.ParametroRaw?.Trim().ToUpperInvariant() ?? "?"))
             .Select(g =>
             {
-                var first = g.First();
+                var first  = g.First();
                 var nombre = first.ParametroClinico?.Nombre ?? first.ParametroRaw ?? "?";
                 return new PivotColumna
                 {
-                    Key        = g.Key,
-                    Codigo     = first.ParametroClinico?.Codigo ?? "",
-                    Nombre     = nombre,
-                    NombreCorto = nombre.Length > 10 ? nombre[..10] + "." : nombre,
-                    Orden      = first.ParametroClinico?.OrdenVisualizacion ?? 9999
+                    Key         = g.Key,
+                    Codigo      = first.ParametroClinico?.Codigo ?? "",
+                    Nombre      = nombre,
+                    NombreCorto = nombre.Length > 12 ? nombre[..12] + "." : nombre,
+                    Orden       = first.ParametroClinico?.OrdenVisualizacion ?? 9999
                 };
             })
             .OrderBy(c => c.Orden).ThenBy(c => c.Nombre)
@@ -651,13 +763,13 @@
             .Select(g =>
             {
                 var first = g.First();
-                var fila = new PivotFila
+                var fila  = new PivotFila
                 {
-                    PacienteId   = g.Key,
+                    PacienteId     = g.Key,
                     Identificacion = first.Paciente.Identificacion,
-                    Nombre       = first.Paciente.NombreCompleto,
-                    TipoAtencion = first.TipoAtencion,
-                    PlanSalud    = first.PlanSalud
+                    Nombre         = first.Paciente.NombreCompleto,
+                    TipoAtencion   = first.TipoAtencion,
+                    PlanSalud      = first.PlanSalud
                 };
                 foreach (var r in g)
                 {
@@ -673,29 +785,58 @@
             .ToList();
 
         _pivotPagina = 1;
+        ActualizarColumnasVisibles();
     }
 
     private void FiltrarPivot() { ConstruirPivot(); StateHasChanged(); }
 
-    private System.Threading.CancellationTokenSource? _pivotDebounce;
+    // ── PIVOT: filtros slicer ─────────────────────────────────────────────────
+
+    private void ToggleTipo(string tipo)
+    {
+        if (!_filtrosTipo.Add(tipo))
+            _filtrosTipo.Remove(tipo);
+        FiltrarPivot();
+    }
+
+    private void ToggleParametro(string key)
+    {
+        if (!_filtrosParametroKeys.Add(key))
+            _filtrosParametroKeys.Remove(key);
+        ActualizarColumnasVisibles();
+        StateHasChanged();
+    }
+
+    // Actualiza la lista de columnas visibles según el filtro de parámetros
+    // Sin filtro → todas; con filtro → solo las seleccionadas
+    private void ActualizarColumnasVisibles()
+    {
+        _columnasVisibles = _filtrosParametroKeys.Any()
+            ? _columnasPivot.Where(c => _filtrosParametroKeys.Contains(c.Key)).ToList()
+            : _columnasPivot.ToList();
+    }
+
+    // Clase CSS para chip de slicer: neutral=sin filtro activo, on=seleccionado, off=excluido
+    private static string SlicerChipClass(HashSet<string> filtro, string valor) =>
+        !filtro.Any() ? "hr-chip-neutral" :
+        filtro.Contains(valor) ? "hr-chip-on" : "hr-chip-off";
+
+    private bool EsColumnaVisible(string key) =>
+        !_filtrosParametroKeys.Any() || _filtrosParametroKeys.Contains(key);
+
     private async Task OnBusquedaPivotChange()
     {
         _pivotDebounce?.Cancel(); _pivotDebounce?.Dispose();
         _pivotDebounce = new System.Threading.CancellationTokenSource();
         var token = _pivotDebounce.Token;
-        try
-        {
-            await Task.Delay(350, token);
-            FiltrarPivot();
-        }
+        try { await Task.Delay(300, token); FiltrarPivot(); }
         catch (TaskCanceledException) { }
     }
 
-    private void PivotAnterior()   { if (_pivotPagina > 1) _pivotPagina--; }
-    private void PivotSiguiente()  { if (_pivotPagina < TotalPaginasPivot) _pivotPagina++; }
+    private void PivotAnterior()  { if (_pivotPagina > 1) _pivotPagina--; }
+    private void PivotSiguiente() { if (_pivotPagina < TotalPaginasPivot) _pivotPagina++; }
 
     // ── LISTA: carga ───────────────────────────────────────────────────────────
-
     private async Task CargarListaAsync()
     {
         Cargando = true;
@@ -735,7 +876,6 @@
     private async Task LimpiarFiltros() { Filtro = new ResultadoFiltro(); BusquedaPaciente = string.Empty; await CargarListaAsync(); }
 
     // ── Exportar ───────────────────────────────────────────────────────────────
-
     private void ExportarExcel()
     {
         if (_vista == "pivot")
@@ -747,22 +887,29 @@
         var qs = new List<string>();
         if (!string.IsNullOrWhiteSpace(Filtro.BusquedaPaciente)) qs.Add($"busquedaPaciente={Uri.EscapeDataString(Filtro.BusquedaPaciente)}");
         if (Filtro.ParametroClinicoId.HasValue) qs.Add($"parametroClinicoId={Filtro.ParametroClinicoId}");
-        if (Filtro.AnioDe.HasValue)   qs.Add($"anioDe={Filtro.AnioDe}");
-        if (Filtro.MesDe.HasValue)    qs.Add($"mesDe={Filtro.MesDe}");
+        if (Filtro.AnioDe.HasValue)    qs.Add($"anioDe={Filtro.AnioDe}");
+        if (Filtro.MesDe.HasValue)     qs.Add($"mesDe={Filtro.MesDe}");
         if (Filtro.AnioHasta.HasValue) qs.Add($"anioHasta={Filtro.AnioHasta}");
         if (Filtro.MesHasta.HasValue)  qs.Add($"mesHasta={Filtro.MesHasta}");
-        if (Filtro.LoteId.HasValue)   qs.Add($"loteId={Filtro.LoteId}");
+        if (Filtro.LoteId.HasValue)    qs.Add($"loteId={Filtro.LoteId}");
         Nav.NavigateTo("/api/reportes/resultados-excel" + (qs.Any() ? "?" + string.Join("&", qs) : ""), forceLoad: true);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
-
     private static string NombreMes(int m) => m switch
     {
-        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
-        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
-        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
-        _ => m.ToString()
+        1  => "Enero",     2  => "Febrero",   3  => "Marzo",    4  => "Abril",
+        5  => "Mayo",      6  => "Junio",      7  => "Julio",    8  => "Agosto",
+        9  => "Septiembre",10 => "Octubre",   11 => "Noviembre",12 => "Diciembre",
+        _  => m.ToString()
+    };
+
+    private static string NombreMes3(int m) => m switch
+    {
+        1  => "ene", 2  => "feb", 3  => "mar", 4  => "abr",
+        5  => "may", 6  => "jun", 7  => "jul", 8  => "ago",
+        9  => "sep", 10 => "oct", 11 => "nov", 12 => "dic",
+        _  => m.ToString()
     };
 
     private static string Trunc(string? s, int max) =>
@@ -771,15 +918,14 @@
     public void Dispose() { _debounce?.Dispose(); _pivotDebounce?.Dispose(); }
 
     // ── Tipos internos para pivot ──────────────────────────────────────────────
-
     private class PivotFila
     {
-        public Guid   PacienteId    { get; set; }
-        public string Identificacion { get; set; } = "";
-        public string Nombre        { get; set; } = "";
-        public string? TipoAtencion { get; set; }
-        public string? PlanSalud    { get; set; }
-        public bool   TienePatologico { get; set; }
+        public Guid    PacienteId     { get; set; }
+        public string  Identificacion { get; set; } = "";
+        public string  Nombre         { get; set; } = "";
+        public string? TipoAtencion   { get; set; }
+        public string? PlanSalud      { get; set; }
+        public bool    TienePatologico { get; set; }
         public Dictionary<string, PivotCelda> Celdas { get; set; } = new();
     }
 
@@ -787,10 +933,10 @@
 
     private class PivotColumna
     {
-        public string Key        { get; set; } = "";
-        public string Codigo     { get; set; } = "";
-        public string Nombre     { get; set; } = "";
+        public string Key         { get; set; } = "";
+        public string Codigo      { get; set; } = "";
+        public string Nombre      { get; set; } = "";
         public string NombreCorto { get; set; } = "";
-        public int    Orden      { get; set; }
+        public int    Orden       { get; set; }
     }
 }
