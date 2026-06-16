@@ -13,526 +13,784 @@
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
 
-<PageTitle>Historial de Resultados | DataMedix</PageTitle>
+<PageTitle>Resultados Crudos | DataMedix</PageTitle>
 
-<div class="dm-page-header">
+<!-- ═══════════════════════════════════════════════════════════════════════
+     HEADER
+════════════════════════════════════════════════════════════════════════ -->
+<div class="hr-header">
     <div>
-        <h1 class="dm-page-title">Historial de Resultados</h1>
-        <p class="dm-page-subtitle">Resultados crudos por lote de importación — paginación servidor</p>
+        <h1 class="hr-title">Resultados Crudos</h1>
+        <p class="hr-subtitle">
+            @if (_vista == "pivot")
+            { <span>Matriz de resultados · @NombreMes(_pivotMes) @_pivotAnio</span> }
+            else
+            { <span>Listado por resultado · @Total registro(s)</span> }
+        </p>
     </div>
-    <div class="dm-page-actions">
-        <button class="dm-btn dm-btn-outline" @onclick="CargarAsync" disabled="@Cargando">🔄 Actualizar</button>
-        <button class="dm-btn dm-btn-excel" @onclick="ExportarExcel"
-                disabled="@(Cargando || Total == 0)"
-                title="Exportar el filtro actual a Excel (máx. 10.000 filas)">
-            📥 Exportar Excel
+    <div class="hr-header-actions">
+        <!-- Toggle Vista -->
+        <div class="hr-vista-toggle">
+            <button class="hr-vista-btn @(_vista == "pivot" ? "hr-vista-active" : "")"
+                    @onclick="() => SetVista('p')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                </svg>
+                Pivot
+            </button>
+            <button class="hr-vista-btn @(_vista == "lista" ? "hr-vista-active" : "")"
+                    @onclick="() => SetVista('l')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                </svg>
+                Lista
+            </button>
+        </div>
+        <button class="hr-btn hr-btn-outline" @onclick="RefrescarAsync" disabled="@Cargando">🔄</button>
+        <button class="hr-btn hr-btn-excel" @onclick="ExportarExcel"
+                disabled="@(Cargando || (_vista == "lista" && Total == 0) || (_vista == "pivot" && !_filasPivot.Any()))">
+            📥 Excel
         </button>
     </div>
 </div>
 
-<!-- Barra de filtros -->
-<div class="dm-card dm-card-filters">
-    <div class="dm-filters-grid">
-        <div class="dm-filter-field">
-            <label>Paciente</label>
-            <div class="dm-search-box">
-                <span>🔍</span>
-                <input type="text" class="dm-search-input" placeholder="Nombre o cédula..."
-                       @bind="BusquedaPaciente" @bind:event="oninput" @onkeyup="BuscarDebounced" />
-            </div>
-        </div>
-
-        <div class="dm-filter-field">
-            <label>Parámetro</label>
-            <select class="dm-select"
-                    value="@(Filtro.ParametroClinicoId?.ToString() ?? "")"
-                    @onchange="OnParametroChange">
-                <option value="">Todos</option>
-                @foreach (var p in Parametros)
-                {
-                    <option value="@p.Id">@p.Nombre (@p.Codigo)</option>
-                }
-            </select>
-        </div>
-
-        <div class="dm-filter-field">
-            <label>Período desde</label>
-            <div class="dm-date-range">
-                <select class="dm-select dm-select-mes"
-                        value="@(Filtro.MesDe?.ToString() ?? "")"
-                        @onchange="OnMesDesdeChange">
-                    <option value="">Mes</option>
-                    @for (int m = 1; m <= 12; m++) { var mes = m; <option value="@mes">@(new DateTime(2000,mes,1).ToString("MMM"))</option> }
-                </select>
-                <select class="dm-select dm-select-anio"
-                        value="@(Filtro.AnioDe?.ToString() ?? "")"
-                        @onchange="OnAnioDesdeChange">
-                    <option value="">Año</option>
-                    @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var anio = a; <option value="@anio">@anio</option> }
-                </select>
-            </div>
-        </div>
-
-        <div class="dm-filter-field">
-            <label>Período hasta</label>
-            <div class="dm-date-range">
-                <select class="dm-select dm-select-mes"
-                        value="@(Filtro.MesHasta?.ToString() ?? "")"
-                        @onchange="OnMesHastaChange">
-                    <option value="">Mes</option>
-                    @for (int m = 1; m <= 12; m++) { var mes = m; <option value="@mes">@(new DateTime(2000,mes,1).ToString("MMM"))</option> }
-                </select>
-                <select class="dm-select dm-select-anio"
-                        value="@(Filtro.AnioHasta?.ToString() ?? "")"
-                        @onchange="OnAnioHastaChange">
-                    <option value="">Año</option>
-                    @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var anio = a; <option value="@anio">@anio</option> }
-                </select>
-            </div>
-        </div>
-
-        <div class="dm-filter-field">
-            <label>Lote de importación</label>
-            <select class="dm-select"
-                    value="@(Filtro.LoteId?.ToString() ?? "")"
-                    @onchange="OnLoteChange">
-                <option value="">Todos los lotes</option>
-                @foreach (var l in Lotes)
-                {
-                    <option value="@l.Id">
-                        @(new DateTime(l.PeriodoAnio, l.PeriodoMes, 1).ToString("MMM yyyy")) — @TruncNombre(l.NombreArchivoOriginal, 28)
-                    </option>
-                }
-            </select>
-        </div>
-
-        @if (Filtro.HayFiltrosActivos)
-        {
-            <div class="dm-filter-field dm-filter-clear">
-                <label>&nbsp;</label>
-                <button class="dm-btn dm-btn-outline dm-btn-sm" @onclick="LimpiarFiltros">✕ Limpiar</button>
-            </div>
-        }
-    </div>
-</div>
-
-<!-- Resumen resultados -->
-<div class="dm-results-meta">
-    @if (!Cargando)
-    {
-        <span class="dm-results-count">
-            <strong>@Total</strong> resultado(s)
-            @if (Filtro.HayFiltrosActivos) { <span class="dm-filtered-tag">filtrado</span> }
-        </span>
-        @if (Total > 0)
-        {
-            <span class="dm-pagination-info">Página @Filtro.Pagina de @TotalPaginas</span>
-        }
-    }
-</div>
-
+<!-- ═══════════════════════════════════════════════════════════════════════
+     ERROR
+════════════════════════════════════════════════════════════════════════ -->
 @if (ErrorMensaje != null)
 {
-    <div class="dm-error-banner">
-        <span>⚠</span> Error al cargar datos: @ErrorMensaje
-    </div>
+    <div class="hr-error-banner">⚠ @ErrorMensaje <button @onclick="() => ErrorMensaje = null">✕</button></div>
 }
 
-<!-- Tabla -->
-@if (Cargando)
+<!-- ═══════════════════════════════════════════════════════════════════════
+     VISTA PIVOT
+════════════════════════════════════════════════════════════════════════ -->
+@if (_vista == "pivot")
 {
-    <div class="dm-loading-container">
-        <div class="dm-spinner"></div>
-        <p>Cargando resultados...</p>
+    <!-- Filtros pivot -->
+    <div class="hr-card hr-filters-card">
+        <div class="hr-pivot-filters">
+            <div class="hr-filter-group">
+                <label>Período</label>
+                <div class="hr-date-pair">
+                    <select class="hr-select" @bind="_pivotMes" @bind:after="CargarPivotAsync">
+                        @for (int m = 1; m <= 12; m++) { var mes = m;
+                            <option value="@mes">@NombreMes(mes)</option> }
+                    </select>
+                    <select class="hr-select" @bind="_pivotAnio" @bind:after="CargarPivotAsync">
+                        @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var an = a;
+                            <option value="@an">@an</option> }
+                    </select>
+                </div>
+            </div>
+            <div class="hr-filter-group">
+                <label>Tipo de Atención</label>
+                <select class="hr-select" @bind="_filtroTipo" @bind:after="FiltrarPivot">
+                    <option value="">Todos</option>
+                    @foreach (var t in _tiposAtencion)
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
+            </div>
+            <div class="hr-filter-group">
+                <label>Paciente</label>
+                <div class="hr-search-wrap">
+                    <input type="text" class="hr-input" placeholder="Nombre o cédula..."
+                           @bind="_filtroNombrePivot" @bind:event="oninput"
+                           @onkeyup="OnBusquedaPivotChange" />
+                    @if (!string.IsNullOrEmpty(_filtroNombrePivot))
+                    {
+                        <button class="hr-clear-btn" @onclick="() => { _filtroNombrePivot = string.Empty; FiltrarPivot(); }">✕</button>
+                    }
+                </div>
+            </div>
+            <div class="hr-filter-group">
+                <label>&nbsp;</label>
+                <span class="hr-meta-count">
+                    <strong>@_filasPivot.Count</strong> paciente(s) · <strong>@_columnasPivot.Count</strong> parámetro(s)
+                </span>
+            </div>
+        </div>
     </div>
-}
-else if (!Resultados.Any())
-{
-    <div class="dm-empty-state">
-        <div class="dm-empty-icon">🔬</div>
-        <h3 class="dm-empty-title">
-            @(Filtro.HayFiltrosActivos ? "Sin resultados para este filtro" : "Sin resultados importados")
-        </h3>
-        <p class="dm-empty-desc">
-            @(Filtro.HayFiltrosActivos
-                ? "Ajusta los filtros para ver resultados."
-                : "Importa un archivo de laboratorio para ver resultados aquí.")
+
+    @if (Cargando)
+    {
+        <div class="hr-loading">
+            <div class="hr-spinner"></div>
+            <p>Cargando resultados de @NombreMes(_pivotMes) @_pivotAnio...</p>
+        </div>
+    }
+    else if (!_rawResultados.Any())
+    {
+        <div class="hr-empty">
+            <div class="hr-empty-icon">🔬</div>
+            <h3>Sin resultados para @NombreMes(_pivotMes) @_pivotAnio</h3>
+            <p>Importa un archivo de laboratorio o ingresa resultados manualmente para este período.</p>
+            <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
+                <a href="/laboratorio/importar" class="hr-btn hr-btn-primary">📤 Importar Excel</a>
+                <a href="/laboratorio/manual" class="hr-btn hr-btn-outline">✏ Ingreso Manual</a>
+            </div>
+        </div>
+    }
+    else if (!_filasPivot.Any())
+    {
+        <div class="hr-empty">
+            <div class="hr-empty-icon">🔍</div>
+            <h3>Sin coincidencias</h3>
+            <p>Ajusta los filtros para ver resultados.</p>
+        </div>
+    }
+    else
+    {
+        <div class="hr-card hr-pivot-card">
+            <div class="hr-pivot-scroll">
+                <table class="hr-pivot-table">
+                    <thead>
+                        <tr>
+                            <th class="hr-th-fixed hr-th-tipo">Tipo At.</th>
+                            <th class="hr-th-fixed hr-th-cedula">Cédula</th>
+                            <th class="hr-th-fixed hr-th-paciente">Paciente</th>
+                            @foreach (var col in _columnasPivot)
+                            {
+                                <th class="hr-th-param" title="@col.Nombre (@col.Codigo)">
+                                    @col.NombreCorto
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fila in PaginaPivot)
+                        {
+                            <tr class="@(fila.TienePatologico ? "hr-row-pato" : "")">
+                                <td class="hr-td-fixed">
+                                    <span class="hr-badge-tipo">@(fila.TipoAtencion ?? "—")</span>
+                                </td>
+                                <td class="hr-td-fixed">
+                                    <code class="hr-ident">@fila.Identificacion</code>
+                                </td>
+                                <td class="hr-td-fixed hr-td-nombre">@fila.Nombre</td>
+                                @foreach (var col in _columnasPivot)
+                                {
+                                    @if (fila.Celdas.TryGetValue(col.Key, out var celda))
+                                    {
+                                        <td class="@(celda.EsPatologico ? "hr-cell-pato" : "hr-cell-ok")"
+                                            title="@celda.Unidad @(celda.EsPatologico ? "· PATOLÓGICO" : "")">
+                                            @(celda.Valor?.ToString("G5") ?? celda.Texto ?? "—")
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        <td class="hr-cell-empty">—</td>
+                                    }
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (TotalPaginasPivot > 1)
+            {
+                <div class="hr-pagination">
+                    <button class="hr-btn hr-btn-sm hr-btn-outline"
+                            @onclick="PivotAnterior" disabled="@(_pivotPagina <= 1)">←</button>
+                    <span class="hr-pag-info">
+                        Pacientes @((_pivotPagina-1)*PivotTamano+1)–@Math.Min(_pivotPagina*PivotTamano,_filasPivot.Count)
+                        de @_filasPivot.Count
+                    </span>
+                    <button class="hr-btn hr-btn-sm hr-btn-outline"
+                            @onclick="PivotSiguiente" disabled="@(_pivotPagina >= TotalPaginasPivot)">→</button>
+                </div>
+            }
+        </div>
+
+        <p class="hr-carry-note">
+            💡 Las celdas vacías (—) indican que el parámetro no se midió en este período.
+            El sistema usa automáticamente los valores del mes anterior para Hierro, Ferritina y TSAT al generar prescripciones.
         </p>
-        @if (!Filtro.HayFiltrosActivos)
+    }
+}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     VISTA LISTA (original)
+════════════════════════════════════════════════════════════════════════ -->
+@if (_vista == "lista")
+{
+    <div class="hr-card hr-filters-card">
+        <div class="hr-list-filters">
+            <div class="hr-filter-group">
+                <label>Paciente</label>
+                <div class="hr-search-wrap">
+                    <input type="text" class="hr-input" placeholder="Nombre o cédula..."
+                           @bind="BusquedaPaciente" @bind:event="oninput" @onkeyup="BuscarDebounced" />
+                </div>
+            </div>
+            <div class="hr-filter-group">
+                <label>Parámetro</label>
+                <select class="hr-select" value="@(Filtro.ParametroClinicoId?.ToString() ?? "")"
+                        @onchange="OnParametroChange">
+                    <option value="">Todos</option>
+                    @foreach (var p in Parametros)
+                    {
+                        <option value="@p.Id">@p.Nombre (@p.Codigo)</option>
+                    }
+                </select>
+            </div>
+            <div class="hr-filter-group">
+                <label>Desde</label>
+                <div class="hr-date-pair">
+                    <select class="hr-select hr-select-mes" value="@(Filtro.MesDe?.ToString() ?? "")" @onchange="OnMesDesdeChange">
+                        <option value="">Mes</option>
+                        @for (int m = 1; m <= 12; m++) { var mes = m; <option value="@mes">@NombreMes(mes)[..3]</option> }
+                    </select>
+                    <select class="hr-select hr-select-anio" value="@(Filtro.AnioDe?.ToString() ?? "")" @onchange="OnAnioDesdeChange">
+                        <option value="">Año</option>
+                        @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var an = a; <option value="@an">@an</option> }
+                    </select>
+                </div>
+            </div>
+            <div class="hr-filter-group">
+                <label>Hasta</label>
+                <div class="hr-date-pair">
+                    <select class="hr-select hr-select-mes" value="@(Filtro.MesHasta?.ToString() ?? "")" @onchange="OnMesHastaChange">
+                        <option value="">Mes</option>
+                        @for (int m = 1; m <= 12; m++) { var mes = m; <option value="@mes">@NombreMes(mes)[..3]</option> }
+                    </select>
+                    <select class="hr-select hr-select-anio" value="@(Filtro.AnioHasta?.ToString() ?? "")" @onchange="OnAnioHastaChange">
+                        <option value="">Año</option>
+                        @for (int a = DateTime.Now.Year; a >= DateTime.Now.Year - 3; a--) { var an = a; <option value="@an">@an</option> }
+                    </select>
+                </div>
+            </div>
+            <div class="hr-filter-group">
+                <label>Lote</label>
+                <select class="hr-select" value="@(Filtro.LoteId?.ToString() ?? "")" @onchange="OnLoteChange">
+                    <option value="">Todos</option>
+                    @foreach (var l in Lotes)
+                    {
+                        <option value="@l.Id">@(new DateTime(l.PeriodoAnio, l.PeriodoMes, 1).ToString("MMM yyyy")) — @Trunc(l.NombreArchivoOriginal, 22)</option>
+                    }
+                </select>
+            </div>
+            @if (Filtro.HayFiltrosActivos)
+            {
+                <div class="hr-filter-group" style="justify-content:flex-end">
+                    <label>&nbsp;</label>
+                    <button class="hr-btn hr-btn-sm hr-btn-outline" @onclick="LimpiarFiltros">✕ Limpiar</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="hr-meta-bar">
+        @if (!Cargando)
         {
-            <a href="/laboratorio/importar" class="dm-btn dm-btn-primary">📤 Importar resultados</a>
+            <span><strong>@Total</strong> resultado(s) @if (Filtro.HayFiltrosActivos) { <span class="hr-tag">filtrado</span> }</span>
+            @if (Total > 0) { <span class="hr-pag-info">Pág. @Filtro.Pagina / @TotalPaginasLista</span> }
         }
     </div>
-}
-else
-{
-    <div class="dm-card dm-card-table">
-        <div class="dm-table-responsive">
-            <table class="dm-table">
-                <thead>
-                    <tr>
-                        <th>Identificación</th>
-                        <th>Paciente</th>
-                        <th>Parámetro</th>
-                        <th class="dm-th-right">Valor</th>
-                        <th>Unidad</th>
-                        <th>Referencia</th>
-                        <th class="dm-th-center">Patológico</th>
-                        <th>Período</th>
-                        <th>Lote</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var r in Resultados)
-                    {
-                        <tr class="@(r.EsPatologico ? "dm-row-pato" : "")">
-                            <td><code class="dm-ident">@r.Paciente.Identificacion</code></td>
-                            <td>
-                                <span class="dm-paciente-nombre">@r.Paciente.NombreCompleto</span>
-                            </td>
-                            <td>
-                                <div class="dm-param-cell">
-                                    <span class="dm-param-nombre">
-                                        @(r.ParametroClinico?.Nombre ?? r.ParametroRaw ?? "—")
-                                    </span>
-                                    @if (r.ParametroClinico?.Codigo != null)
-                                    {
-                                        <span class="dm-param-codigo">@r.ParametroClinico.Codigo</span>
-                                    }
-                                </div>
-                            </td>
-                            <td class="dm-td-right">
-                                <span class="dm-valor @(r.EsPatologico ? "dm-valor-pato" : "dm-valor-ok")">
-                                    @(r.ValorNumerico.HasValue
-                                        ? r.ValorNumerico.Value.ToString("G6")
-                                        : r.ResultadoTexto)
-                                </span>
-                            </td>
-                            <td class="dm-unidad">@(r.UnidadMedida ?? "—")</td>
-                            <td class="dm-referencia">
-                                @if (r.ValorMinReferencia.HasValue || r.ValorMaxReferencia.HasValue)
-                                {
-                                    <span>@(r.ValorMinReferencia?.ToString("G5") ?? "—") – @(r.ValorMaxReferencia?.ToString("G5") ?? "—")</span>
-                                }
-                                else { <span class="dm-sin-ref">sin ref.</span> }
-                            </td>
-                            <td class="dm-td-center">
-                                @if (r.EsPatologico)
-                                {
-                                    <span class="dm-badge dm-badge-pato">⚠ Sí</span>
-                                }
-                                else
-                                {
-                                    <span class="dm-badge dm-badge-normal">✓ No</span>
-                                }
-                            </td>
-                            <td>
-                                <span class="dm-periodo-badge">@r.PeriodDate.ToString("MMM yyyy")</span>
-                            </td>
-                            <td>
-                                <span class="dm-lote-nombre" title="@r.Lote?.NombreArchivoOriginal">
-                                    @TruncNombre(r.Lote?.NombreArchivoOriginal ?? "—", 25)
-                                </span>
-                            </td>
+
+    @if (Cargando)
+    {
+        <div class="hr-loading"><div class="hr-spinner"></div><p>Cargando...</p></div>
+    }
+    else if (!Resultados.Any())
+    {
+        <div class="hr-empty">
+            <div class="hr-empty-icon">🔬</div>
+            <h3>@(Filtro.HayFiltrosActivos ? "Sin resultados para este filtro" : "Sin resultados importados")</h3>
+            <p>@(Filtro.HayFiltrosActivos ? "Ajusta los filtros." : "Importa un archivo para ver resultados aquí.")</p>
+        </div>
+    }
+    else
+    {
+        <div class="hr-card">
+            <div class="hr-table-wrap">
+                <table class="hr-table">
+                    <thead>
+                        <tr>
+                            <th>Identificación</th>
+                            <th>Paciente</th>
+                            <th>Parámetro</th>
+                            <th class="hr-th-r">Valor</th>
+                            <th>Unidad</th>
+                            <th>Referencia</th>
+                            <th class="hr-th-c">Patológico</th>
+                            <th>Período</th>
+                            <th>Lote</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Resultados)
+                        {
+                            <tr class="@(r.EsPatologico ? "hr-row-pato" : "")">
+                                <td><code class="hr-ident">@r.Paciente.Identificacion</code></td>
+                                <td><span class="hr-pac-nombre">@r.Paciente.NombreCompleto</span></td>
+                                <td>
+                                    <div class="hr-param-cell">
+                                        <span class="hr-param-nombre">@(r.ParametroClinico?.Nombre ?? r.ParametroRaw ?? "—")</span>
+                                        @if (r.ParametroClinico?.Codigo != null)
+                                        { <span class="hr-param-cod">@r.ParametroClinico.Codigo</span> }
+                                    </div>
+                                </td>
+                                <td class="hr-td-r">
+                                    <span class="hr-valor @(r.EsPatologico ? "hr-valor-pato" : "")">
+                                        @(r.ValorNumerico.HasValue ? r.ValorNumerico.Value.ToString("G6") : r.ResultadoTexto)
+                                    </span>
+                                </td>
+                                <td class="hr-unidad">@(r.UnidadMedida ?? "—")</td>
+                                <td class="hr-referencia">
+                                    @if (r.ValorMinReferencia.HasValue || r.ValorMaxReferencia.HasValue)
+                                    { <span>@(r.ValorMinReferencia?.ToString("G5") ?? "—") – @(r.ValorMaxReferencia?.ToString("G5") ?? "—")</span> }
+                                    else { <span class="hr-sin-ref">sin ref.</span> }
+                                </td>
+                                <td class="hr-td-c">
+                                    @if (r.EsPatologico)
+                                    { <span class="hr-badge hr-badge-pato">⚠ Sí</span> }
+                                    else
+                                    { <span class="hr-badge hr-badge-ok">✓ No</span> }
+                                </td>
+                                <td><span class="hr-periodo">@r.PeriodDate.ToString("MMM yyyy")</span></td>
+                                <td><span class="hr-lote">@Trunc(r.Lote?.NombreArchivoOriginal ?? "—", 25)</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="hr-pagination">
+                <button class="hr-btn hr-btn-sm hr-btn-outline" @onclick="PaginaAnterior" disabled="@(Filtro.Pagina <= 1 || Cargando)">← Ant.</button>
+                <span class="hr-pag-pages">
+                    @{ var desde = Math.Max(1, Filtro.Pagina - 2); var hasta_ = Math.Min(TotalPaginasLista, Filtro.Pagina + 2); }
+                    @if (desde > 1) { <span class="hr-ellipsis">…</span> }
+                    @for (int pg = desde; pg <= hasta_; pg++) { var p = pg;
+                        <button class="hr-btn hr-btn-sm @(p == Filtro.Pagina ? "hr-btn-pag-act" : "hr-btn-outline")"
+                                @onclick="() => IrAPagina(p)">@p</button> }
+                    @if (hasta_ < TotalPaginasLista) { <span class="hr-ellipsis">…</span> }
+                </span>
+                <button class="hr-btn hr-btn-sm hr-btn-outline" @onclick="PaginaSiguiente" disabled="@(Filtro.Pagina >= TotalPaginasLista || Cargando)">Sig. →</button>
+            </div>
         </div>
-
-        <!-- Paginación -->
-        <div class="dm-pagination">
-            <button class="dm-btn dm-btn-outline dm-btn-sm"
-                    @onclick="PaginaAnterior" disabled="@(Filtro.Pagina <= 1 || Cargando)">
-                ← Anterior
-            </button>
-
-            <span class="dm-pagination-pages">
-                @{ var desde = Math.Max(1, Filtro.Pagina - 2); var hasta = Math.Min(TotalPaginas, Filtro.Pagina + 2); }
-                @if (desde > 1) { <span class="dm-pag-ellipsis">…</span> }
-                @for (int pg = desde; pg <= hasta; pg++)
-                {
-                    var p = pg;
-                    <button class="dm-btn dm-btn-sm @(p == Filtro.Pagina ? "dm-btn-pag-active" : "dm-btn-outline")"
-                            @onclick="() => IrAPagina(p)">@p</button>
-                }
-                @if (hasta < TotalPaginas) { <span class="dm-pag-ellipsis">…</span> }
-            </span>
-
-            <button class="dm-btn dm-btn-outline dm-btn-sm"
-                    @onclick="PaginaSiguiente" disabled="@(Filtro.Pagina >= TotalPaginas || Cargando)">
-                Siguiente →
-            </button>
-        </div>
-    </div>
+    }
 }
 
+<!-- ═══════════════════════════════════════════════════════════════════════
+     ESTILOS
+════════════════════════════════════════════════════════════════════════ -->
 <style>
-    .dm-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
-    .dm-page-title { font-size: 1.75rem; font-weight: 700; color: #1e293b; margin: 0; }
-    .dm-page-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.875rem; }
-    .dm-page-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    /* ─ Header ─────────────────────────────────────────────── */
+    .hr-header        { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem; flex-wrap:wrap; gap:.75rem; }
+    .hr-title         { font-size:1.75rem; font-weight:700; color:#1e293b; margin:0; }
+    .hr-subtitle      { color:#64748b; margin:.2rem 0 0; font-size:.875rem; }
+    .hr-header-actions { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
 
-    .dm-btn { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.875rem;
-              text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
-              cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap; }
-    .dm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .dm-btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; border-radius: 6px; }
-    .dm-btn-primary { background: #0ea5e9; color: white; }
-    .dm-btn-primary:hover { background: #0284c7; color: white; }
-    .dm-btn-outline { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
-    .dm-btn-outline:hover:not(:disabled) { background: #f8fafc; }
-    .dm-btn-excel { background: #16a34a; color: white; }
-    .dm-btn-excel:hover:not(:disabled) { background: #15803d; }
+    /* ─ Toggle vista ────────────────────────────────────────── */
+    .hr-vista-toggle  { display:flex; background:#f1f5f9; border-radius:8px; padding:3px; gap:2px; }
+    .hr-vista-btn     { display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .75rem;
+                        border-radius:6px; border:none; background:transparent; cursor:pointer;
+                        font-size:.8rem; font-weight:600; color:#64748b; transition:all .15s; }
+    .hr-vista-active  { background:white; color:#0ea5e9; box-shadow:0 1px 3px rgba(0,0,0,.1); }
 
-    .dm-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 1rem; }
-    .dm-card-filters { padding: 1.25rem; }
-    .dm-card-table { }
+    /* ─ Filtros ─────────────────────────────────────────────── */
+    .hr-card          { background:white; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.08);
+                        overflow:hidden; margin-bottom:1rem; }
+    .hr-filters-card  { padding:1rem 1.25rem; overflow:visible; }
+    .hr-pivot-filters { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.875rem; align-items:end; }
+    .hr-list-filters  { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.875rem; align-items:end; }
+    .hr-filter-group  { display:flex; flex-direction:column; gap:.3rem; }
+    .hr-filter-group label { font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
 
-    .dm-filters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; align-items: end; }
-    .dm-filter-field { display: flex; flex-direction: column; gap: 0.3rem; }
-    .dm-filter-field label { font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
-    .dm-filter-clear { justify-content: flex-end; }
+    .hr-search-wrap   { display:flex; align-items:center; background:white; border:1.5px solid #e2e8f0;
+                        border-radius:8px; padding:0 .625rem; }
+    .hr-search-wrap:focus-within { border-color:#0ea5e9; }
+    .hr-input         { border:none; outline:none; font-size:.875rem; color:#374151;
+                        padding:.5rem 0; background:transparent; width:100%; }
+    .hr-clear-btn     { background:none; border:none; color:#94a3b8; cursor:pointer; }
+    .hr-select        { border:1.5px solid #e2e8f0; border-radius:8px; padding:.5rem .625rem;
+                        font-size:.875rem; color:#374151; background:white; width:100%; outline:none; }
+    .hr-date-pair     { display:flex; gap:.4rem; }
+    .hr-select-mes    { flex:0 0 90px; }
+    .hr-select-anio   { flex:1; }
 
-    .dm-search-box { display: flex; align-items: center; gap: 0.5rem; background: white;
-                     border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0 0.75rem; }
-    .dm-search-input { border: none; outline: none; font-size: 0.875rem; color: #374151;
-                       padding: 0.5rem 0; width: 100%; background: transparent; }
-    .dm-select { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;
-                 font-size: 0.875rem; color: #374151; background: white; cursor: pointer; outline: none; width: 100%; }
-    .dm-date-range { display: flex; gap: 0.4rem; }
-    .dm-select-mes { flex: 0 0 80px; }
-    .dm-select-anio { flex: 1; }
+    /* ─ Meta bar (lista) ─────────────────────────────────────── */
+    .hr-meta-bar      { display:flex; justify-content:space-between; align-items:center;
+                        margin-bottom:.75rem; padding:0 .25rem; font-size:.875rem; color:#374151; }
+    .hr-meta-count    { font-size:.85rem; color:#64748b; }
+    .hr-tag           { background:#dbeafe; color:#1d4ed8; font-size:.7rem; font-weight:700;
+                        padding:.15rem .45rem; border-radius:10px; margin-left:.35rem; }
+    .hr-pag-info      { font-size:.8rem; color:#64748b; }
 
-    .dm-results-meta { display: flex; justify-content: space-between; align-items: center;
-                       margin-bottom: 0.75rem; padding: 0 0.25rem; }
-    .dm-results-count { font-size: 0.875rem; color: #374151; }
-    .dm-filtered-tag { background: #dbeafe; color: #1d4ed8; font-size: 0.7rem; font-weight: 700;
-                       padding: 0.15rem 0.45rem; border-radius: 10px; margin-left: 0.5rem; }
-    .dm-pagination-info { font-size: 0.8rem; color: #64748b; }
+    /* ─ Pivot table ─────────────────────────────────────────── */
+    .hr-pivot-card    { }
+    .hr-pivot-scroll  { overflow-x:auto; }
+    .hr-pivot-table   { border-collapse:collapse; font-size:.8rem; min-width:max-content; width:100%; }
+    .hr-pivot-table th { background:#f8fafc; color:#374151; font-weight:700; white-space:nowrap;
+                          padding:.625rem .75rem; border-bottom:2px solid #e2e8f0; text-align:center;
+                          font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; }
+    .hr-pivot-table td { padding:.5rem .75rem; border-bottom:1px solid #f1f5f9;
+                          text-align:center; white-space:nowrap; font-size:.8rem; }
+    .hr-pivot-table tbody tr:hover td { background:#f8fafc; }
+    .hr-pivot-table tbody tr:last-child td { border-bottom:none; }
 
-    .dm-table-responsive { overflow-x: auto; }
-    .dm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    .dm-table th { background: #f8fafc; color: #374151; font-weight: 700; text-align: left;
-                   padding: 0.875rem 1rem; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
-                   font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
-    .dm-table td { padding: 0.625rem 1rem; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
-    .dm-table tbody tr:hover { background: #f8fafc; }
-    .dm-table tbody tr:last-child td { border-bottom: none; }
-    .dm-th-right { text-align: right; }
-    .dm-td-right { text-align: right; }
-    .dm-th-center { text-align: center; }
-    .dm-td-center { text-align: center; }
+    /* columnas fijas a la izquierda */
+    .hr-th-fixed, .hr-td-fixed { position:sticky; z-index:2; background:inherit; }
+    .hr-th-tipo,  .hr-th-tipo  { left:0;      min-width:90px; text-align:left; }
+    .hr-th-cedula              { left:90px;   min-width:110px; text-align:left; }
+    .hr-th-paciente            { left:200px;  min-width:200px; text-align:left; }
+    .hr-td-fixed:first-child   { left:0;      background:inherit; }
+    /* bg matching para las fijas */
+    .hr-pivot-table thead .hr-th-fixed { background:#f8fafc !important; z-index:3; }
+    .hr-pivot-table tbody tr td.hr-td-fixed { z-index:1; }
 
-    .dm-row-pato { background: #fff5f5 !important; }
-    .dm-row-pato:hover { background: #fee2e2 !important; }
+    .hr-th-param      { min-width:80px; max-width:110px; }
+    .hr-td-nombre     { font-weight:600; color:#1e293b; text-align:left; }
 
-    .dm-ident { font-family: monospace; font-size: 0.8rem; background: #f1f5f9;
-                padding: 0.15rem 0.4rem; border-radius: 4px; color: #475569; }
-    .dm-paciente-nombre { font-weight: 600; color: #1e293b; font-size: 0.85rem; }
+    .hr-cell-ok       { color:#374151; }
+    .hr-cell-pato     { color:#dc2626; font-weight:700; background:#fff5f5; }
+    .hr-cell-empty    { color:#cbd5e1; }
 
-    .dm-param-cell { display: flex; flex-direction: column; gap: 0.1rem; }
-    .dm-param-nombre { font-weight: 600; font-size: 0.85rem; color: #1e293b; }
-    .dm-param-codigo { font-size: 0.7rem; color: #64748b; font-family: monospace; }
+    .hr-row-pato td   { background:#fff8f8; }
 
-    .dm-valor { font-weight: 700; font-size: 0.9rem; }
-    .dm-valor-pato { color: #dc2626; }
-    .dm-valor-ok { color: #374151; }
+    .hr-badge-tipo    { display:inline-block; background:#f1f5f9; color:#475569;
+                        padding:.15rem .5rem; border-radius:6px; font-size:.72rem; font-weight:600; }
 
-    .dm-unidad { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
-    .dm-referencia { font-size: 0.78rem; color: #64748b; white-space: nowrap; }
-    .dm-sin-ref { color: #cbd5e1; font-style: italic; }
+    .hr-carry-note    { font-size:.78rem; color:#64748b; text-align:center; margin-top:.5rem; }
 
-    .dm-badge { padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
-    .dm-badge-pato { background: #fee2e2; color: #991b1b; }
-    .dm-badge-normal { background: #dcfce7; color: #166534; }
+    /* ─ Lista table ─────────────────────────────────────────── */
+    .hr-table-wrap    { overflow-x:auto; }
+    .hr-table         { width:100%; border-collapse:collapse; font-size:.875rem; }
+    .hr-table th      { background:#f8fafc; color:#374151; font-weight:700; text-align:left;
+                        padding:.875rem 1rem; border-bottom:2px solid #e2e8f0; white-space:nowrap;
+                        font-size:.75rem; text-transform:uppercase; letter-spacing:.03em; }
+    .hr-table td      { padding:.625rem 1rem; border-bottom:1px solid #f1f5f9; color:#374151; vertical-align:middle; }
+    .hr-table tbody tr:hover { background:#f8fafc; }
+    .hr-table tbody tr:last-child td { border-bottom:none; }
+    .hr-th-r  { text-align:right; }
+    .hr-th-c  { text-align:center; }
+    .hr-td-r  { text-align:right; }
+    .hr-td-c  { text-align:center; }
 
-    .dm-periodo-badge { background: #f1f5f9; color: #475569; padding: 0.2rem 0.55rem;
-                        border-radius: 6px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
-    .dm-lote-nombre { font-size: 0.78rem; color: #64748b; }
+    .hr-ident         { font-family:monospace; font-size:.8rem; background:#f1f5f9;
+                        padding:.15rem .4rem; border-radius:4px; color:#475569; }
+    .hr-pac-nombre    { font-weight:600; color:#1e293b; font-size:.85rem; }
+    .hr-param-cell    { display:flex; flex-direction:column; gap:.1rem; }
+    .hr-param-nombre  { font-weight:600; color:#1e293b; }
+    .hr-param-cod     { font-size:.7rem; color:#64748b; font-family:monospace; }
+    .hr-valor         { font-weight:700; font-size:.9rem; color:#374151; }
+    .hr-valor-pato    { color:#dc2626; }
+    .hr-unidad        { font-size:.8rem; color:#64748b; }
+    .hr-referencia    { font-size:.78rem; color:#64748b; }
+    .hr-sin-ref       { color:#cbd5e1; font-style:italic; }
+    .hr-badge         { padding:.2rem .5rem; border-radius:12px; font-size:.7rem; font-weight:700; }
+    .hr-badge-pato    { background:#fee2e2; color:#991b1b; }
+    .hr-badge-ok      { background:#dcfce7; color:#166534; }
+    .hr-periodo       { background:#f1f5f9; color:#475569; padding:.2rem .55rem;
+                        border-radius:6px; font-size:.75rem; font-weight:700; }
+    .hr-lote          { font-size:.78rem; color:#64748b; }
 
-    .dm-pagination { display: flex; justify-content: space-between; align-items: center;
-                     padding: 0.875rem 1rem; border-top: 1px solid #f1f5f9; background: #f8fafc; gap: 0.5rem; }
-    .dm-pagination-pages { display: flex; gap: 0.25rem; align-items: center; }
-    .dm-btn-pag-active { background: #0ea5e9 !important; color: white !important; border-color: #0ea5e9 !important; }
-    .dm-pag-ellipsis { color: #94a3b8; font-size: 0.85rem; padding: 0 0.25rem; }
+    /* ─ Paginación ──────────────────────────────────────────── */
+    .hr-pagination    { display:flex; justify-content:space-between; align-items:center;
+                        padding:.875rem 1rem; border-top:1px solid #f1f5f9; background:#f8fafc; gap:.5rem; }
+    .hr-pag-pages     { display:flex; gap:.25rem; align-items:center; }
+    .hr-btn-pag-act   { background:#0ea5e9 !important; color:white !important; border-color:#0ea5e9 !important; }
+    .hr-ellipsis      { color:#94a3b8; font-size:.85rem; padding:0 .25rem; }
 
-    .dm-loading-container { display: flex; flex-direction: column; align-items: center; padding: 4rem 2rem; color: #64748b; gap: 1rem; }
-    .dm-spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
-                  border-radius: 50%; animation: spin 0.8s linear infinite; }
-    @@keyframes spin { to { transform: rotate(360deg); } }
+    /* ─ Botones ─────────────────────────────────────────────── */
+    .hr-btn           { display:inline-flex; align-items:center; gap:.4rem; padding:.5rem 1rem;
+                        border-radius:8px; font-weight:600; font-size:.875rem; cursor:pointer;
+                        border:none; text-decoration:none; transition:all .15s; white-space:nowrap; }
+    .hr-btn:disabled  { opacity:.5; cursor:not-allowed; }
+    .hr-btn-sm        { padding:.35rem .75rem; font-size:.8rem; border-radius:6px; }
+    .hr-btn-primary   { background:#0ea5e9; color:white; }
+    .hr-btn-primary:hover:not(:disabled) { background:#0284c7; color:white; }
+    .hr-btn-outline   { background:white; color:#374151; border:1.5px solid #e2e8f0; }
+    .hr-btn-outline:hover:not(:disabled) { background:#f8fafc; }
+    .hr-btn-excel     { background:#16a34a; color:white; }
+    .hr-btn-excel:hover:not(:disabled) { background:#15803d; }
 
-    .dm-empty-state { text-align: center; padding: 4rem 2rem; color: #64748b; }
-    .dm-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
-    .dm-empty-title { font-size: 1.2rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
-    .dm-empty-desc { font-size: 0.9rem; margin-bottom: 1.5rem; }
-
-    .dm-error-banner { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 8px;
-                       padding: 0.875rem 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem;
-                       align-items: center; font-size: 0.875rem; font-weight: 500; }
+    /* ─ Estados ─────────────────────────────────────────────── */
+    .hr-loading       { display:flex; flex-direction:column; align-items:center; padding:4rem; color:#64748b; gap:1rem; }
+    .hr-spinner       { width:36px; height:36px; border:3px solid #e2e8f0; border-top-color:#0ea5e9;
+                        border-radius:50%; animation:hr-spin .8s linear infinite; }
+    @@keyframes hr-spin { to { transform:rotate(360deg); } }
+    .hr-empty         { text-align:center; padding:4rem 2rem; color:#64748b; }
+    .hr-empty-icon    { font-size:3rem; margin-bottom:1rem; }
+    .hr-empty h3      { font-size:1.1rem; font-weight:700; color:#374151; margin-bottom:.5rem; }
+    .hr-empty p       { margin-bottom:1.25rem; }
+    .hr-error-banner  { background:#fee2e2; color:#991b1b; border-radius:8px; padding:.75rem 1rem;
+                        margin-bottom:1rem; display:flex; gap:.75rem; align-items:center; font-size:.875rem; }
+    .hr-error-banner button { margin-left:auto; background:none; border:none; cursor:pointer; }
 </style>
 
 @code {
-    private List<ResultadoLaboratorio> Resultados = new();
-    private List<ParametroClinico> Parametros = new();
-    private List<LoteImportacion> Lotes = new();
-    private ResultadoFiltro Filtro = new();
-    private string BusquedaPaciente = string.Empty;
-    private int Total = 0;
-    private string? ErrorMensaje;
-    private int TotalPaginas => Total == 0 ? 1 : (int)Math.Ceiling(Total / (double)Filtro.Tamano);
-    private bool Cargando = true;
+    // ── Modo vista ─────────────────────────────────────────────────────────────
+    private string _vista = "pivot"; // "pivot" | "lista"
     private Guid TenantId;
+
+    // ── Pivot state ────────────────────────────────────────────────────────────
+    private int _pivotMes  = DateTime.Today.Month;
+    private int _pivotAnio = DateTime.Today.Year;
+    private string _filtroTipo        = "";
+    private string _filtroNombrePivot = "";
+    private List<ResultadoLaboratorio> _rawResultados = new();
+    private List<PivotFila>   _filasPivot    = new();
+    private List<PivotColumna> _columnasPivot = new();
+    private List<string> _tiposAtencion = new();
+    private int _pivotPagina = 1;
+    private const int PivotTamano = 50;
+    private int TotalPaginasPivot => Math.Max(1, (int)Math.Ceiling(_filasPivot.Count / (double)PivotTamano));
+    private List<PivotFila> PaginaPivot => _filasPivot.Skip((_pivotPagina - 1) * PivotTamano).Take(PivotTamano).ToList();
+
+    // ── Lista state ────────────────────────────────────────────────────────────
+    private List<ResultadoLaboratorio> Resultados  = new();
+    private List<ParametroClinico>     Parametros  = new();
+    private List<LoteImportacion>      Lotes       = new();
+    private ResultadoFiltro            Filtro      = new();
+    private string  BusquedaPaciente   = string.Empty;
+    private int     Total              = 0;
+    private int     TotalPaginasLista  => Total == 0 ? 1 : (int)Math.Ceiling(Total / (double)Filtro.Tamano);
+    private bool    Cargando           = true;
+    private string? ErrorMensaje;
     private System.Threading.CancellationTokenSource? _debounce;
 
     protected override async Task OnInitializedAsync()
     {
-        var auth = await AuthState.GetAuthenticationStateAsync();
+        var auth      = await AuthState.GetAuthenticationStateAsync();
         var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
         TenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
 
-        try
-        {
-            Parametros = await ParametroRepo.GetAllAsync();
-            Lotes = await LoteRepo.GetByTenantAsync(TenantId, 1, 100);
-            (Resultados, Total) = await ResultadoRepo.GetPagedAsync(TenantId, Filtro);
-        }
-        catch (Exception ex)
-        {
-            ErrorMensaje = ex.Message;
-        }
-        finally
-        {
-            Cargando = false;
-        }
+        Parametros = await ParametroRepo.GetAllAsync();
+        Lotes      = await LoteRepo.GetByTenantAsync(TenantId, 1, 100);
+
+        await CargarPivotAsync();
     }
 
-    private async Task CargarAsync()
+    // ── Cambio de vista ────────────────────────────────────────────────────────
+
+    private async Task SetVista(char v)
+    {
+        _vista = v == 'p' ? "pivot" : "lista";
+        if (_vista == "lista" && !Resultados.Any())
+            await CargarListaAsync();
+    }
+
+    private async Task RefrescarAsync()
+    {
+        if (_vista == "pivot") await CargarPivotAsync();
+        else await CargarListaAsync();
+    }
+
+    // ── PIVOT: carga y construcción ───────────────────────────────────────────
+
+    private async Task CargarPivotAsync()
     {
         Cargando = true;
         ErrorMensaje = null;
         StateHasChanged();
         try
         {
-            (Resultados, Total) = await ResultadoRepo.GetPagedAsync(TenantId, Filtro);
+            var filtro = new ResultadoFiltro
+            {
+                MesDe    = _pivotMes,  AnioDe    = _pivotAnio,
+                MesHasta = _pivotMes,  AnioHasta = _pivotAnio,
+                Tamano   = 10_000
+            };
+            _rawResultados = await ResultadoRepo.GetForExportAsync(TenantId, filtro);
+            _tiposAtencion = _rawResultados.Select(r => r.TipoAtencion).Where(x => x != null)
+                                           .Distinct().OrderBy(x => x).Select(x => x!).ToList();
+            ConstruirPivot();
         }
-        catch (Exception ex)
-        {
-            ErrorMensaje = ex.Message;
-        }
-        finally
-        {
-            Cargando = false;
-        }
+        catch (Exception ex) { ErrorMensaje = ex.Message; }
+        finally { Cargando = false; }
     }
 
-    private async Task BuscarDebounced()
+    private void ConstruirPivot()
     {
-        Filtro.BusquedaPaciente = BusquedaPaciente;
-        Filtro.Pagina = 1;
-        _debounce?.Cancel();
-        _debounce?.Dispose();
-        _debounce = new System.Threading.CancellationTokenSource();
-        var token = _debounce.Token;
+        var datos = _rawResultados.AsEnumerable();
+        if (!string.IsNullOrEmpty(_filtroTipo))
+            datos = datos.Where(r => r.TipoAtencion == _filtroTipo);
+        if (!string.IsNullOrWhiteSpace(_filtroNombrePivot))
+        {
+            var b = _filtroNombrePivot.Trim().ToUpperInvariant();
+            datos = datos.Where(r =>
+                r.Paciente.Identificacion.ToUpperInvariant().Contains(b) ||
+                r.Paciente.NombreCompleto.ToUpperInvariant().Contains(b));
+        }
+        var lista = datos.ToList();
+
+        // Columnas: un PivotColumna por parámetro único (por ParametroClinicoId o ParametroRaw)
+        _columnasPivot = lista
+            .GroupBy(r => r.ParametroClinicoId.HasValue
+                ? r.ParametroClinicoId.Value.ToString()
+                : "__" + (r.ParametroRaw?.Trim().ToUpperInvariant() ?? "?"))
+            .Select(g =>
+            {
+                var first = g.First();
+                var nombre = first.ParametroClinico?.Nombre ?? first.ParametroRaw ?? "?";
+                return new PivotColumna
+                {
+                    Key        = g.Key,
+                    Codigo     = first.ParametroClinico?.Codigo ?? "",
+                    Nombre     = nombre,
+                    NombreCorto = nombre.Length > 10 ? nombre[..10] + "." : nombre,
+                    Orden      = first.ParametroClinico?.OrdenVisualizacion ?? 9999
+                };
+            })
+            .OrderBy(c => c.Orden).ThenBy(c => c.Nombre)
+            .ToList();
+
+        // Filas: un PivotFila por paciente
+        _filasPivot = lista
+            .GroupBy(r => r.PacienteId)
+            .Select(g =>
+            {
+                var first = g.First();
+                var fila = new PivotFila
+                {
+                    PacienteId   = g.Key,
+                    Identificacion = first.Paciente.Identificacion,
+                    Nombre       = first.Paciente.NombreCompleto,
+                    TipoAtencion = first.TipoAtencion,
+                    PlanSalud    = first.PlanSalud
+                };
+                foreach (var r in g)
+                {
+                    var key = r.ParametroClinicoId.HasValue
+                        ? r.ParametroClinicoId.Value.ToString()
+                        : "__" + (r.ParametroRaw?.Trim().ToUpperInvariant() ?? "?");
+                    fila.Celdas[key] = new PivotCelda(r.ValorNumerico, r.UnidadMedida, r.EsPatologico, r.ResultadoTexto);
+                    if (r.EsPatologico) fila.TienePatologico = true;
+                }
+                return fila;
+            })
+            .OrderBy(f => f.TipoAtencion).ThenBy(f => f.Nombre)
+            .ToList();
+
+        _pivotPagina = 1;
+    }
+
+    private void FiltrarPivot() { ConstruirPivot(); StateHasChanged(); }
+
+    private System.Threading.CancellationTokenSource? _pivotDebounce;
+    private async Task OnBusquedaPivotChange()
+    {
+        _pivotDebounce?.Cancel(); _pivotDebounce?.Dispose();
+        _pivotDebounce = new System.Threading.CancellationTokenSource();
+        var token = _pivotDebounce.Token;
         try
         {
             await Task.Delay(350, token);
-            await CargarAsync();
+            FiltrarPivot();
         }
         catch (TaskCanceledException) { }
     }
 
-    private async Task PaginaAnterior()
+    private void PivotAnterior()   { if (_pivotPagina > 1) _pivotPagina--; }
+    private void PivotSiguiente()  { if (_pivotPagina < TotalPaginasPivot) _pivotPagina++; }
+
+    // ── LISTA: carga ───────────────────────────────────────────────────────────
+
+    private async Task CargarListaAsync()
     {
-        if (Filtro.Pagina <= 1) return;
-        Filtro.Pagina--;
-        await CargarAsync();
+        Cargando = true;
+        ErrorMensaje = null;
+        StateHasChanged();
+        try   { (Resultados, Total) = await ResultadoRepo.GetPagedAsync(TenantId, Filtro); }
+        catch (Exception ex) { ErrorMensaje = ex.Message; }
+        finally { Cargando = false; }
     }
 
-    private async Task PaginaSiguiente()
+    private async Task BuscarDebounced()
     {
-        if (Filtro.Pagina >= TotalPaginas) return;
-        Filtro.Pagina++;
-        await CargarAsync();
+        Filtro.BusquedaPaciente = BusquedaPaciente; Filtro.Pagina = 1;
+        _debounce?.Cancel(); _debounce?.Dispose();
+        _debounce = new System.Threading.CancellationTokenSource();
+        var token = _debounce.Token;
+        try { await Task.Delay(350, token); await CargarListaAsync(); }
+        catch (TaskCanceledException) { }
     }
 
-    private async Task IrAPagina(int pagina)
-    {
-        Filtro.Pagina = pagina;
-        await CargarAsync();
-    }
+    private async Task PaginaAnterior()  { if (Filtro.Pagina > 1) { Filtro.Pagina--; await CargarListaAsync(); } }
+    private async Task PaginaSiguiente() { if (Filtro.Pagina < TotalPaginasLista) { Filtro.Pagina++; await CargarListaAsync(); } }
+    private async Task IrAPagina(int p)  { Filtro.Pagina = p; await CargarListaAsync(); }
 
     private async Task OnParametroChange(ChangeEventArgs e)
-    {
-        Filtro.ParametroClinicoId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
-        Filtro.Pagina = 1;
-        await CargarAsync();
-    }
-
+    { Filtro.ParametroClinicoId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; Filtro.Pagina = 1; await CargarListaAsync(); }
     private async Task OnMesDesdeChange(ChangeEventArgs e)
-    {
-        Filtro.MesDe = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
-        Filtro.Pagina = 1;
-        await CargarAsync();
-    }
-
+    { Filtro.MesDe = int.TryParse(e.Value?.ToString(), out var i) ? i : null; Filtro.Pagina = 1; await CargarListaAsync(); }
     private async Task OnAnioDesdeChange(ChangeEventArgs e)
-    {
-        Filtro.AnioDe = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
-        Filtro.Pagina = 1;
-        await CargarAsync();
-    }
-
+    { Filtro.AnioDe = int.TryParse(e.Value?.ToString(), out var i) ? i : null; Filtro.Pagina = 1; await CargarListaAsync(); }
     private async Task OnMesHastaChange(ChangeEventArgs e)
-    {
-        Filtro.MesHasta = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
-        Filtro.Pagina = 1;
-        await CargarAsync();
-    }
-
+    { Filtro.MesHasta = int.TryParse(e.Value?.ToString(), out var i) ? i : null; Filtro.Pagina = 1; await CargarListaAsync(); }
     private async Task OnAnioHastaChange(ChangeEventArgs e)
-    {
-        Filtro.AnioHasta = int.TryParse(e.Value?.ToString(), out var i) ? i : null;
-        Filtro.Pagina = 1;
-        await CargarAsync();
-    }
-
+    { Filtro.AnioHasta = int.TryParse(e.Value?.ToString(), out var i) ? i : null; Filtro.Pagina = 1; await CargarListaAsync(); }
     private async Task OnLoteChange(ChangeEventArgs e)
-    {
-        Filtro.LoteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
-        Filtro.Pagina = 1;
-        await CargarAsync();
-    }
+    { Filtro.LoteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; Filtro.Pagina = 1; await CargarListaAsync(); }
+    private async Task LimpiarFiltros() { Filtro = new ResultadoFiltro(); BusquedaPaciente = string.Empty; await CargarListaAsync(); }
 
-    private async Task LimpiarFiltros()
-    {
-        Filtro = new ResultadoFiltro();
-        BusquedaPaciente = string.Empty;
-        await CargarAsync();
-    }
+    // ── Exportar ───────────────────────────────────────────────────────────────
 
     private void ExportarExcel()
     {
+        if (_vista == "pivot")
+        {
+            var url = $"/api/reportes/resultados-excel?mesDe={_pivotMes}&anioDe={_pivotAnio}&mesHasta={_pivotMes}&anioHasta={_pivotAnio}";
+            Nav.NavigateTo(url, forceLoad: true);
+            return;
+        }
         var qs = new List<string>();
-        if (!string.IsNullOrWhiteSpace(Filtro.BusquedaPaciente))
-            qs.Add($"busquedaPaciente={Uri.EscapeDataString(Filtro.BusquedaPaciente)}");
-        if (Filtro.ParametroClinicoId.HasValue)
-            qs.Add($"parametroClinicoId={Filtro.ParametroClinicoId}");
+        if (!string.IsNullOrWhiteSpace(Filtro.BusquedaPaciente)) qs.Add($"busquedaPaciente={Uri.EscapeDataString(Filtro.BusquedaPaciente)}");
+        if (Filtro.ParametroClinicoId.HasValue) qs.Add($"parametroClinicoId={Filtro.ParametroClinicoId}");
         if (Filtro.AnioDe.HasValue)   qs.Add($"anioDe={Filtro.AnioDe}");
         if (Filtro.MesDe.HasValue)    qs.Add($"mesDe={Filtro.MesDe}");
         if (Filtro.AnioHasta.HasValue) qs.Add($"anioHasta={Filtro.AnioHasta}");
         if (Filtro.MesHasta.HasValue)  qs.Add($"mesHasta={Filtro.MesHasta}");
         if (Filtro.LoteId.HasValue)   qs.Add($"loteId={Filtro.LoteId}");
-
-        var url = "/api/reportes/resultados-excel" + (qs.Any() ? "?" + string.Join("&", qs) : "");
-        Nav.NavigateTo(url, forceLoad: true);
+        Nav.NavigateTo("/api/reportes/resultados-excel" + (qs.Any() ? "?" + string.Join("&", qs) : ""), forceLoad: true);
     }
 
-    private static string TruncNombre(string? s, int max)
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private static string NombreMes(int m) => m switch
     {
-        if (string.IsNullOrEmpty(s)) return "—";
-        return s.Length > max ? s[..max] + "…" : s;
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+
+    private static string Trunc(string? s, int max) =>
+        string.IsNullOrEmpty(s) ? "—" : s.Length > max ? s[..max] + "…" : s;
+
+    public void Dispose() { _debounce?.Dispose(); _pivotDebounce?.Dispose(); }
+
+    // ── Tipos internos para pivot ──────────────────────────────────────────────
+
+    private class PivotFila
+    {
+        public Guid   PacienteId    { get; set; }
+        public string Identificacion { get; set; } = "";
+        public string Nombre        { get; set; } = "";
+        public string? TipoAtencion { get; set; }
+        public string? PlanSalud    { get; set; }
+        public bool   TienePatologico { get; set; }
+        public Dictionary<string, PivotCelda> Celdas { get; set; } = new();
     }
 
-    public void Dispose() => _debounce?.Dispose();
+    private record PivotCelda(decimal? Valor, string? Unidad, bool EsPatologico, string? Texto);
+
+    private class PivotColumna
+    {
+        public string Key        { get; set; } = "";
+        public string Codigo     { get; set; } = "";
+        public string Nombre     { get; set; } = "";
+        public string NombreCorto { get; set; } = "";
+        public int    Orden      { get; set; }
+    }
 }

@@ -51,6 +51,8 @@ namespace DataMedix.Application.Interfaces
         Task<List<string>> GetPlanesSaludAsync(Guid tenantId, DateTime periodDate);
         Task UpsertAsync(SnapshotMensual snapshot);
         Task AddDetallesAsync(List<SnapshotMensualDetalle> detalles);
+        /// <summary>Carga los detalles de múltiples snapshots en un solo query (para carry-forward batch).</summary>
+        Task<Dictionary<Guid, List<SnapshotMensualDetalle>>> GetDetallesBySnapshotIdsAsync(IEnumerable<Guid> snapshotIds);
         /// <summary>Hoja EPO: snapshots de un rango de fechas con filtro opcional de paciente y parámetro.</summary>
         Task<List<SnapshotMensual>> GetByRangoAsync(Guid tenantId, DateTime desde, DateTime hasta,
             string? busqueda = null, Guid? parametroClinicoId = null);

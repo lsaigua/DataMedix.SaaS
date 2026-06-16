@@ -273,6 +273,22 @@ namespace DataMedix.Application.Services
             var historialMap = await _snapshotRepo.GetHistorialByPacientesAsync(
                 tenantId, todosLosIds, periodoMinimo, meses: 6);
 
+            // Identificar el snapshot anterior más reciente por paciente y cargar sus
+            // detalles en batch para el carry-forward (Potasio, Albúmina, Fósforo, etc.)
+            var anteriorIdPorPaciente = new Dictionary<Guid, Guid>();
+            foreach (var g in grupos)
+            {
+                historialMap.TryGetValue(g.Key.PacienteId, out var hist);
+                var anterior = hist?
+                    .Where(h => h.PeriodDate < g.Key.PeriodDate)
+                    .OrderByDescending(h => h.PeriodDate)
+                    .FirstOrDefault();
+                if (anterior != null)
+                    anteriorIdPorPaciente[g.Key.PacienteId] = anterior.Id;
+            }
+            var anteriorDetallesMap = await _snapshotRepo.GetDetallesBySnapshotIdsAsync(
+                anteriorIdPorPaciente.Values);
+
             foreach (var grupo in grupos)
             {
                 var snapshot = await _snapshotRepo.GetByPacienteYPeriodoAsync(
@@ -300,9 +316,9 @@ namespace DataMedix.Application.Services
                     .Select(r => r.ParametroClinico!.Codigo)
                     .ToHashSet();
 
-                if (codigosPresentes.Contains("HB"))   { snapshot.HbValor   = null; snapshot.HbUnidad   = null; }
-                if (codigosPresentes.Contains("FE"))   { snapshot.HierroValor   = null; snapshot.HierroUnidad   = null; }
-                if (codigosPresentes.Contains("FERR")) { snapshot.FerritinaValor  = null; snapshot.FerritinaUnidad  = null; }
+                if (codigosPresentes.Contains("HB"))   { snapshot.HbValor        = null; snapshot.HbUnidad        = null; }
+                if (codigosPresentes.Contains("FE"))   { snapshot.HierroValor     = null; snapshot.HierroUnidad    = null; }
+                if (codigosPresentes.Contains("FERR")) { snapshot.FerritinaValor  = null; snapshot.FerritinaUnidad = null; }
                 if (codigosPresentes.Contains("ISAT")) { snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null; }
 
                 // Mapear parámetros clave por código (nav prop ParametroClinico asignado al crear)
@@ -311,44 +327,49 @@ namespace DataMedix.Application.Services
                     switch (res.ParametroClinico!.Codigo)
                     {
                         case "HB":
-                            snapshot.HbValor = res.ValorNumerico;
-                            snapshot.HbUnidad = res.UnidadMedida;
-                            break;
+                            snapshot.HbValor  = res.ValorNumerico; snapshot.HbUnidad  = res.UnidadMedida; break;
                         case "FE":
-                            snapshot.HierroValor = res.ValorNumerico;
-                            snapshot.HierroUnidad = res.UnidadMedida;
-                            break;
+                            snapshot.HierroValor    = res.ValorNumerico; snapshot.HierroUnidad    = res.UnidadMedida; break;
                         case "FERR":
-                            snapshot.FerritinaValor = res.ValorNumerico;
-                            snapshot.FerritinaUnidad = res.UnidadMedida;
-                            break;
+                            snapshot.FerritinaValor  = res.ValorNumerico; snapshot.FerritinaUnidad  = res.UnidadMedida; break;
                         case "ISAT":
-                            snapshot.SaturacionValor = res.ValorNumerico;
-                            snapshot.SaturacionUnidad = res.UnidadMedida;
-                            break;
+                            snapshot.SaturacionValor = res.ValorNumerico; snapshot.SaturacionUnidad = res.UnidadMedida; break;
                     }
                 }
 
-                // Carry-forward del panel de hierro: si este mes no tiene los valores,
-                // tomar del snapshot anterior más reciente que sí los traiga
+                // ── Carry-forward del panel de hierro ──────────────────────────────────────
+                // Si este mes no tiene FE/FERR/ISAT, tomar del snapshot anterior más reciente.
+                // Clínico: Ferritina e ISAT se piden cada 2 meses en HD — es comportamiento normal.
+                bool carryForwardIronUsado = false;
                 if (!snapshot.HierroValor.HasValue || !snapshot.FerritinaValor.HasValue || !snapshot.SaturacionValor.HasValue)
                 {
                     historialMap.TryGetValue(grupo.Key.PacienteId, out var hist);
-                    var anterior = hist?
+                    var anteriorIron = hist?
                         .Where(h => h.PeriodDate < grupo.Key.PeriodDate &&
                                     (h.HierroValor.HasValue || h.FerritinaValor.HasValue || h.SaturacionValor.HasValue))
                         .OrderByDescending(h => h.PeriodDate)
                         .FirstOrDefault();
-                    if (anterior != null)
+                    if (anteriorIron != null)
                     {
-                        snapshot.HierroValor    ??= anterior.HierroValor;
-                        snapshot.HierroUnidad   ??= anterior.HierroUnidad;
-                        snapshot.FerritinaValor  ??= anterior.FerritinaValor;
-                        snapshot.FerritinaUnidad ??= anterior.FerritinaUnidad;
-                        snapshot.SaturacionValor ??= anterior.SaturacionValor;
-                        snapshot.SaturacionUnidad ??= anterior.SaturacionUnidad;
+                        var antesHierro    = snapshot.HierroValor;
+                        var antesFerritina = snapshot.FerritinaValor;
+                        var antesSat       = snapshot.SaturacionValor;
+
+                        snapshot.HierroValor    ??= anteriorIron.HierroValor;
+                        snapshot.HierroUnidad   ??= anteriorIron.HierroUnidad;
+                        snapshot.FerritinaValor  ??= anteriorIron.FerritinaValor;
+                        snapshot.FerritinaUnidad ??= anteriorIron.FerritinaUnidad;
+                        snapshot.SaturacionValor ??= anteriorIron.SaturacionValor;
+                        snapshot.SaturacionUnidad ??= anteriorIron.SaturacionUnidad;
+
+                        carryForwardIronUsado = antesHierro != snapshot.HierroValor
+                            || antesFerritina != snapshot.FerritinaValor
+                            || antesSat       != snapshot.SaturacionValor;
                     }
                 }
+
+                // Marcar si los datos del panel de hierro provienen del período anterior
+                snapshot.EsDatosPeriodoAnterior = carryForwardIronUsado;
 
                 snapshot.TieneDatosCompletos =
                     snapshot.HbValor.HasValue &&
@@ -358,7 +379,15 @@ namespace DataMedix.Application.Services
 
                 await _snapshotRepo.UpsertAsync(snapshot);
 
-                // Detalles: un registro por cada parámetro del grupo
+                // ── Detalles del snapshot ──────────────────────────────────────────────────
+                // 1. Detalles del mes actual (todos los parámetros de este lote)
+                var idsPresentes   = new HashSet<Guid?>(grupo.Where(r => r.ParametroClinicoId.HasValue)
+                                                              .Select(r => r.ParametroClinicoId));
+                var rawsPresentes  = new HashSet<string>(
+                    grupo.Where(r => !r.ParametroClinicoId.HasValue && r.ParametroRaw != null)
+                         .Select(r => r.ParametroRaw!.Trim().ToUpperInvariant()),
+                    StringComparer.OrdinalIgnoreCase);
+
                 var detalles = grupo.Select(r => new SnapshotMensualDetalle
                 {
                     SnapshotId = snapshot.Id,
@@ -369,6 +398,33 @@ namespace DataMedix.Application.Services
                     UnidadMedida = r.UnidadMedida,
                     EsPatologico = r.EsPatologico
                 }).ToList();
+
+                // 2. Carry-forward de detalles del mes anterior para parámetros faltantes
+                //    (p.ej. Potasio, Albúmina, Fósforo que no vinieron en este lote)
+                if (anteriorIdPorPaciente.TryGetValue(grupo.Key.PacienteId, out var anteriorId) &&
+                    anteriorDetallesMap.TryGetValue(anteriorId, out var detAnt))
+                {
+                    foreach (var det in detAnt)
+                    {
+                        bool yaTiene = det.ParametroClinicoId.HasValue
+                            ? idsPresentes.Contains(det.ParametroClinicoId)
+                            : rawsPresentes.Contains(det.ParametroNombre?.Trim().ToUpperInvariant() ?? "\x00");
+
+                        if (!yaTiene)
+                        {
+                            detalles.Add(new SnapshotMensualDetalle
+                            {
+                                SnapshotId         = snapshot.Id,
+                                ParametroClinicoId = det.ParametroClinicoId,
+                                ParametroNombre    = det.ParametroNombre,
+                                ValorTexto         = det.ValorTexto,
+                                ValorNumerico      = det.ValorNumerico,
+                                UnidadMedida       = det.UnidadMedida,
+                                EsPatologico       = det.EsPatologico
+                            });
+                        }
+                    }
+                }
 
                 await _snapshotRepo.AddDetallesAsync(detalles);
             }

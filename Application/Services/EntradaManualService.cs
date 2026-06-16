@@ -79,12 +79,15 @@ namespace DataMedix.Application.Services
                 snapshot.SaturacionUnidad = dto.SaturacionUnidad ?? "%";
             }
 
+            // Cargar historial una sola vez — se usa para carry-forward del panel de hierro
+            // Y también para carry-forward de detalles (Potasio, Albúmina, etc.)
+            var historial = await _snapshotRepo.GetHistorialAsync(tenantId, dto.PacienteId, 6);
+
             // Carry-forward del panel de hierro si no se proporcionó este mes
             // (Ferritina, TSAT y Hierro sérico se piden cada 2 meses en HD)
             if (!snapshot.HierroValor.HasValue || !snapshot.FerritinaValor.HasValue || !snapshot.SaturacionValor.HasValue)
             {
-                var historial = await _snapshotRepo.GetHistorialAsync(tenantId, dto.PacienteId, 6);
-                var anterior  = historial
+                var anterior = historial
                     .Where(h => h.PeriodDate < periodDate &&
                                 (h.HierroValor.HasValue || h.FerritinaValor.HasValue || h.SaturacionValor.HasValue))
                     .OrderByDescending(h => h.PeriodDate)
@@ -117,8 +120,46 @@ namespace DataMedix.Application.Services
             snapshot.LoteId    = null;
             snapshot.UpdatedAt = DateTime.UtcNow;
 
-            // Guardar detalles adicionales si se proporcionaron
+            // Detalles del mes actual (valores explícitamente ingresados en el formulario)
             var detalles = BuildDetalles(dto, snapshot.Id);
+
+            // Carry-forward de detalles del mes anterior para parámetros no ingresados
+            // (p.ej. Potasio, Albúmina que no se ingresaron este mes — alimentan alertas clínicas)
+            var anteriorParaDetalles = historial
+                .Where(h => h.PeriodDate < periodDate)
+                .OrderByDescending(h => h.PeriodDate)
+                .FirstOrDefault();
+
+            if (anteriorParaDetalles != null)
+            {
+                var mapaDetallesAnt = await _snapshotRepo.GetDetallesBySnapshotIdsAsync(
+                    new[] { anteriorParaDetalles.Id });
+
+                if (mapaDetallesAnt.TryGetValue(anteriorParaDetalles.Id, out var detAnt))
+                {
+                    var nombresActuales = new HashSet<string>(
+                        detalles.Select(d => d.ParametroNombre?.Trim().ToUpperInvariant() ?? "\x00"),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var det in detAnt.Where(d => !string.IsNullOrEmpty(d.ParametroNombre)))
+                    {
+                        var clave = det.ParametroNombre!.Trim().ToUpperInvariant();
+                        if (!nombresActuales.Contains(clave))
+                        {
+                            detalles.Add(new SnapshotMensualDetalle
+                            {
+                                SnapshotId         = snapshot.Id,
+                                ParametroClinicoId = det.ParametroClinicoId,
+                                ParametroNombre    = det.ParametroNombre,
+                                ValorTexto         = det.ValorTexto,
+                                ValorNumerico      = det.ValorNumerico,
+                                UnidadMedida       = det.UnidadMedida,
+                                EsPatologico       = det.EsPatologico
+                            });
+                        }
+                    }
+                }
+            }
 
             await _snapshotRepo.UpsertAsync(snapshot);
 

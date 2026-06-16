@@ -359,6 +359,19 @@ namespace DataMedix.Infrastructure.Repositories
             await _db.SnapshotsMensualesDetalle.AddRangeAsync(detalles);
         }
 
+        public async Task<Dictionary<Guid, List<SnapshotMensualDetalle>>> GetDetallesBySnapshotIdsAsync(
+            IEnumerable<Guid> snapshotIds)
+        {
+            var ids = snapshotIds.ToList();
+            if (!ids.Any()) return new Dictionary<Guid, List<SnapshotMensualDetalle>>();
+            var rows = await _db.SnapshotsMensualesDetalle
+                .Where(d => ids.Contains(d.SnapshotId))
+                .AsNoTracking()
+                .ToListAsync();
+            return rows.GroupBy(d => d.SnapshotId)
+                       .ToDictionary(g => g.Key, g => g.ToList());
+        }
+
         public async Task<List<SnapshotMensual>> GetByRangoAsync(
             Guid tenantId, DateTime desde, DateTime hasta,
             string? busqueda = null, Guid? parametroClinicoId = null)
