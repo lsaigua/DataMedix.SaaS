@@ -1,6 +1,7 @@
 using DataMedix.Application;
 using DataMedix.Infrastructure;
 using DataMedix.Portal.Components;
+using DataMedix.Portal.Middleware;
 using DataMedix.Portal.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Diagnostics;
@@ -145,6 +146,9 @@ app.UseHttpsRedirection();
 
 app.UseRouting();
 app.UseAuthentication();
+// Resuelve tenant desde subdominio + valida que coincida con el claim de la cookie.
+// Debe ir después de UseAuthentication (necesita User.Identity) y antes de UseAuthorization.
+app.UseMiddleware<TenantContextMiddleware>();
 app.UseAuthorization();
 app.UseAntiforgery();
 

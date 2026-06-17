@@ -6,7 +6,15 @@ namespace DataMedix.Infrastructure.Persistence
 {
     public class DataMedixDbContext : DbContext, IDataProtectionKeyContext
     {
-        public DataMedixDbContext(DbContextOptions<DataMedixDbContext> options) : base(options) { }
+        // TenantContext scoped — capturado por referencia para Global Query Filters.
+        // Cuando IsResolved = false (startup, background jobs), los filtros se desactivan.
+        private readonly TenantContext _tenantCtx;
+
+        public DataMedixDbContext(DbContextOptions<DataMedixDbContext> options, TenantContext tenantCtx)
+            : base(options)
+        {
+            _tenantCtx = tenantCtx;
+        }
 
         // Seguridad
         public DbSet<Tenant> Tenants => Set<Tenant>();
@@ -40,6 +48,9 @@ namespace DataMedix.Infrastructure.Persistence
         // Auditoría
         public DbSet<AuditoriaLog> AuditoriaLogs => Set<AuditoriaLog>();
 
+        // Facturación / uso (base central — accesible para super admin)
+        public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
+
         // DataProtection (persistir claves en DB para sobrevivir reinicios en Railway)
         public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
@@ -69,6 +80,10 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(t => t.CreatedAt).HasColumnName("created_at");
                 e.Property(t => t.UpdatedAt).HasColumnName("updated_at");
                 e.Property(t => t.DeletedAt).HasColumnName("deleted_at");
+                // columnas de routing (migración 005)
+                e.Property(t => t.IsolationMode).HasColumnName("isolation_mode").HasMaxLength(20).HasDefaultValue("shared");
+                e.Property(t => t.ConnectionStringRef).HasColumnName("connection_string_ref").HasMaxLength(200);
+                e.Property(t => t.PlanNombre).HasColumnName("plan_nombre").HasMaxLength(100);
                 e.HasIndex(t => t.Subdomain).IsUnique();
             });
 
@@ -514,6 +529,23 @@ namespace DataMedix.Infrastructure.Persistence
             });
 
             // ========================
+            // USAGE EVENTS (facturación)
+            // ========================
+            m.Entity<UsageEvent>(e =>
+            {
+                e.ToTable("usage_events");
+                e.HasKey(u => u.Id);
+                e.Property(u => u.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(u => u.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(u => u.EventType).HasColumnName("event_type").HasMaxLength(100).IsRequired();
+                e.Property(u => u.OccurredAt).HasColumnName("occurred_at").HasDefaultValueSql("now()");
+                e.Property(u => u.MetadataJson).HasColumnName("metadata").HasColumnType("jsonb");
+                e.HasIndex(u => u.TenantId);
+                e.HasIndex(u => u.OccurredAt);
+                e.HasOne(u => u.Tenant).WithMany().HasForeignKey(u => u.TenantId);
+            });
+
+            // ========================
             // DATA PROTECTION KEYS
             // ========================
             m.Entity<DataProtectionKey>(e =>
@@ -549,6 +581,47 @@ namespace DataMedix.Infrastructure.Persistence
                 e.HasIndex(a => a.TenantId);
                 e.HasIndex(a => a.CreatedAt);
             });
+
+            // ════════════════════════════════════════════════════════════════════
+            // GLOBAL QUERY FILTERS — aislamiento de datos por tenant
+            //
+            // Regla: si IsResolved = false (startup, background jobs, DataProtection),
+            //        el filtro se desactiva → acceso total (igual que antes).
+            // Regla: si IsResolved = true (request HTTP autenticado),
+            //        todas las queries de estas entidades incluyen WHERE tenant_id = @tid
+            //        automáticamente, sin importar qué código las ejecute.
+            //
+            // Para super admin que necesite ver todos los tenants: .IgnoreQueryFilters()
+            // ════════════════════════════════════════════════════════════════════
+
+            // Aislamiento ESTRICTO: entidades que pertenecen a UN solo tenant
+            m.Entity<Paciente>()
+             .HasQueryFilter(p => !_tenantCtx.IsResolved || p.TenantId == _tenantCtx.TenantId);
+            m.Entity<LoteImportacion>()
+             .HasQueryFilter(l => !_tenantCtx.IsResolved || l.TenantId == _tenantCtx.TenantId);
+            m.Entity<ImportacionDetalle>()
+             .HasQueryFilter(d => !_tenantCtx.IsResolved || d.TenantId == _tenantCtx.TenantId);
+            m.Entity<ResultadoLaboratorio>()
+             .HasQueryFilter(r => !_tenantCtx.IsResolved || r.TenantId == _tenantCtx.TenantId);
+            m.Entity<SnapshotMensual>()
+             .HasQueryFilter(s => !_tenantCtx.IsResolved || s.TenantId == _tenantCtx.TenantId);
+            m.Entity<PrescripcionSugerida>()
+             .HasQueryFilter(ps => !_tenantCtx.IsResolved || ps.TenantId == _tenantCtx.TenantId);
+            m.Entity<PrescripcionFinal>()
+             .HasQueryFilter(pf => !_tenantCtx.IsResolved || pf.TenantId == _tenantCtx.TenantId);
+            m.Entity<AuditoriaLog>()
+             .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
+
+            // Aislamiento GLOBAL-O-TENANT: tenant_id nullable donde null = regla global visible para todos
+            m.Entity<ReglaClinica>()
+             .HasQueryFilter(r => !_tenantCtx.IsResolved || r.TenantId == null || r.TenantId == _tenantCtx.TenantId);
+            m.Entity<RangoPrescriba>()
+             .HasQueryFilter(r => !_tenantCtx.IsResolved || r.TenantId == null || r.TenantId == _tenantCtx.TenantId);
+            m.Entity<AliasParametro>()
+             .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == null || a.TenantId == _tenantCtx.TenantId);
+
+            // Sin filtro: Tenant (directorio), ParametroClinico (catálogo global),
+            // Usuario (cross-tenant en login), Rol, UsageEvent (billing), DataProtectionKey
         }
     }
 }
