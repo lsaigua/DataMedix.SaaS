@@ -957,7 +957,14 @@
     {
         if (_vista == "pivot")
         {
-            Nav.NavigateTo($"/api/reportes/resultados-excel?mesDe={_pivotMes}&anioDe={_pivotAnio}&mesHasta={_pivotMes}&anioHasta={_pivotAnio}", forceLoad: true);
+            var pqs = new List<string> { $"mes={_pivotMes}", $"anio={_pivotAnio}" };
+            if (_filtrosTipo.Any())
+                pqs.Add($"tiposAtencion={Uri.EscapeDataString(string.Join(",", _filtrosTipo))}");
+            if (_filtrosParametroKeys.Any())
+                pqs.Add($"columnaKeys={Uri.EscapeDataString(string.Join(",", _filtrosParametroKeys))}");
+            if (!string.IsNullOrWhiteSpace(_filtroNombrePivot))
+                pqs.Add($"busquedaPaciente={Uri.EscapeDataString(_filtroNombrePivot.Trim())}");
+            Nav.NavigateTo("/api/reportes/pivot-excel?" + string.Join("&", pqs), forceLoad: true);
             return;
         }
         var qs = new List<string>();
