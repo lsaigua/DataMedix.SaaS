@@ -15,15 +15,18 @@ namespace DataMedix.Application.Services
         private readonly IRuleEngine _ruleEngine;
         private readonly ISnapshotMensualRepository _snapshotRepo;
         private readonly IPrescripcionRepository _prescripcionRepo;
+        private readonly IUsageMeter _usageMeter;
 
         public PrescripcionService(
             IRuleEngine ruleEngine,
             ISnapshotMensualRepository snapshotRepo,
-            IPrescripcionRepository prescripcionRepo)
+            IPrescripcionRepository prescripcionRepo,
+            IUsageMeter usageMeter)
         {
             _ruleEngine = ruleEngine;
             _snapshotRepo = snapshotRepo;
             _prescripcionRepo = prescripcionRepo;
+            _usageMeter = usageMeter;
         }
 
         /// <summary>
@@ -82,6 +85,15 @@ namespace DataMedix.Application.Services
             }
 
             await _prescripcionRepo.BulkUpsertSugeridaAsync(resultado);
+
+            // Registrar evento de facturación: 1 evento por prescripción generada
+            if (resultado.Count > 0)
+                await _usageMeter.RecordAsync(UsageEventTypes.PrescripcionSugerida, new
+                {
+                    tenantId,
+                    periodo = periodDate.ToString("yyyy-MM"),
+                    cantidad = resultado.Count
+                });
         }
 
         /// <summary>
@@ -118,6 +130,13 @@ namespace DataMedix.Application.Services
 
             MapResult(evalResult, existente, ctx);
             await _prescripcionRepo.UpsertSugeridaAsync(existente);
+
+            await _usageMeter.RecordAsync(UsageEventTypes.PrescripcionSugerida, new
+            {
+                tenantId,
+                pacienteId = existente.PacienteId,
+                periodo = existente.PeriodDate.ToString("yyyy-MM")
+            });
         }
 
         // ── Context builder ────────────────────────────────────────────────────

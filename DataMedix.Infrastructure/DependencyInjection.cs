@@ -19,6 +19,13 @@ namespace DataMedix.Infrastructure
         public static IServiceCollection AddInfrastructure(
             this IServiceCollection services, IConfiguration configuration)
         {
+            // ── TenantContext (scoped, mutable por middleware) ─────────────────
+            // TenantContext (concrete) es inyectado en DataMedixDbContext para los
+            // Global Query Filters. ITenantContext es la vista readonly para el resto.
+            services.AddScoped<TenantContext>();
+            services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+
+            // ── DbContext (depende de TenantContext para global filters) ───────
             services.AddDbContext<DataMedixDbContext>(options =>
                 options.UseNpgsql(configuration.GetConnectionString("DatabasePostgres"),
                     npgsql =>
@@ -46,6 +53,7 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IExcelExporter, ExcelExporter>();
             services.AddScoped<IDepuracionService, DepuracionService>();
             services.AddScoped<IEntradaManualService, EntradaManualService>();
+            services.AddScoped<IUsageMeter, UsageMeter>();
 
             // ── Motor de reglas (Singleton — stateless, thread-safe) ───────────
             // IMemoryCache está registrado desde AddMemoryCache() en Program.cs
