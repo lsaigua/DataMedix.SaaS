@@ -611,6 +611,8 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(pf => !_tenantCtx.IsResolved || pf.TenantId == _tenantCtx.TenantId);
             m.Entity<AuditoriaLog>()
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
+            m.Entity<UsuarioRol>()
+             .HasQueryFilter(ur => !_tenantCtx.IsResolved || ur.TenantId == null || ur.TenantId == _tenantCtx.TenantId);
 
             // Aislamiento GLOBAL-O-TENANT: tenant_id nullable donde null = regla global visible para todos
             m.Entity<ReglaClinica>()
@@ -621,7 +623,8 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == null || a.TenantId == _tenantCtx.TenantId);
 
             // Sin filtro: Tenant (directorio), ParametroClinico (catálogo global),
-            // Usuario (cross-tenant en login), Rol, UsageEvent (billing), DataProtectionKey
+            // Usuario (cross-tenant en login), Rol, UsuarioRol usa GLOBAL-O-TENANT (ver arriba),
+            // UsageEvent (billing super-admin), DataProtectionKey
         }
     }
 }

@@ -4,7 +4,6 @@ using DataMedix.Application.Services;
 using DataMedix.Infrastructure.Excel;
 using DataMedix.Infrastructure.Persistence;
 using DataMedix.Infrastructure.Repositories;
-using DataMedix.Infrastructure.Security;
 using DataMedix.Infrastructure.Seed;
 using DataMedix.Infrastructure.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -48,7 +47,6 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IReglaClinicaRepository, ReglaClinicaRepository>();
             services.AddScoped<IReporteService, ReporteService>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
-            services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
             services.AddScoped<IExcelReader, ExcelReader>();
             services.AddScoped<IExcelExporter, ExcelExporter>();
             services.AddScoped<IDepuracionService, DepuracionService>();
