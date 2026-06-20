@@ -16,13 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Application\DataMedix.Application.csproj" />
-    <ProjectReference Include="..\DataMedix.Core\DataMedix.Core.csproj" />
     <ProjectReference Include="..\DataMedix.Infrastructure\DataMedix.Infrastructure.csproj" />
   </ItemGroup>
 
