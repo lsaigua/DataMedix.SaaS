@@ -4,6 +4,16 @@ using DataMedix.Domain.Entities;
 namespace DataMedix.Application.Services
 {
     /// <summary>
+    /// DTO interno para el paso de datos prescripción → cronograma.
+    /// </summary>
+    internal record DatosPacienteParaCronograma(
+        Guid PacienteId,
+        string NombreCompleto,
+        string? PlanSalud,
+        decimal? EpoUiSemana,
+        decimal? HierroMgMes);
+
+    /// <summary>
     /// Genera y gestiona el cronograma mensual de medicamentos (EPO e Hierro IV).
     ///
     /// Turnos:
@@ -25,19 +35,19 @@ namespace DataMedix.Application.Services
     {
         private readonly ICronogramaRepository _repo;
         private readonly IConfiguracionMedicamentoRepository _configRepo;
-        private readonly IPacienteRepository _pacienteRepo;
         private readonly IPrescripcionRepository _prescripcionRepo;
+        private readonly ISnapshotMensualRepository _snapshotRepo;
 
         public CronogramaService(
             ICronogramaRepository repo,
             IConfiguracionMedicamentoRepository configRepo,
-            IPacienteRepository pacienteRepo,
-            IPrescripcionRepository prescripcionRepo)
+            IPrescripcionRepository prescripcionRepo,
+            ISnapshotMensualRepository snapshotRepo)
         {
             _repo = repo;
             _configRepo = configRepo;
-            _pacienteRepo = pacienteRepo;
             _prescripcionRepo = prescripcionRepo;
+            _snapshotRepo = snapshotRepo;
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -47,17 +57,61 @@ namespace DataMedix.Application.Services
             => _repo.GetByPeriodoAsync(tenantId, anio, mes);
 
         // ──────────────────────────────────────────────────────────────────────
-        // GENERAR / ACTUALIZAR cronograma para todos los pacientes del tenant
+        // GENERAR / ACTUALIZAR cronograma para todos los pacientes del tenant.
+        // Fuente de datos: prescripciones del mes objetivo + fallback mes anterior.
+        // No depende de GetActivosAsync para evitar problemas de filtrado por TenantId.
         // ──────────────────────────────────────────────────────────────────────
         public async Task<List<CronogramaMedicamento>> GenerarOActualizarMesAsync(
             Guid tenantId, int anio, int mes, Guid? usuarioId = null)
         {
-            var pacientes = await _pacienteRepo.GetActivosAsync(tenantId);
-            var resultado = new List<CronogramaMedicamento>();
+            var periodoActual = new DateTime(anio, mes, 1);
+            var periodoAnterior = periodoActual.AddMonths(-1);
 
-            foreach (var paciente in pacientes)
+            // Obtenemos prescripciones y snapshots del mes (y del anterior como fallback)
+            var prescripciones = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoActual);
+            var prescripcionesAnt = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoAnterior);
+            var mapaPresc = prescripciones.ToDictionary(p => p.PacienteId);
+            var mapaPresAnt = prescripcionesAnt.ToDictionary(p => p.PacienteId);
+
+            // Snapshots para obtener plan_salud actualizado
+            var snapshots = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoActual);
+            var snapshotsAnt = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoAnterior);
+            var mapaSnap = snapshots.ToDictionary(s => s.PacienteId);
+            var mapaSnapAnt = snapshotsAnt.ToDictionary(s => s.PacienteId);
+
+            // Unión de todos los pacientes con datos en alguno de los dos meses
+            var pacienteIds = mapaPresc.Keys
+                .Union(mapaPresAnt.Keys)
+                .Union(mapaSnap.Keys)
+                .Union(mapaSnapAnt.Keys)
+                .Distinct()
+                .ToList();
+
+            if (pacienteIds.Count == 0) return new List<CronogramaMedicamento>();
+
+            // Construir datos por paciente
+            var datosPacientes = pacienteIds.Select(pid =>
             {
-                var cronograma = await GenerarPorPacienteAsync(tenantId, paciente.Id, anio, mes, usuarioId);
+                mapaPresc.TryGetValue(pid, out var presc);
+                mapaPresAnt.TryGetValue(pid, out var prescAnt);
+                mapaSnap.TryGetValue(pid, out var snap);
+                mapaSnapAnt.TryGetValue(pid, out var snapAnt);
+
+                var prescVigente = presc ?? prescAnt;
+                var snapVigente = snap ?? snapAnt;
+
+                return new DatosPacienteParaCronograma(
+                    PacienteId: pid,
+                    NombreCompleto: snap?.Paciente?.NombreCompleto ?? snapAnt?.Paciente?.NombreCompleto ?? "",
+                    PlanSalud: snap?.PlanSalud ?? snapAnt?.PlanSalud,
+                    EpoUiSemana: prescVigente?.EpoUiSemana,
+                    HierroMgMes: prescVigente?.HierroMgMes);
+            }).ToList();
+
+            var resultado = new List<CronogramaMedicamento>();
+            foreach (var datos in datosPacientes)
+            {
+                var cronograma = await GenerarPorPacienteConDatosAsync(tenantId, datos, anio, mes, usuarioId);
                 resultado.Add(cronograma);
             }
 
@@ -65,43 +119,64 @@ namespace DataMedix.Application.Services
         }
 
         // ──────────────────────────────────────────────────────────────────────
-        // GENERAR cronograma de un paciente para un mes dado
-        // Solo rellena días vacíos (no sobreescribe ediciones manuales)
+        // GENERAR cronograma de un paciente usando datos ya resueltos
         // ──────────────────────────────────────────────────────────────────────
-        public async Task<CronogramaMedicamento> GenerarPorPacienteAsync(
-            Guid tenantId, Guid pacienteId, int anio, int mes, Guid? usuarioId = null)
+        private async Task<CronogramaMedicamento> GenerarPorPacienteConDatosAsync(
+            Guid tenantId, DatosPacienteParaCronograma datos, int anio, int mes, Guid? usuarioId)
         {
-            var paciente = await _pacienteRepo.GetByIdAsync(tenantId, pacienteId)
-                ?? throw new InvalidOperationException($"Paciente {pacienteId} no encontrado");
-
-            // Buscar prescripción del mes anterior para obtener dosis
-            // (Cronograma del mes X usa prescripción del mes X-1 procesada)
-            var prescripcion = await ObtenerPrescripcionVigenteAsync(tenantId, pacienteId, anio, mes);
-
-            var cronograma = await _repo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, anio, mes)
+            var cronograma = await _repo.GetByPacienteYPeriodoAsync(tenantId, datos.PacienteId, anio, mes)
                 ?? new CronogramaMedicamento
                 {
                     TenantId = tenantId,
-                    PacienteId = pacienteId,
+                    PacienteId = datos.PacienteId,
                     PeriodoAnio = anio,
                     PeriodoMes = mes,
                     CreatedBy = usuarioId
                 };
 
-            cronograma.PlanSalud = paciente.PlanSalud ?? cronograma.PlanSalud;
-            cronograma.EpoUiSemana = prescripcion?.EpoUiSemana ?? cronograma.EpoUiSemana;
-            cronograma.HierroMgMes = prescripcion?.HierroMgMes ?? cronograma.HierroMgMes;
+            // Actualizar con datos frescos; preservar valores manuales si no hay nueva data
+            if (!string.IsNullOrWhiteSpace(datos.PlanSalud))
+                cronograma.PlanSalud = datos.PlanSalud;
+            if (datos.EpoUiSemana.HasValue)
+                cronograma.EpoUiSemana = datos.EpoUiSemana;
+            if (datos.HierroMgMes.HasValue)
+                cronograma.HierroMgMes = datos.HierroMgMes;
+
             cronograma.UpdatedBy = usuarioId;
             cronograma.UpdatedAt = DateTime.UtcNow;
 
             cronograma = await _repo.UpsertAsync(cronograma);
 
-            // Calcular y persistir días de sesión del mes
-            var dias = GenerarDias(cronograma);
-            await _repo.UpsertDiasAsync(dias);
+            // Solo generar días si hay turno y al menos una dosis configurada
+            if (!string.IsNullOrWhiteSpace(cronograma.PlanSalud) &&
+                (cronograma.EpoUiSemana > 0 || cronograma.HierroMgMes > 0))
+            {
+                var dias = GenerarDias(cronograma);
+                await _repo.UpsertDiasAsync(dias);
+            }
 
-            // Recargar con días
             return await _repo.GetConDiasAsync(tenantId, cronograma.Id) ?? cronograma;
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // GENERAR cronograma de un paciente para un mes dado (API pública)
+        // ──────────────────────────────────────────────────────────────────────
+        public async Task<CronogramaMedicamento> GenerarPorPacienteAsync(
+            Guid tenantId, Guid pacienteId, int anio, int mes, Guid? usuarioId = null)
+        {
+            var prescripcion = await ObtenerPrescripcionVigenteAsync(tenantId, pacienteId, anio, mes);
+            var periodo = new DateTime(anio, mes, 1);
+            var snapshot = await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo)
+                ?? await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo.AddMonths(-1));
+
+            var datos = new DatosPacienteParaCronograma(
+                PacienteId: pacienteId,
+                NombreCompleto: snapshot?.Paciente?.NombreCompleto ?? "",
+                PlanSalud: snapshot?.PlanSalud,
+                EpoUiSemana: prescripcion?.EpoUiSemana,
+                HierroMgMes: prescripcion?.HierroMgMes);
+
+            return await GenerarPorPacienteConDatosAsync(tenantId, datos, anio, mes, usuarioId);
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -353,18 +428,12 @@ namespace DataMedix.Application.Services
         private async Task<PrescripcionSugerida?> ObtenerPrescripcionVigenteAsync(
             Guid tenantId, Guid pacienteId, int anio, int mes)
         {
-            // Busca la prescripción del mes actual; si no hay, intenta el mes anterior.
-            // El cronograma del mes X se alimenta de la prescripción aprobada más reciente.
             var periodoActual = new DateTime(anio, mes, 1);
             var prescripcion = await _prescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(
                 tenantId, pacienteId, periodoActual);
-
             if (prescripcion != null) return prescripcion;
-
-            // Fallback: mes anterior (prescripción ya procesada del corte anterior)
-            var periodoAnterior = periodoActual.AddMonths(-1);
             return await _prescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(
-                tenantId, pacienteId, periodoAnterior);
+                tenantId, pacienteId, periodoActual.AddMonths(-1));
         }
 
         private enum TipoTurno { LMV, MJS }
