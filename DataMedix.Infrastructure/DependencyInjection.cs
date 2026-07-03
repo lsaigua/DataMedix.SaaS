@@ -45,6 +45,8 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IPrescripcionRepository, PrescripcionRepository>();
             services.AddScoped<IAuditoriaRepository, AuditoriaRepository>();
             services.AddScoped<IReglaClinicaRepository, ReglaClinicaRepository>();
+            services.AddScoped<ICronogramaRepository, CronogramaRepository>();
+            services.AddScoped<IConfiguracionMedicamentoRepository, ConfiguracionMedicamentoRepository>();
             services.AddScoped<IReporteService, ReporteService>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IExcelReader, ExcelReader>();
