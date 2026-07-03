@@ -73,9 +73,10 @@ namespace DataMedix.Application.Services
             var mapaPresc = prescripciones.ToDictionary(p => p.PacienteId);
             var mapaPresAnt = prescripcionesAnt.ToDictionary(p => p.PacienteId);
 
-            // Snapshots para obtener plan_salud actualizado
-            var snapshots = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoActual);
-            var snapshotsAnt = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoAnterior);
+            // Snapshots para obtener plan_salud actualizado.
+            // tamano:1000 evita el límite de paginación (default 50) para tenants con muchos pacientes.
+            var snapshots = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoActual, tamano: 1000);
+            var snapshotsAnt = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoAnterior, tamano: 1000);
             var mapaSnap = snapshots.ToDictionary(s => s.PacienteId);
             var mapaSnapAnt = snapshotsAnt.ToDictionary(s => s.PacienteId);
 

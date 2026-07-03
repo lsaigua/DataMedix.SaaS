@@ -23,6 +23,8 @@
             <p class="crono-subtitle">EPO · Hierro IV · @NombreMes(_mes) @_anio</p>
         </div>
         <div class="crono-header-actions">
+            <input type="text" class="crono-busqueda" placeholder="Buscar cédula o nombre..."
+                   @bind="_busqueda" @bind:event="oninput" />
             <select class="crono-select" @bind="_mes">
                 @for (int m = 1; m <= 12; m++)
                 {
@@ -117,12 +119,13 @@
                 <thead>
                     <tr>
                         <th class="crono-th-fixed crono-th-paciente">Paciente</th>
+                        <th class="crono-th-fixed crono-th-cedula">Cédula</th>
                         <th class="crono-th-fixed crono-th-turno">Turno</th>
-                        <th class="crono-th-fixed crono-th-dosis">EPO<br/><small>UI/sem</small></th>
-                        <th class="crono-th-fixed crono-th-dosis">Fe IV<br/><small>mg/mes</small></th>
+                        <th class="crono-th-fixed crono-th-dosis crono-th-epo">EPO<br/><small>UI/sem</small></th>
+                        <th class="crono-th-fixed crono-th-dosis crono-th-fe">Fe IV<br/><small>mg/mes</small></th>
                         @foreach (var fecha in _fechasColumna)
                         {
-                            <th class="crono-th-fecha @(EsFinDeSemana(fecha) ? "crono-fds" : "")">
+                            <th class="crono-th-fecha @(EsFinDeSemana(fecha) ? "crono-fds" : "") @(EsHoy(fecha) ? "crono-hoy-th" : "") @(EsInicioSemana(fecha) ? "crono-semana-inicio" : "")">
                                 <div class="crono-fecha-dia">@fecha.ToString("ddd", _es).ToUpper()</div>
                                 <div class="crono-fecha-num">@fecha.Day</div>
                             </th>
@@ -132,7 +135,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var crono in _cronogramas)
+                    @foreach (var crono in CronogramasVisibles)
                     {
                         var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
                         decimal totalEpo = crono.Dias.Sum(d => d.EpoDosisuI ?? 0);
@@ -141,13 +144,16 @@
                             <td class="crono-td-fixed crono-td-paciente">
                                 @crono.Paciente.NombreCompleto
                             </td>
+                            <td class="crono-td-fixed crono-td-cedula">
+                                @crono.Paciente.Identificacion
+                            </td>
                             <td class="crono-td-fixed crono-td-turno">
                                 <span class="crono-badge-turno">@(crono.PlanSalud ?? "—")</span>
                             </td>
-                            <td class="crono-td-fixed crono-td-dosis">
+                            <td class="crono-td-fixed crono-td-dosis crono-td-epo">
                                 @(crono.EpoUiSemana?.ToString("N0") ?? "—")
                             </td>
-                            <td class="crono-td-fixed crono-td-dosis">
+                            <td class="crono-td-fixed crono-td-dosis crono-td-fe">
                                 @(crono.HierroMgMes?.ToString("N0") ?? "—")
                             </td>
                             @foreach (var fecha in _fechasColumna)
@@ -155,8 +161,7 @@
                                 var dia = diasMap.TryGetValue(fecha.Date, out var d) ? d : null;
                                 var editKey = (crono.Id, fecha);
                                 bool editando = _editKey == editKey;
-                                <td class="crono-td-sesion @(dia != null ? "crono-td-activo" : "crono-td-vacio")
-                                           @(dia?.EpoEditadoManual == true || dia?.HierroEditadoManual == true ? "crono-td-manual" : "")">
+                                <td class="crono-td-sesion @(dia != null ? "crono-td-activo" : "crono-td-vacio") @(dia?.EpoEditadoManual == true || dia?.HierroEditadoManual == true ? "crono-td-manual" : "") @(EsHoy(fecha) ? "crono-hoy-celda" : "") @(EsInicioSemana(fecha) ? "crono-semana-inicio" : "")">
                                     @if (dia != null)
                                     {
                                         @if (editando)
@@ -224,9 +229,16 @@
     private bool _showConfig = false;
 
     private Guid _tenantId;
+    private string _busqueda = "";
     private List<CronogramaMedicamento> _cronogramas = new();
     private List<DateTime> _fechasColumna = new();
     private ResumenCostos? _resumen;
+
+    private IEnumerable<CronogramaMedicamento> CronogramasVisibles =>
+        string.IsNullOrWhiteSpace(_busqueda) ? _cronogramas :
+        _cronogramas.Where(c =>
+            c.Paciente.Identificacion.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ||
+            c.Paciente.NombreCompleto.Contains(_busqueda, StringComparison.OrdinalIgnoreCase));
 
     private decimal _precioEpo = 0;
     private decimal _precioHierro = 0;
@@ -454,6 +466,16 @@
     private static bool EsFinDeSemana(DateTime d) =>
         d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
 
+    private static bool EsHoy(DateTime d) => d.Date == DateTime.Today;
+
+    private bool EsInicioSemana(DateTime fecha)
+    {
+        var idx = _fechasColumna.IndexOf(fecha);
+        if (idx <= 0) return false;
+        return System.Globalization.ISOWeek.GetWeekOfYear(_fechasColumna[idx - 1]) !=
+               System.Globalization.ISOWeek.GetWeekOfYear(fecha);
+    }
+
     private static decimal? ParseDecimal(string? s) =>
         decimal.TryParse(s, out var v) ? v : null;
 }
@@ -492,6 +514,21 @@
         align-items: center;
         gap: 0.5rem;
         flex-wrap: wrap;
+    }
+    .crono-busqueda {
+        padding: 0.4rem 0.7rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 0.83rem;
+        color: #1e293b;
+        background: white;
+        width: 200px;
+        transition: border-color 0.15s;
+    }
+    .crono-busqueda:focus {
+        outline: none;
+        border-color: #0ea5e9;
+        box-shadow: 0 0 0 2px rgba(14,165,233,0.15);
     }
     .crono-select {
         padding: 0.4rem 0.65rem;
@@ -640,11 +677,13 @@
     .crono-th-fixed { z-index: 4; background: #0f172a !important; }
     .crono-td-fixed { background: white; }
 
+    /* Posiciones sticky: Paciente(0/180) · Cédula(180/80) · Turno(260/90) · EPO(350/70) · Fe(420/70) */
     .crono-th-paciente, .crono-td-paciente { min-width: 180px; left: 0; text-align: left !important; }
-    .crono-th-turno, .crono-td-turno { min-width: 90px; left: 180px; }
-    .crono-th-dosis, .crono-td-dosis { min-width: 70px; }
-    .crono-th-dosis:nth-child(3), .crono-td-dosis:nth-child(3) { left: 270px; }
-    .crono-th-dosis:nth-child(4), .crono-td-dosis:nth-child(4) { left: 340px; }
+    .crono-th-cedula, .crono-td-cedula    { min-width: 80px;  left: 180px; text-align: center; font-size: 0.75rem; color: #64748b; }
+    .crono-th-turno, .crono-td-turno     { min-width: 90px;  left: 260px; }
+    .crono-th-dosis, .crono-td-dosis     { min-width: 70px; }
+    .crono-th-epo, .crono-td-epo         { left: 350px; }
+    .crono-th-fe,  .crono-td-fe          { left: 420px; }
 
     /* Celdas de datos */
     .crono-table tbody tr:hover td { background: #f8fafc; }
@@ -676,6 +715,28 @@
     .crono-fds { background: #1e293b !important; color: #475569 !important; }
     .crono-fecha-dia { font-size: 0.58rem; color: #64748b; }
     .crono-fecha-num { font-size: 0.85rem; color: #e2e8f0; font-weight: 700; }
+
+    /* Columna HOY — header */
+    .crono-hoy-th {
+        background: #0284c7 !important;
+        color: white !important;
+        box-shadow: 0 0 0 2px #7dd3fc inset;
+    }
+    .crono-hoy-th .crono-fecha-dia { color: #bae6fd; }
+    .crono-hoy-th .crono-fecha-num { color: white; font-size: 1rem; }
+
+    /* Columna HOY — celdas */
+    .crono-hoy-celda {
+        background: #f0f9ff !important;
+        border-left: 1px solid #7dd3fc !important;
+        border-right: 1px solid #7dd3fc !important;
+    }
+    .crono-td-activo.crono-hoy-celda { background: #e0f2fe !important; }
+
+    /* Separador de semana */
+    .crono-semana-inicio {
+        border-left: 3px solid #475569 !important;
+    }
 
     /* Totales columna */
     .crono-th-total { min-width: 70px; border-left: 2px solid #1e293b !important; }
