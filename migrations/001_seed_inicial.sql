@@ -31,15 +31,15 @@ VALUES
      'Concentración de hemoglobina en sangre',
      'g/dL', 'numerico', 11.5, 13.0, true, 1),
 
-    ('10000000-0000-0000-0000-000000000002', 'HIERRO',      'Hierro sérico',
+    ('10000000-0000-0000-0000-000000000002', 'FE',          'Hierro sérico',
      'Concentración sérica de hierro',
      'µg/dL', 'numerico', 60, 170, true, 2),
 
-    ('10000000-0000-0000-0000-000000000003', 'FERRITINA',   'Ferritina sérica',
+    ('10000000-0000-0000-0000-000000000003', 'FERR',        'Ferritina sérica',
      'Marcador de reservas de hierro',
      'ng/mL', 'numerico', 200, 850, true, 3),
 
-    ('10000000-0000-0000-0000-000000000004', 'SATURACION',  'Saturación de transferrina (TSAT)',
+    ('10000000-0000-0000-0000-000000000004', 'ISAT',        'Saturación de transferrina (TSAT)',
      'Porcentaje de saturación de transferrina (%)',
      '%', 'numerico', 20, 50, true, 4),
 
@@ -79,7 +79,12 @@ VALUES
     ('10000000-0000-0000-0000-000000000013', 'PESO',        'Peso corporal',
      'Peso del paciente en kilogramos',
      'kg', 'numerico', null, null, false, 13)
-ON CONFLICT (codigo) DO NOTHING;
+ON CONFLICT (id) DO UPDATE
+    SET codigo                = EXCLUDED.codigo,
+        nombre                = EXCLUDED.nombre,
+        descripcion           = EXCLUDED.descripcion,
+        unidad_medida_default = EXCLUDED.unidad_medida_default,
+        es_parametro_clave    = EXCLUDED.es_parametro_clave;
 
 -- Alias de parámetros (nombres alternativos que pueden llegar en archivos Excel)
 -- alias_parametro no tiene UNIQUE constraint → usamos WHERE NOT EXISTS para idempotencia

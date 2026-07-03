@@ -316,10 +316,10 @@ namespace DataMedix.Application.Services
                     .Select(r => r.ParametroClinico!.Codigo)
                     .ToHashSet();
 
-                if (codigosPresentes.Contains("HB"))   { snapshot.HbValor        = null; snapshot.HbUnidad        = null; }
-                if (codigosPresentes.Contains("FE"))   { snapshot.HierroValor     = null; snapshot.HierroUnidad    = null; }
-                if (codigosPresentes.Contains("FERR")) { snapshot.FerritinaValor  = null; snapshot.FerritinaUnidad = null; }
-                if (codigosPresentes.Contains("ISAT")) { snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null; }
+                if (codigosPresentes.Contains("HB"))                                                           { snapshot.HbValor        = null; snapshot.HbUnidad        = null; }
+                if (codigosPresentes.Contains("FE")   || codigosPresentes.Contains("HIERRO"))             { snapshot.HierroValor     = null; snapshot.HierroUnidad    = null; }
+                if (codigosPresentes.Contains("FERR") || codigosPresentes.Contains("FERRITINA"))          { snapshot.FerritinaValor  = null; snapshot.FerritinaUnidad = null; }
+                if (codigosPresentes.Contains("ISAT") || codigosPresentes.Contains("SATURACION"))         { snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null; }
 
                 // Mapear parámetros clave por código (nav prop ParametroClinico asignado al crear)
                 foreach (var res in grupo.Where(r => r.ParametroClinico != null))
@@ -327,12 +327,12 @@ namespace DataMedix.Application.Services
                     switch (res.ParametroClinico!.Codigo)
                     {
                         case "HB":
-                            snapshot.HbValor  = res.ValorNumerico; snapshot.HbUnidad  = res.UnidadMedida; break;
-                        case "FE":
-                            snapshot.HierroValor    = res.ValorNumerico; snapshot.HierroUnidad    = res.UnidadMedida; break;
-                        case "FERR":
+                            snapshot.HbValor         = res.ValorNumerico; snapshot.HbUnidad         = res.UnidadMedida; break;
+                        case "FE" or "HIERRO":
+                            snapshot.HierroValor     = res.ValorNumerico; snapshot.HierroUnidad     = res.UnidadMedida; break;
+                        case "FERR" or "FERRITINA":
                             snapshot.FerritinaValor  = res.ValorNumerico; snapshot.FerritinaUnidad  = res.UnidadMedida; break;
-                        case "ISAT":
+                        case "ISAT" or "SATURACION":
                             snapshot.SaturacionValor = res.ValorNumerico; snapshot.SaturacionUnidad = res.UnidadMedida; break;
                     }
                 }
