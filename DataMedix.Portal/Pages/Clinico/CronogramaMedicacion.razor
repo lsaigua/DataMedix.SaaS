@@ -7,7 +7,6 @@
 @attribute [Authorize]
 @inject CronogramaService CronogramaService
 @inject IConfiguracionMedicamentoRepository ConfigRepo
-@inject ITenantContext TenantCtx
 @inject GlobalToastService Toast
 @inject GlobalLoadingService Loading
 @inject AuthenticationStateProvider AuthProvider
@@ -224,6 +223,7 @@
     private bool _cargando = false;
     private bool _showConfig = false;
 
+    private Guid _tenantId;
     private List<CronogramaMedicamento> _cronogramas = new();
     private List<DateTime> _fechasColumna = new();
     private ResumenCostos? _resumen;
@@ -240,25 +240,27 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var tenantStr = auth.User.FindFirst("tenant_id")?.Value;
+        _tenantId = Guid.TryParse(tenantStr, out var t) ? t : Guid.Empty;
+
         await CargarConfiguracionAsync();
         await CargarCronogramasAsync();
     }
 
     private async Task CargarConfiguracionAsync()
     {
-        var tenantId = TenantCtx.TenantId;
-        var configs = await ConfigRepo.GetByTenantAsync(tenantId);
+        var configs = await ConfigRepo.GetByTenantAsync(_tenantId);
         _precioEpo = configs.FirstOrDefault(c => c.Medicamento == "EPO")?.PrecioUnitario ?? 0;
         _precioHierro = configs.FirstOrDefault(c => c.Medicamento == "HIERRO")?.PrecioUnitario ?? 0;
     }
 
     private async Task CargarCronogramasAsync()
     {
-        var tenantId = TenantCtx.TenantId;
-        _cronogramas = await CronogramaService.GetCronogramasMesAsync(tenantId, _anio, _mes);
+        _cronogramas = await CronogramaService.GetCronogramasMesAsync(_tenantId, _anio, _mes);
         _fechasColumna = ObtenerFechasColumna();
         if (_cronogramas.Count > 0)
-            _resumen = await CronogramaService.CalcularCostosAsync(tenantId, _anio, _mes);
+            _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
     }
 
     private async Task GenerarCronogramaAsync()
@@ -268,15 +270,14 @@
         try
         {
             Loading.Show("Generando cronograma...");
-            var tenantId = TenantCtx.TenantId;
             var authState = await AuthProvider.GetAuthenticationStateAsync();
             Guid? usuarioId = null;
             if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
                 usuarioId = uid;
 
-            _cronogramas = await CronogramaService.GenerarOActualizarMesAsync(tenantId, _anio, _mes, usuarioId);
+            _cronogramas = await CronogramaService.GenerarOActualizarMesAsync(_tenantId, _anio, _mes, usuarioId);
             _fechasColumna = ObtenerFechasColumna();
-            _resumen = await CronogramaService.CalcularCostosAsync(tenantId, _anio, _mes);
+            _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
             Toast.ShowSuccess($"Cronograma de {NombreMes(_mes)} {_anio} actualizado — {_cronogramas.Count} pacientes");
         }
         catch (Exception ex)
@@ -294,24 +295,23 @@
     {
         try
         {
-            var tenantId = TenantCtx.TenantId;
             await ConfigRepo.UpsertAsync(new ConfiguracionMedicamento
             {
-                TenantId = tenantId,
+                TenantId = _tenantId,
                 Medicamento = "EPO",
                 PrecioUnitario = _precioEpo,
                 Unidad = "UI"
             });
             await ConfigRepo.UpsertAsync(new ConfiguracionMedicamento
             {
-                TenantId = tenantId,
+                TenantId = _tenantId,
                 Medicamento = "HIERRO",
                 PrecioUnitario = _precioHierro,
                 Unidad = "mg"
             });
             _showConfig = false;
             if (_cronogramas.Count > 0)
-                _resumen = await CronogramaService.CalcularCostosAsync(tenantId, _anio, _mes);
+                _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
             Toast.ShowSuccess("Precios guardados correctamente");
         }
         catch (Exception ex)
@@ -343,7 +343,7 @@
                 usuarioId = Guid.Empty;
 
             await CronogramaService.EditarDiaAsync(
-                TenantCtx.TenantId, cronogramaId, diaId,
+                _tenantId, cronogramaId, diaId,
                 _editEpo, _editHierro,
                 diaActual.EpoDosisuI, diaActual.HierroDosismg,
                 null, usuarioId);
