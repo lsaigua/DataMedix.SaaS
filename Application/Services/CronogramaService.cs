@@ -37,24 +37,32 @@ namespace DataMedix.Application.Services
         private readonly IConfiguracionMedicamentoRepository _configRepo;
         private readonly IPrescripcionRepository _prescripcionRepo;
         private readonly ISnapshotMensualRepository _snapshotRepo;
+        private readonly ITenantContext _tenantCtx;
 
         public CronogramaService(
             ICronogramaRepository repo,
             IConfiguracionMedicamentoRepository configRepo,
             IPrescripcionRepository prescripcionRepo,
-            ISnapshotMensualRepository snapshotRepo)
+            ISnapshotMensualRepository snapshotRepo,
+            ITenantContext tenantCtx)
         {
             _repo = repo;
             _configRepo = configRepo;
             _prescripcionRepo = prescripcionRepo;
             _snapshotRepo = snapshotRepo;
+            _tenantCtx = tenantCtx;
         }
+
+        // Resuelve el TenantId correcto: siempre usa el del contexto HTTP/circuit
+        // si está disponible. Evita Guid.Empty que puede llegar desde la página Blazor.
+        private Guid ResolveTenant(Guid fromPage) =>
+            _tenantCtx.IsResolved ? _tenantCtx.TenantId : fromPage;
 
         // ──────────────────────────────────────────────────────────────────────
         // LEER cronogramas del mes (sin regenerar)
         // ──────────────────────────────────────────────────────────────────────
         public Task<List<CronogramaMedicamento>> GetCronogramasMesAsync(Guid tenantId, int anio, int mes)
-            => _repo.GetByPeriodoAsync(tenantId, anio, mes);
+            => _repo.GetByPeriodoAsync(ResolveTenant(tenantId), anio, mes);
 
         // ──────────────────────────────────────────────────────────────────────
         // GENERAR / ACTUALIZAR cronograma para todos los pacientes del tenant.
@@ -64,6 +72,7 @@ namespace DataMedix.Application.Services
         public async Task<List<CronogramaMedicamento>> GenerarOActualizarMesAsync(
             Guid tenantId, int anio, int mes, Guid? usuarioId = null)
         {
+            tenantId = ResolveTenant(tenantId);
             var periodoActual = new DateTime(anio, mes, 1);
             var periodoAnterior = periodoActual.AddMonths(-1);
 
@@ -164,6 +173,7 @@ namespace DataMedix.Application.Services
         public async Task<CronogramaMedicamento> GenerarPorPacienteAsync(
             Guid tenantId, Guid pacienteId, int anio, int mes, Guid? usuarioId = null)
         {
+            tenantId = ResolveTenant(tenantId);
             var prescripcion = await ObtenerPrescripcionVigenteAsync(tenantId, pacienteId, anio, mes);
             var periodo = new DateTime(anio, mes, 1);
             var snapshot = await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo)
@@ -189,6 +199,7 @@ namespace DataMedix.Application.Services
             decimal? anteriorEpo, decimal? anteriorHierro,
             string? observacion, Guid usuarioId)
         {
+            tenantId = ResolveTenant(tenantId);
             var dia = new CronogramaDia
             {
                 Id = diaId,
@@ -228,6 +239,7 @@ namespace DataMedix.Application.Services
         public async Task<ResumenCostos> CalcularCostosAsync(
             Guid tenantId, int anio, int mes)
         {
+            tenantId = ResolveTenant(tenantId);
             var cronogramas = await _repo.GetByPeriodoAsync(tenantId, anio, mes);
             var confEpo = await _configRepo.GetByMedicamentoAsync(tenantId, "EPO");
             var confHierro = await _configRepo.GetByMedicamentoAsync(tenantId, "HIERRO");
