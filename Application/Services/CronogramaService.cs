@@ -26,15 +26,18 @@ namespace DataMedix.Application.Services
         private readonly ICronogramaRepository _repo;
         private readonly IConfiguracionMedicamentoRepository _configRepo;
         private readonly IPacienteRepository _pacienteRepo;
+        private readonly IPrescripcionRepository _prescripcionRepo;
 
         public CronogramaService(
             ICronogramaRepository repo,
             IConfiguracionMedicamentoRepository configRepo,
-            IPacienteRepository pacienteRepo)
+            IPacienteRepository pacienteRepo,
+            IPrescripcionRepository prescripcionRepo)
         {
             _repo = repo;
             _configRepo = configRepo;
             _pacienteRepo = pacienteRepo;
+            _prescripcionRepo = prescripcionRepo;
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -350,12 +353,18 @@ namespace DataMedix.Application.Services
         private async Task<PrescripcionSugerida?> ObtenerPrescripcionVigenteAsync(
             Guid tenantId, Guid pacienteId, int anio, int mes)
         {
-            // La prescripción que alimenta el cronograma del mes X
-            // es la del mes X (procesada a partir de datos del mes anterior)
+            // Busca la prescripción del mes actual; si no hay, intenta el mes anterior.
+            // El cronograma del mes X se alimenta de la prescripción aprobada más reciente.
             var periodoActual = new DateTime(anio, mes, 1);
-            // Intentamos mes actual primero, si no existe, mes anterior
-            // (esto permite usarla cuando ya fue procesada en el mismo mes)
-            return null; // Se expande en fase 2 — por ahora el usuario puede setear manualmente
+            var prescripcion = await _prescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(
+                tenantId, pacienteId, periodoActual);
+
+            if (prescripcion != null) return prescripcion;
+
+            // Fallback: mes anterior (prescripción ya procesada del corte anterior)
+            var periodoAnterior = periodoActual.AddMonths(-1);
+            return await _prescripcionRepo.GetSugeridaByPacienteYPeriodoAsync(
+                tenantId, pacienteId, periodoAnterior);
         }
 
         private enum TipoTurno { LMV, MJS }
