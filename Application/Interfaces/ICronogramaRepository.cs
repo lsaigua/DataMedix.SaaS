@@ -11,6 +11,10 @@ namespace DataMedix.Application.Interfaces
         Task<CronogramaDia> UpsertDiaAsync(CronogramaDia dia);
         Task<List<CronogramaDia>> UpsertDiasAsync(List<CronogramaDia> dias);
         Task RegistrarAuditoriaAsync(CronogramaAuditoria entrada);
+        /// <summary>Inserta en lote los cronogramas nuevos y persiste cambios tracked (1 SaveChanges total).</summary>
+        Task UpsertBatchAsync(List<CronogramaMedicamento> nuevos);
+        /// <summary>Elimina todas las dias de los cronogramas indicados y las reemplaza con las nuevas (2 queries totales).</summary>
+        Task BatchReplaceDiasAsync(List<Guid> cronogramaIds, List<CronogramaDia> nuevasDias);
     }
 
     public interface IConfiguracionMedicamentoRepository

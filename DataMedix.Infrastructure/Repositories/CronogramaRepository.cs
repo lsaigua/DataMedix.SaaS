@@ -127,6 +127,33 @@ namespace DataMedix.Infrastructure.Repositories
             _db.CronogramasAuditoria.Add(entrada);
             await _db.SaveChangesAsync();
         }
+
+        public async Task UpsertBatchAsync(List<CronogramaMedicamento> nuevos)
+        {
+            if (nuevos.Count > 0)
+                _db.CronogramasMedicamento.AddRange(nuevos);
+            // Las entidades ya tracked (modificadas en memoria) son detectadas automáticamente por EF
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task BatchReplaceDiasAsync(List<Guid> cronogramaIds, List<CronogramaDia> nuevasDias)
+        {
+            if (cronogramaIds.Count == 0) return;
+
+            // Eliminar TODAS las dias existentes de estos cronogramas
+            var existentes = await _db.CronogramasDia
+                .Where(d => cronogramaIds.Contains(d.CronogramaId))
+                .ToListAsync();
+
+            if (existentes.Count > 0)
+                _db.CronogramasDia.RemoveRange(existentes);
+
+            // Insertar todas las nuevas (los valores manuales ya vienen resueltos desde el servicio)
+            if (nuevasDias.Count > 0)
+                await _db.CronogramasDia.AddRangeAsync(nuevasDias);
+
+            await _db.SaveChangesAsync();
+        }
     }
 
     public class ConfiguracionMedicamentoRepository : IConfiguracionMedicamentoRepository

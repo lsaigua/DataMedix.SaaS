@@ -57,41 +57,50 @@ namespace DataMedix.Application.Services
             => _repo.GetByPeriodoAsync(tenantId, anio, mes);
 
         // ──────────────────────────────────────────────────────────────────────
-        // GENERAR / ACTUALIZAR cronograma para todos los pacientes del tenant.
-        // Fuente de datos: prescripciones del mes objetivo + fallback mes anterior.
-        // No depende de GetActivosAsync para evitar problemas de filtrado por TenantId.
+        // GENERAR / ACTUALIZAR — versión batch (8 queries vs. ~7.000 anterior).
+        //
+        // Flujo optimizado:
+        //   1. 4 lecturas paralelas: prescripciones + snapshots del mes y anterior
+        //   2. 1 lectura: cronogramas existentes con sus dias (para detectar ediciones manuales)
+        //   3. Memoria: crear/actualizar entidades (sin queries)
+        //   4. 1 SaveChanges: insertar nuevos cronogramas + actualizar existentes
+        //   5. Memoria: generar dias, aplicando valores manuales donde corresponda
+        //   6. 2 queries: DELETE dias viejos + INSERT nuevas en lote
+        //   7. 1 lectura final: recargar cronogramas con Dias para mostrar en pantalla
         // ──────────────────────────────────────────────────────────────────────
         public async Task<List<CronogramaMedicamento>> GenerarOActualizarMesAsync(
             Guid tenantId, int anio, int mes, Guid? usuarioId = null)
         {
-            var periodoActual = new DateTime(anio, mes, 1);
+            var periodoActual  = new DateTime(anio, mes, 1);
             var periodoAnterior = periodoActual.AddMonths(-1);
 
-            // Obtenemos prescripciones y snapshots del mes (y del anterior como fallback)
-            var prescripciones = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoActual);
+            // ── 1. Leer datos fuente ───────────────────────────────────────
+            var prescripciones    = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoActual);
             var prescripcionesAnt = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoAnterior);
-            var mapaPresc = prescripciones.ToDictionary(p => p.PacienteId);
-            var mapaPresAnt = prescripcionesAnt.ToDictionary(p => p.PacienteId);
+            var snapshots         = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoActual,  tamano: 1000);
+            var snapshotsAnt      = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoAnterior, tamano: 1000);
 
-            // Snapshots para obtener plan_salud actualizado.
-            // tamano:1000 evita el límite de paginación (default 50) para tenants con muchos pacientes.
-            var snapshots = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoActual, tamano: 1000);
-            var snapshotsAnt = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoAnterior, tamano: 1000);
-            var mapaSnap = snapshots.ToDictionary(s => s.PacienteId);
-            var mapaSnapAnt = snapshotsAnt.ToDictionary(s => s.PacienteId);
+            var mapaPresc   = prescripciones.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaPresAnt = prescripcionesAnt.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaSnap    = snapshots.GroupBy(s => s.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaSnapAnt = snapshotsAnt.GroupBy(s => s.PacienteId).ToDictionary(g => g.Key, g => g.First());
 
-            // Unión de todos los pacientes con datos en alguno de los dos meses
             var pacienteIds = mapaPresc.Keys
-                .Union(mapaPresAnt.Keys)
-                .Union(mapaSnap.Keys)
-                .Union(mapaSnapAnt.Keys)
-                .Distinct()
-                .ToList();
+                .Union(mapaPresAnt.Keys).Union(mapaSnap.Keys).Union(mapaSnapAnt.Keys)
+                .Distinct().ToList();
 
             if (pacienteIds.Count == 0) return new List<CronogramaMedicamento>();
 
-            // Construir datos por paciente
-            var datosPacientes = pacienteIds.Select(pid =>
+            // ── 2. Cargar cronogramas existentes con sus Dias (1 query) ───
+            var existentes    = await _repo.GetByPeriodoAsync(tenantId, anio, mes);
+            var mapaExistentes = existentes.ToDictionary(c => c.PacienteId);
+
+            // ── 3. Crear/actualizar entidades en memoria ───────────────────
+            var paraInsertar    = new List<CronogramaMedicamento>();
+            var todosCronogramas = new List<CronogramaMedicamento>();
+            var ahora = DateTime.UtcNow;
+
+            foreach (var pid in pacienteIds)
             {
                 mapaPresc.TryGetValue(pid, out var presc);
                 mapaPresAnt.TryGetValue(pid, out var prescAnt);
@@ -99,24 +108,86 @@ namespace DataMedix.Application.Services
                 mapaSnapAnt.TryGetValue(pid, out var snapAnt);
 
                 var prescVigente = presc ?? prescAnt;
-                var snapVigente = snap ?? snapAnt;
+                var planSalud    = snap?.PlanSalud ?? snapAnt?.PlanSalud;
 
-                return new DatosPacienteParaCronograma(
-                    PacienteId: pid,
-                    NombreCompleto: snap?.Paciente?.NombreCompleto ?? snapAnt?.Paciente?.NombreCompleto ?? "",
-                    PlanSalud: snap?.PlanSalud ?? snapAnt?.PlanSalud,
-                    EpoUiSemana: prescVigente?.EpoUiSemana,
-                    HierroMgMes: prescVigente?.HierroMgMes);
-            }).ToList();
-
-            var resultado = new List<CronogramaMedicamento>();
-            foreach (var datos in datosPacientes)
-            {
-                var cronograma = await GenerarPorPacienteConDatosAsync(tenantId, datos, anio, mes, usuarioId);
-                resultado.Add(cronograma);
+                if (mapaExistentes.TryGetValue(pid, out var existente))
+                {
+                    // Actualizar campos en el objeto tracked; EF detecta cambios automáticamente
+                    if (!string.IsNullOrWhiteSpace(planSalud))   existente.PlanSalud    = planSalud;
+                    if (prescVigente?.EpoUiSemana.HasValue == true) existente.EpoUiSemana = prescVigente.EpoUiSemana;
+                    if (prescVigente?.HierroMgMes.HasValue == true) existente.HierroMgMes = prescVigente.HierroMgMes;
+                    existente.UpdatedAt = ahora;
+                    existente.UpdatedBy = usuarioId;
+                    todosCronogramas.Add(existente);
+                }
+                else
+                {
+                    var nuevo = new CronogramaMedicamento
+                    {
+                        TenantId    = tenantId,
+                        PacienteId  = pid,
+                        PeriodoAnio = anio,
+                        PeriodoMes  = mes,
+                        PlanSalud   = planSalud,
+                        EpoUiSemana = prescVigente?.EpoUiSemana,
+                        HierroMgMes = prescVigente?.HierroMgMes,
+                        CreatedBy   = usuarioId,
+                        UpdatedAt   = ahora,
+                        UpdatedBy   = usuarioId
+                    };
+                    paraInsertar.Add(nuevo);
+                    todosCronogramas.Add(nuevo);
+                }
             }
 
-            return resultado;
+            // ── 4. Persistir todo en 1 SaveChanges ────────────────────────
+            await _repo.UpsertBatchAsync(paraInsertar);
+
+            // ── 5. Generar dias en memoria para pacientes con turno ────────
+            var cronogramaIdsConTurno = new List<Guid>();
+            var todasNuevasDias       = new List<CronogramaDia>();
+
+            foreach (var crono in todosCronogramas)
+            {
+                if (string.IsNullOrWhiteSpace(crono.PlanSalud) ||
+                    (!(crono.EpoUiSemana > 0) && !(crono.HierroMgMes > 0)))
+                    continue;
+
+                cronogramaIdsConTurno.Add(crono.Id);
+                var nuevasDias = GenerarDias(crono);
+
+                // Preservar valores editados manualmente (crono.Dias viene del GetByPeriodoAsync anterior)
+                if (crono.Dias.Any())
+                {
+                    var manuales = crono.Dias
+                        .Where(d => d.EpoEditadoManual || d.HierroEditadoManual)
+                        .ToDictionary(d => d.FechaSesion.Date);
+
+                    foreach (var dia in nuevasDias)
+                    {
+                        if (!manuales.TryGetValue(dia.FechaSesion.Date, out var manual)) continue;
+                        if (manual.EpoEditadoManual)
+                        {
+                            dia.EpoDosisuI = manual.EpoDosisuI;
+                            dia.EpoEditadoManual = true;
+                        }
+                        if (manual.HierroEditadoManual)
+                        {
+                            dia.HierroDosismg = manual.HierroDosismg;
+                            dia.HierroEditadoManual = true;
+                        }
+                        dia.Observacion = manual.Observacion;
+                    }
+                }
+
+                todasNuevasDias.AddRange(nuevasDias);
+            }
+
+            // ── 6. Reemplazar dias en lote (DELETE + INSERT, 2 queries) ───
+            await _repo.BatchReplaceDiasAsync(cronogramaIdsConTurno, todasNuevasDias);
+
+            // ── 7. Recargar con Dias y Paciente para la UI (1 query) ──────
+            return await _repo.GetByPeriodoAsync(tenantId, anio, mes);
         }
 
         // ──────────────────────────────────────────────────────────────────────

@@ -118,6 +118,15 @@
             <table class="crono-table">
                 <thead>
                     <tr>
+                        <th colspan="100" class="crono-titulo-mes">
+                            @NombreMes(_mes).ToUpper() · @_anio
+                            @if (!string.IsNullOrWhiteSpace(_busqueda))
+                            {
+                                <span class="crono-titulo-filtro"> — filtro: "@_busqueda"</span>
+                            }
+                        </th>
+                    </tr>
+                    <tr>
                         <th class="crono-th-fixed crono-th-paciente">Paciente</th>
                         <th class="crono-th-fixed crono-th-cedula">Cédula</th>
                         <th class="crono-th-fixed crono-th-turno">Turno</th>
@@ -668,6 +677,28 @@
         white-space: nowrap;
     }
 
+    /* Fila título mes/año */
+    .crono-titulo-mes {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%) !important;
+        color: white !important;
+        font-size: 0.95rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.08em !important;
+        text-transform: uppercase !important;
+        padding: 0.7rem 1rem !important;
+        text-align: left !important;
+        border-bottom: 2px solid #0ea5e9 !important;
+        position: sticky;
+        top: 0;
+        z-index: 5 !important;
+    }
+    .crono-titulo-filtro {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: #7dd3fc;
+        letter-spacing: 0.02em;
+    }
+
     /* Columnas fijas (sticky left) */
     .crono-th-fixed, .crono-td-fixed {
         position: sticky;
@@ -685,29 +716,45 @@
     .crono-th-epo, .crono-td-epo         { left: 350px; }
     .crono-th-fe,  .crono-td-fe          { left: 420px; }
 
-    /* Celdas de datos */
-    .crono-table tbody tr:hover td { background: #f8fafc; }
-    .crono-table tbody tr:hover .crono-td-fixed { background: #f0f9ff; }
+    /* Celdas de datos — guías de tabla más visibles */
+    .crono-table tbody tr { border-bottom: 1px solid #e2e8f0; }
+    .crono-table tbody tr:nth-child(even) td { background: #f8fafc; }
+    .crono-table tbody tr:nth-child(even) .crono-td-fixed { background: #f8fafc; }
+    .crono-table tbody tr:hover td { background: #e0f2fe !important; }
+    .crono-table tbody tr:hover .crono-td-fixed { background: #e0f2fe !important; }
 
     .crono-td-sesion {
         padding: 0.25rem;
         text-align: center;
         min-width: 62px;
-        border-left: 1px solid #f1f5f9;
+        border-left: 1px solid #e2e8f0;
         vertical-align: middle;
     }
-    .crono-td-vacio { background: #fafafa; }
-    .crono-td-activo { background: white; cursor: pointer; }
-    .crono-td-activo:hover { background: #eff6ff; }
-    .crono-td-manual { background: #fffbeb !important; }
+    /* Celdas sin sesión: fondo gris claro */
+    .crono-td-vacio { background: #f1f5f9; }
+    /* Celdas CON sesión: fondo blanco con borde izquierdo azul para destacar */
+    .crono-td-activo {
+        background: white !important;
+        border-left: 2px solid #bae6fd !important;
+        cursor: pointer;
+    }
+    .crono-td-activo:hover { background: #dbeafe !important; }
+    /* Edición manual: ámbar */
+    .crono-td-manual { background: #fffbeb !important; border-left: 2px solid #fcd34d !important; }
 
     .crono-td-total {
         min-width: 70px;
         text-align: center;
         font-weight: 700;
-        color: #475569;
-        border-left: 2px solid #e2e8f0;
+        border-left: 3px solid #0f172a;
         padding: 0.35rem 0.5rem;
+        background: #f0fdf4 !important;
+        color: #166534;
+        font-size: 0.82rem;
+    }
+    .crono-td-total:last-child {
+        background: #ecfdf5 !important;
+        color: #0f766e;
     }
 
     /* Fechas en encabezado */
@@ -739,7 +786,12 @@
     }
 
     /* Totales columna */
-    .crono-th-total { min-width: 70px; border-left: 2px solid #1e293b !important; }
+    .crono-th-total {
+        min-width: 70px;
+        border-left: 3px solid #0ea5e9 !important;
+        background: #0c4a6e !important;
+        color: #bae6fd !important;
+    }
 
     /* Paciente/turno celdas */
     .crono-td-paciente {
