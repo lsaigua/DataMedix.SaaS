@@ -13,6 +13,8 @@ namespace DataMedix.Domain.Entities
         public string? Observaciones { get; set; }
         public string Estado { get; set; } = EstadoCronograma.Borrador;
         public bool Activo { get; set; } = true;
+        public bool Ausente { get; set; } = false;
+        public string? MotivoAusencia { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         public Guid? CreatedBy { get; set; }

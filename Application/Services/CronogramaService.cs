@@ -149,6 +149,14 @@ namespace DataMedix.Application.Services
 
             foreach (var crono in todosCronogramas)
             {
+                // Paciente ausente: borrar sus días existentes, no generar nuevos
+                if (crono.Ausente)
+                {
+                    if (crono.Dias.Any())
+                        cronogramaIdsConTurno.Add(crono.Id);
+                    continue;
+                }
+
                 if (string.IsNullOrWhiteSpace(crono.PlanSalud) ||
                     (!(crono.EpoUiSemana > 0) && !(crono.HierroMgMes > 0)))
                     continue;
@@ -310,7 +318,8 @@ namespace DataMedix.Application.Services
             // Persiste la actualización del PlanSalud (entidad tracked, 1 SaveChanges)
             await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
 
-            if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
+            if (!crono.Ausente &&
+                !string.IsNullOrWhiteSpace(crono.PlanSalud) &&
                 (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
             {
                 var nuevasDias = GenerarDias(crono);
@@ -330,6 +339,28 @@ namespace DataMedix.Application.Services
 
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
             }
+
+            return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // MARCAR / DESMARCAR AUSENTE
+        // ──────────────────────────────────────────────────────────────────────
+        public async Task<CronogramaMedicamento> MarcarAusenteAsync(
+            Guid tenantId, Guid cronogramaId, bool ausente, Guid? usuarioId = null)
+        {
+            var crono = await _repo.GetConDiasAsync(tenantId, cronogramaId);
+            if (crono == null) throw new InvalidOperationException("Cronograma no encontrado");
+
+            crono.Ausente = ausente;
+            crono.UpdatedAt = DateTime.UtcNow;
+            crono.UpdatedBy = usuarioId;
+
+            await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
+            // Si se marca ausente, eliminar todos sus días programados
+            if (ausente)
+                await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, new List<CronogramaDia>());
 
             return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
         }

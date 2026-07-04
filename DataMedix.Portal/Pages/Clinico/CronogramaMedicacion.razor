@@ -242,7 +242,7 @@
                         var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
                         decimal totalEpo = crono.Dias.Sum(d => d.EpoDosisuI ?? 0);
                         decimal totalHierro = crono.Dias.Sum(d => d.HierroDosismg ?? 0);
-                        <tr class="crono-row">
+                        <tr class="crono-row @(crono.Ausente ? "crono-row-ausente" : "")">
                             <td class="crono-td-fixed crono-td-paciente">
                                 @crono.Paciente.NombreCompleto
                             </td>
@@ -266,17 +266,36 @@
                                 }
                                 else
                                 {
-                                    <span class="crono-badge-turno crono-badge-turno-edit"
-                                          @onclick="() => IniciarEditTurno(crono.Id, crono.PlanSalud)"
-                                          title="Click para editar turno">
-                                        @(crono.PlanSalud ?? "—")
-                                    </span>
-                                    @if (_mapaHb.TryGetValue(crono.PacienteId, out var hbVal) && hbVal.HasValue)
+                                    @if (crono.Ausente)
                                     {
-                                        <div class="crono-hb-mini @HbMiniClass(hbVal.Value)"
-                                             title="Hemoglobina: @hbVal.Value.ToString("F1") g/dL">
-                                            Hb @hbVal.Value.ToString("F1")
-                                        </div>
+                                        <span class="crono-badge-ausente">AUSENTE</span>
+                                        <button class="crono-btn-ausente crono-btn-ausente-on"
+                                                @onclick="() => ToggleAusenteAsync(crono.Id, false)"
+                                                disabled="@(_cargandoAusente.Contains(crono.Id))"
+                                                title="Reactivar paciente">
+                                            Reactivar
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="crono-badge-turno crono-badge-turno-edit"
+                                              @onclick="() => IniciarEditTurno(crono.Id, crono.PlanSalud)"
+                                              title="Click para editar turno">
+                                            @(crono.PlanSalud ?? "—")
+                                        </span>
+                                        @if (_mapaHb.TryGetValue(crono.PacienteId, out var hbVal) && hbVal.HasValue)
+                                        {
+                                            <div class="crono-hb-mini @HbMiniClass(hbVal.Value)"
+                                                 title="Hemoglobina: @hbVal.Value.ToString("F1") g/dL">
+                                                Hb @hbVal.Value.ToString("F1")
+                                            </div>
+                                        }
+                                        <button class="crono-btn-ausente"
+                                                @onclick="() => ToggleAusenteAsync(crono.Id, true)"
+                                                disabled="@(_cargandoAusente.Contains(crono.Id))"
+                                                title="Marcar como ausente este mes">
+                                            Ausente
+                                        </button>
                                     }
                                 }
                             </td>
@@ -438,6 +457,9 @@
 
     // Hb del último snapshot mensual, indexado por PacienteId
     private Dictionary<Guid, decimal?> _mapaHb = new();
+
+    // Cronogramas con toggle ausente en progreso
+    private HashSet<Guid> _cargandoAusente = new();
 
     private static readonly System.Globalization.CultureInfo _es =
         new System.Globalization.CultureInfo("es-ES");
@@ -738,6 +760,38 @@
         finally
         {
             Loading.Hide();
+        }
+    }
+
+    private async Task ToggleAusenteAsync(Guid cronogramaId, bool nuevoEstado)
+    {
+        _cargandoAusente.Add(cronogramaId);
+        StateHasChanged();
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? usuarioId = null;
+            if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
+                usuarioId = uid;
+
+            var actualizado = await CronogramaService.MarcarAusenteAsync(
+                _tenantId, cronogramaId, nuevoEstado, usuarioId);
+
+            var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
+            if (idx >= 0) _cronogramas[idx] = actualizado;
+            _fechasColumna = ObtenerFechasColumna();
+            _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+            _needScrollSync = true;
+
+            Toast.ShowSuccess(nuevoEstado ? "Paciente marcado como AUSENTE" : "Paciente reactivado");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _cargandoAusente.Remove(cronogramaId);
         }
     }
 
@@ -1350,4 +1404,52 @@
     .crono-hb-alta { background: #fee2e2; color: #b91c1c; }
 
     .crono-row td { border-bottom: 1px solid #f1f5f9; }
+
+    /* ─── Ausente ──────────────────────────────────────────────────────────── */
+    .crono-row-ausente td { opacity: 0.65; }
+    .crono-row-ausente .crono-td-fixed { background: #fff7ed !important; }
+    .crono-row-ausente .crono-td-sesion { background: #fef9f0 !important; }
+    .crono-row-ausente:hover td { background: #fef3c7 !important; }
+    .crono-row-ausente:hover .crono-td-fixed { background: #fef3c7 !important; }
+
+    .crono-badge-ausente {
+        font-size: 0.68rem;
+        font-weight: 800;
+        padding: 0.18rem 0.45rem;
+        border-radius: 4px;
+        background: #fef2f2;
+        color: #dc2626;
+        white-space: nowrap;
+        display: inline-block;
+        border: 1px solid #fecaca;
+        letter-spacing: 0.03em;
+    }
+    .crono-btn-ausente {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.58rem;
+        font-weight: 600;
+        padding: 0.1rem 0.35rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 3px;
+        background: white;
+        color: #94a3b8;
+        cursor: pointer;
+        transition: all 0.12s;
+        white-space: nowrap;
+    }
+    .crono-btn-ausente:hover:not(:disabled) {
+        background: #fef2f2;
+        color: #dc2626;
+        border-color: #fecaca;
+    }
+    .crono-btn-ausente-on {
+        background: #fef2f2 !important;
+        color: #dc2626 !important;
+        border-color: #fecaca !important;
+    }
+    .crono-btn-ausente-on:hover:not(:disabled) {
+        background: #fee2e2 !important;
+    }
+    .crono-btn-ausente:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

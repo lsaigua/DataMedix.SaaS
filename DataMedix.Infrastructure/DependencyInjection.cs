@@ -126,6 +126,13 @@ namespace DataMedix.Infrastructure
                     await db.ReglasClinicas.AddRangeAsync(reglasNuevas);
                     await db.SaveChangesAsync();
                 }
+
+                // 4. Columnas ausente/motivo_ausencia en cronograma_medicamento (idempotente)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE cronograma_medicamento
+                        ADD COLUMN IF NOT EXISTS ausente          BOOLEAN NOT NULL DEFAULT FALSE,
+                        ADD COLUMN IF NOT EXISTS motivo_ausencia  TEXT;
+                ");
             }
             finally
             {
