@@ -45,14 +45,13 @@ namespace DataMedix.Portal.Controllers
                 new(ClaimTypes.Email, user.Email),
                 new(ClaimTypes.Name, user.NombreCompleto),
                 new(ClaimTypes.Role, rolPrincipal),
-                // tenant_id real del usuario (no hardcodeado)
                 new("tenant_id", user.TenantId?.ToString() ?? Guid.Empty.ToString()),
                 new("nombre_completo", user.NombreCompleto)
             };
 
-            // Añadir todos los roles como claims adicionales
-            foreach (var rol in roles)
-                claims.Add(new Claim("rol", rol));
+            // Roles adicionales (solo los que no son el rol principal)
+            foreach (var rol in roles.Where(r => r != rolPrincipal))
+                claims.Add(new Claim(ClaimTypes.Role, rol));
 
             var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
             var principal = new ClaimsPrincipal(identity);

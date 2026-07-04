@@ -4,7 +4,6 @@ WORKDIR /src
 
 # Copiar archivos de proyecto primero (cachea restore si no cambian deps)
 COPY DataMedix.Domain/DataMedix.Domain.csproj           DataMedix.Domain/
-COPY DataMedix.Core/DataMedix.Core.csproj               DataMedix.Core/
 COPY Application/DataMedix.Application.csproj           Application/
 COPY DataMedix.Infrastructure/DataMedix.Infrastructure.csproj  DataMedix.Infrastructure/
 COPY DataMedix.Portal/DataMedix.Portal.csproj           DataMedix.Portal/

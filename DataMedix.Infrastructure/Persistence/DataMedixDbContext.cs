@@ -48,6 +48,12 @@ namespace DataMedix.Infrastructure.Persistence
         // Auditoría
         public DbSet<AuditoriaLog> AuditoriaLogs => Set<AuditoriaLog>();
 
+        // Cronograma de medicamentos
+        public DbSet<CronogramaMedicamento> CronogramasMedicamento => Set<CronogramaMedicamento>();
+        public DbSet<CronogramaDia> CronogramasDia => Set<CronogramaDia>();
+        public DbSet<ConfiguracionMedicamento> ConfiguracionesMedicamento => Set<ConfiguracionMedicamento>();
+        public DbSet<CronogramaAuditoria> CronogramasAuditoria => Set<CronogramaAuditoria>();
+
         // Facturación / uso (base central — accesible para super admin)
         public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
 
@@ -529,6 +535,95 @@ namespace DataMedix.Infrastructure.Persistence
             });
 
             // ========================
+            // CRONOGRAMA MEDICAMENTO
+            // ========================
+            m.Entity<CronogramaMedicamento>(e =>
+            {
+                e.ToTable("cronograma_medicamento");
+                e.HasKey(c => c.Id);
+                e.Property(c => c.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(c => c.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(c => c.PacienteId).HasColumnName("paciente_id").IsRequired();
+                e.Property(c => c.PeriodoAnio).HasColumnName("periodo_anio").IsRequired();
+                e.Property(c => c.PeriodoMes).HasColumnName("periodo_mes").IsRequired();
+                e.Property(c => c.PlanSalud).HasColumnName("plan_salud").HasMaxLength(200);
+                e.Property(c => c.EpoUiSemana).HasColumnName("epo_ui_semana").HasColumnType("decimal(10,2)");
+                e.Property(c => c.HierroMgMes).HasColumnName("hierro_mg_mes").HasColumnType("decimal(10,2)");
+                e.Property(c => c.Observaciones).HasColumnName("observaciones");
+                e.Property(c => c.Estado).HasColumnName("estado").HasMaxLength(50).HasDefaultValue("BORRADOR");
+                e.Property(c => c.Activo).HasColumnName("activo").HasDefaultValue(true);
+                e.Property(c => c.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(c => c.UpdatedAt).HasColumnName("updated_at");
+                e.Property(c => c.CreatedBy).HasColumnName("created_by");
+                e.Property(c => c.UpdatedBy).HasColumnName("updated_by");
+                e.HasIndex(c => new { c.TenantId, c.PacienteId, c.PeriodoAnio, c.PeriodoMes }).IsUnique();
+                e.HasOne(c => c.Paciente).WithMany().HasForeignKey(c => c.PacienteId);
+            });
+
+            // ========================
+            // CRONOGRAMA DIA
+            // ========================
+            m.Entity<CronogramaDia>(e =>
+            {
+                e.ToTable("cronograma_dia");
+                e.HasKey(d => d.Id);
+                e.Property(d => d.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(d => d.CronogramaId).HasColumnName("cronograma_id").IsRequired();
+                e.Property(d => d.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(d => d.FechaSesion).HasColumnName("fecha_sesion").HasColumnType("date").IsRequired();
+                e.Property(d => d.EpoDosisuI).HasColumnName("epo_dosis_ui").HasColumnType("decimal(10,2)");
+                e.Property(d => d.HierroDosismg).HasColumnName("hierro_dosis_mg").HasColumnType("decimal(10,2)");
+                e.Property(d => d.EpoEditadoManual).HasColumnName("epo_editado_manual").HasDefaultValue(false);
+                e.Property(d => d.HierroEditadoManual).HasColumnName("hierro_editado_manual").HasDefaultValue(false);
+                e.Property(d => d.Observacion).HasColumnName("observacion").HasMaxLength(500);
+                e.Property(d => d.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(d => d.UpdatedAt).HasColumnName("updated_at");
+                e.Property(d => d.UpdatedBy).HasColumnName("updated_by");
+                e.HasIndex(d => new { d.CronogramaId, d.FechaSesion }).IsUnique();
+                e.HasOne(d => d.Cronograma).WithMany(c => c.Dias).HasForeignKey(d => d.CronogramaId).OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ========================
+            // CONFIGURACION MEDICAMENTO
+            // ========================
+            m.Entity<ConfiguracionMedicamento>(e =>
+            {
+                e.ToTable("configuracion_medicamento");
+                e.HasKey(c => c.Id);
+                e.Property(c => c.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(c => c.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(c => c.Medicamento).HasColumnName("medicamento").HasMaxLength(100).IsRequired();
+                e.Property(c => c.PrecioUnitario).HasColumnName("precio_unitario").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(c => c.Unidad).HasColumnName("unidad").HasMaxLength(50).HasDefaultValue("UI");
+                e.Property(c => c.Observacion).HasColumnName("observacion").HasMaxLength(500);
+                e.Property(c => c.Activo).HasColumnName("activo").HasDefaultValue(true);
+                e.Property(c => c.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(c => c.UpdatedAt).HasColumnName("updated_at");
+                e.HasIndex(c => new { c.TenantId, c.Medicamento }).IsUnique();
+                e.HasOne(c => c.Tenant).WithMany().HasForeignKey(c => c.TenantId);
+            });
+
+            // ========================
+            // CRONOGRAMA AUDITORIA
+            // ========================
+            m.Entity<CronogramaAuditoria>(e =>
+            {
+                e.ToTable("cronograma_auditoria");
+                e.HasKey(a => a.Id);
+                e.Property(a => a.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(a => a.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(a => a.CronogramaId).HasColumnName("cronograma_id").IsRequired();
+                e.Property(a => a.DiaId).HasColumnName("dia_id");
+                e.Property(a => a.UsuarioId).HasColumnName("usuario_id");
+                e.Property(a => a.Accion).HasColumnName("accion").HasMaxLength(100).IsRequired();
+                e.Property(a => a.Campo).HasColumnName("campo").HasMaxLength(100);
+                e.Property(a => a.ValorAnterior).HasColumnName("valor_anterior").HasMaxLength(200);
+                e.Property(a => a.ValorNuevo).HasColumnName("valor_nuevo").HasMaxLength(200);
+                e.Property(a => a.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.HasOne<CronogramaMedicamento>().WithMany().HasForeignKey(a => a.CronogramaId).OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ========================
             // USAGE EVENTS (facturación)
             // ========================
             m.Entity<UsageEvent>(e =>
@@ -609,8 +704,18 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(ps => !_tenantCtx.IsResolved || ps.TenantId == _tenantCtx.TenantId);
             m.Entity<PrescripcionFinal>()
              .HasQueryFilter(pf => !_tenantCtx.IsResolved || pf.TenantId == _tenantCtx.TenantId);
+            m.Entity<CronogramaMedicamento>()
+             .HasQueryFilter(c => !_tenantCtx.IsResolved || c.TenantId == _tenantCtx.TenantId);
+            m.Entity<CronogramaDia>()
+             .HasQueryFilter(d => !_tenantCtx.IsResolved || d.TenantId == _tenantCtx.TenantId);
+            m.Entity<ConfiguracionMedicamento>()
+             .HasQueryFilter(c => !_tenantCtx.IsResolved || c.TenantId == _tenantCtx.TenantId);
+            m.Entity<CronogramaAuditoria>()
+             .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
             m.Entity<AuditoriaLog>()
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
+            m.Entity<UsuarioRol>()
+             .HasQueryFilter(ur => !_tenantCtx.IsResolved || ur.TenantId == null || ur.TenantId == _tenantCtx.TenantId);
 
             // Aislamiento GLOBAL-O-TENANT: tenant_id nullable donde null = regla global visible para todos
             m.Entity<ReglaClinica>()
@@ -621,7 +726,8 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == null || a.TenantId == _tenantCtx.TenantId);
 
             // Sin filtro: Tenant (directorio), ParametroClinico (catálogo global),
-            // Usuario (cross-tenant en login), Rol, UsageEvent (billing), DataProtectionKey
+            // Usuario (cross-tenant en login), Rol, UsuarioRol usa GLOBAL-O-TENANT (ver arriba),
+            // UsageEvent (billing super-admin), DataProtectionKey
         }
     }
 }

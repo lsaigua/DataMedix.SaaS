@@ -10,3 +10,19 @@ window.downloadFileFromBase64 = function (fileName, base64, contentType) {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 };
+
+// Scrollbar espejo sincronizada para CronogramaMedicacion
+// Muestra la barra de scroll horizontal en la parte superior de la tabla,
+// evitando que el usuario tenga que ir al pie de la grilla para desplazarse.
+window.initCronoScrollSync = function () {
+    const mirror = document.getElementById('cronoScrollMirror');
+    const wrap   = document.getElementById('cronoTableWrap');
+    const inner  = document.getElementById('cronoScrollMirrorInner');
+    if (!mirror || !wrap || !inner) return;
+
+    inner.style.width = wrap.scrollWidth + 'px';
+
+    // onscroll assignment reemplaza el handler anterior sin acumular listeners
+    mirror.onscroll = function () { wrap.scrollLeft = mirror.scrollLeft; };
+    wrap.onscroll   = function () { mirror.scrollLeft = wrap.scrollLeft; };
+};

@@ -32,6 +32,7 @@ builder.Services.AddMemoryCache();
 builder.Services
     .AddInfrastructure(builder.Configuration)
     .AddApplication();
+builder.Services.AddHealthChecks();
 
 // ── SERVICIOS PORTAL ──────────────────────────────────────────────────────────
 builder.Services.AddScoped<GlobalLoadingService>();
@@ -170,5 +171,6 @@ app.UseStaticFiles();
 app.MapStaticAssets();
 app.MapControllers();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+app.MapHealthChecks("/health");
 
 app.Run();

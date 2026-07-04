@@ -124,11 +124,25 @@ namespace DataMedix.Infrastructure.Repositories
                 .ToListAsync();
 
             var mapa = new Dictionary<string, ParametroClinico>(StringComparer.OrdinalIgnoreCase);
-            // Primero añadir globales, luego los del tenant (sobrescriben)
+            // Primero añadir globales, luego los del tenant (sobrescriben).
+            // Las claves se normalizan (sin tildes) para que "SATURACIÓN" == "SATURACION".
             foreach (var a in aliases.OrderBy(x => x.TenantId == null ? 0 : 1))
-                mapa[a.Alias.ToUpperInvariant()] = a.ParametroClinico;
+                mapa[NormalizarAlias(a.Alias)] = a.ParametroClinico;
 
             return mapa;
+        }
+
+        // Elimina diacríticos (tildes) y pasa a mayúsculas para comparación insensible a acentos.
+        private static string NormalizarAlias(string s)
+        {
+            var d = s.Trim().ToUpperInvariant()
+                      .Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder(d.Length);
+            foreach (var c in d)
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) !=
+                    System.Globalization.UnicodeCategory.NonSpacingMark)
+                    sb.Append(c);
+            return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
         }
     }
 

@@ -10,10 +10,9 @@
 # Git
 .git/
 
-# Secrets
-**/appsettings.Development.json
+# PROD credentials nunca en imagen — usa Railway env vars
+# DEV y QA van embebidos en imagen y se activan via ASPNETCORE_ENVIRONMENT
 **/appsettings.Production.json
-**/appsettings.Staging.json
 
 # Docker mismo
 Dockerfile
