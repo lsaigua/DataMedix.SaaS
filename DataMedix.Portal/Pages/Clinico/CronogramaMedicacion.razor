@@ -7,6 +7,7 @@
 @attribute [Authorize]
 @inject CronogramaService CronogramaService
 @inject IConfiguracionMedicamentoRepository ConfigRepo
+@inject ISnapshotMensualRepository SnapshotRepo
 @inject GlobalToastService Toast
 @inject GlobalLoadingService Loading
 @inject AuthenticationStateProvider AuthProvider
@@ -270,6 +271,13 @@
                                           title="Click para editar turno">
                                         @(crono.PlanSalud ?? "—")
                                     </span>
+                                    @if (_mapaHb.TryGetValue(crono.PacienteId, out var hbVal) && hbVal.HasValue)
+                                    {
+                                        <div class="crono-hb-mini @HbMiniClass(hbVal.Value)"
+                                             title="Hemoglobina: @hbVal.Value.ToString("F1") g/dL">
+                                            Hb @hbVal.Value.ToString("F1")
+                                        </div>
+                                    }
                                 }
                             </td>
                             <td class="crono-td-fixed crono-td-dosis crono-td-epo">
@@ -428,6 +436,9 @@
     private decimal? _editEpo;
     private decimal? _editHierro;
 
+    // Hb del último snapshot mensual, indexado por PacienteId
+    private Dictionary<Guid, decimal?> _mapaHb = new();
+
     private static readonly System.Globalization.CultureInfo _es =
         new System.Globalization.CultureInfo("es-ES");
 
@@ -466,6 +477,20 @@
             _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
             _needScrollSync = true;
         }
+        await CargarHbAsync();
+    }
+
+    private async Task CargarHbAsync()
+    {
+        try
+        {
+            var snapshots = await SnapshotRepo.GetByPeriodoAsync(
+                _tenantId, new DateTime(_anio, _mes, 1), tamano: 1000);
+            _mapaHb = snapshots
+                .GroupBy(s => s.PacienteId)
+                .ToDictionary(g => g.Key, g => g.First().HbValor);
+        }
+        catch { _mapaHb = new(); }
     }
 
     private async Task GenerarCronogramaAsync()
@@ -484,6 +509,7 @@
             _fechasColumna = ObtenerFechasColumna();
             _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
             _needScrollSync = true;
+            await CargarHbAsync();
             Toast.ShowSuccess($"Cronograma de {NombreMes(_mes)} {_anio} actualizado — {_cronogramas.Count} pacientes");
         }
         catch (Exception ex)
@@ -714,6 +740,14 @@
             Loading.Hide();
         }
     }
+
+    private static string HbMiniClass(decimal v) => v switch
+    {
+        < 8m    => "crono-hb-crit",
+        < 10m   => "crono-hb-baja",
+        <= 12m  => "crono-hb-ok",
+        _       => "crono-hb-alta"
+    };
 
     private static string TruncateNombre(string nombre, int maxLen) =>
         nombre.Length <= maxLen ? nombre : nombre[..maxLen] + "…";
@@ -1299,6 +1333,21 @@
         margin: 0;
         padding: 0.5rem 0;
     }
+
+    /* ─── Hb mini-badge en columna Turno ────────────────────────────────── */
+    .crono-hb-mini {
+        font-size: 0.58rem;
+        font-weight: 700;
+        margin-top: 3px;
+        padding: 0.08rem 0.3rem;
+        border-radius: 3px;
+        display: inline-block;
+        white-space: nowrap;
+    }
+    .crono-hb-ok   { background: #dcfce7; color: #15803d; }
+    .crono-hb-baja { background: #fef9c3; color: #854d0e; }
+    .crono-hb-crit { background: #ede9fe; color: #6d28d9; }
+    .crono-hb-alta { background: #fee2e2; color: #b91c1c; }
 
     .crono-row td { border-bottom: 1px solid #f1f5f9; }
 </style>

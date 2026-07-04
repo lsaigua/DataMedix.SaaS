@@ -1,0 +1,712 @@
+@page "/clinico/dashboard-calidad"
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@attribute [Authorize]
+@inject ISnapshotMensualRepository SnapshotRepo
+@inject AuthenticationStateProvider AuthProvider
+@inject GlobalLoadingService Loading
+@inject GlobalToastService Toast
+
+<PageTitle>Dashboard Calidad Clínica — DataMedix</PageTitle>
+
+<div class="dq-page">
+
+    <!-- ═══ HEADER ═══════════════════════════════════════════════════════════ -->
+    <div class="dq-header">
+        <div class="dq-header-left">
+            <h1 class="dq-title">Dashboard de Calidad Clínica</h1>
+            <p class="dq-subtitle">Indicadores KDOQI · Índice de Anemia · Alertas · @NombreMes(_mes) @_anio</p>
+        </div>
+        <div class="dq-header-actions">
+            <select class="dq-select" @bind="_mes">
+                @for (int m = 1; m <= 12; m++) { <option value="@m">@NombreMes(m)</option> }
+            </select>
+            <select class="dq-select" @bind="_anio">
+                @for (int a = DateTime.Today.Year - 1; a <= DateTime.Today.Year + 1; a++) { <option value="@a">@a</option> }
+            </select>
+            <button class="dq-btn dq-btn-primary" @onclick="CargarAsync" disabled="@_cargando">
+                @if (_cargando) { <span class="dq-spinner"></span> }
+                Cargar
+            </button>
+        </div>
+    </div>
+
+    @if (!_cargado && !_cargando)
+    {
+        <div class="dq-empty">
+            <div class="dq-empty-icon">📊</div>
+            <p>Selecciona un período y haz clic en <strong>Cargar</strong> para ver los indicadores clínicos.</p>
+        </div>
+    }
+    else if (_cargado && _indicadores.Count == 0)
+    {
+        <div class="dq-empty">
+            <p>No hay datos de laboratorio para <strong>@NombreMes(_mes) @_anio</strong>.</p>
+            <p>Importa los resultados del período desde <a href="/laboratorio/importar">Cargar Resultados</a>.</p>
+        </div>
+    }
+    else if (_cargado && _indicadores.Count > 0)
+    {
+        var total    = _indicadores.Count;
+        var conHb    = _indicadores.Count(i => i.Hb.HasValue);
+        var hbMeta   = _indicadores.Count(i => i.Hb.HasValue && i.Hb >= 10m && i.Hb <= 12m);
+        var conTsat  = _indicadores.Count(i => i.Tsat.HasValue);
+        var tsatMeta = _indicadores.Count(i => i.Tsat.HasValue && i.Tsat >= 20m && i.Tsat <= 50m);
+        var conFerr  = _indicadores.Count(i => i.Ferritina.HasValue);
+        var ferrMeta = _indicadores.Count(i => i.Ferritina.HasValue && i.Ferritina >= 200m && i.Ferritina <= 500m);
+        var conKtv   = _indicadores.Count(i => i.KtV.HasValue);
+        var ktvMeta  = _indicadores.Count(i => i.KtV.HasValue && i.KtV >= 1.2m);
+        var nCrit    = _indicadores.Sum(i => i.Alertas.Count(a => a.Severidad == "CRITICA"));
+        var nAlta    = _indicadores.Sum(i => i.Alertas.Count(a => a.Severidad == "ALTA"));
+        var nMedia   = _indicadores.Sum(i => i.Alertas.Count(a => a.Severidad == "MEDIA"));
+
+        <!-- ═══ KPI CARDS ═══════════════════════════════════════════════════ -->
+        <div class="dq-kpis">
+            @KpiRing("Hemoglobina en Meta", "10–12 g/dL", hbMeta, conHb, "dq-kpi-hb")
+            @KpiRing("TSAT en Meta", "20–50 %", tsatMeta, conTsat, "dq-kpi-tsat")
+            @KpiRing("Ferritina en Meta", "200–500 ng/mL", ferrMeta, conFerr, "dq-kpi-ferr")
+            @if (conKtv > 0)
+            {
+                @KpiRing("Kt/V Adecuado", "≥ 1.2", ktvMeta, conKtv, "dq-kpi-ktv")
+            }
+            <div class="dq-kpi-card dq-kpi-alerta">
+                <div class="dq-kpi-titulo">Alertas Activas</div>
+                <div class="dq-alertas-count">
+                    @if (nCrit > 0)
+                    {
+                        <div class="dq-count-badge dq-count-crit">
+                            <span class="dq-count-num">@nCrit</span>
+                            <span class="dq-count-label">CRÍTICAS</span>
+                        </div>
+                    }
+                    @if (nAlta > 0)
+                    {
+                        <div class="dq-count-badge dq-count-alta">
+                            <span class="dq-count-num">@nAlta</span>
+                            <span class="dq-count-label">ALTAS</span>
+                        </div>
+                    }
+                    @if (nMedia > 0)
+                    {
+                        <div class="dq-count-badge dq-count-media">
+                            <span class="dq-count-num">@nMedia</span>
+                            <span class="dq-count-label">MEDIAS</span>
+                        </div>
+                    }
+                    @if (nCrit == 0 && nAlta == 0 && nMedia == 0)
+                    {
+                        <div class="dq-count-ok">Sin alertas</div>
+                    }
+                </div>
+                <div class="dq-kpi-sub">de @total pacientes</div>
+            </div>
+        </div>
+
+        <!-- ═══ TABLA INDICADORES ════════════════════════════════════════════ -->
+        <div class="dq-tabla-header">
+            <span class="dq-tabla-titulo">Indicadores por Paciente</span>
+            <span class="dq-tabla-total">@total pacientes · @NombreMes(_mes) @_anio</span>
+            <div class="dq-tabla-leyenda">
+                <span class="dq-leyenda-dot dq-leyenda-ok"></span>En meta
+                <span class="dq-leyenda-dot dq-leyenda-medio" style="margin-left:.75rem"></span>Atención
+                <span class="dq-leyenda-dot dq-leyenda-alto" style="margin-left:.75rem"></span>Fuera de rango
+                <span class="dq-leyenda-dot dq-leyenda-crit" style="margin-left:.75rem"></span>Crítico
+            </div>
+        </div>
+        <div class="dq-tabla-wrap">
+            <table class="dq-tabla">
+                <thead>
+                    <tr>
+                        <th class="dq-th dq-th-pac">Paciente</th>
+                        <th class="dq-th dq-th-ced">Cédula</th>
+                        <th class="dq-th dq-th-plan">Plan</th>
+                        <th class="dq-th dq-th-param">
+                            Hb<br/><small>g/dL</small>
+                            <div class="dq-th-ref">meta: 10–12</div>
+                        </th>
+                        <th class="dq-th dq-th-param">
+                            TSAT<br/><small>%</small>
+                            <div class="dq-th-ref">meta: 20–50</div>
+                        </th>
+                        <th class="dq-th dq-th-param">
+                            Ferritina<br/><small>ng/mL</small>
+                            <div class="dq-th-ref">meta: 200–500</div>
+                        </th>
+                        @if (conKtv > 0)
+                        {
+                            <th class="dq-th dq-th-param">
+                                Kt/V
+                                <div class="dq-th-ref">meta: ≥1.2</div>
+                            </th>
+                        }
+                        <th class="dq-th dq-th-alertas">Alertas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ind in _indicadores)
+                    {
+                        <tr class="dq-row @(ind.NivelRiesgo >= 4 ? "dq-row-critica" : ind.NivelRiesgo >= 3 ? "dq-row-alta" : "")">
+                            <td class="dq-td dq-td-pac" title="@ind.NombreCompleto">
+                                @TruncNombre(ind.NombreCompleto, 28)
+                            </td>
+                            <td class="dq-td dq-td-ced">@ind.Identificacion</td>
+                            <td class="dq-td dq-td-plan">
+                                @if (!string.IsNullOrWhiteSpace(ind.PlanSalud))
+                                {
+                                    <span class="dq-badge-plan">@ind.PlanSalud</span>
+                                }
+                            </td>
+                            <td class="dq-td dq-td-param">
+                                @ValorParam(ind.Hb, "F1", HbClass)
+                            </td>
+                            <td class="dq-td dq-td-param">
+                                @ValorParam(ind.Tsat, "F0", TsatClass)
+                            </td>
+                            <td class="dq-td dq-td-param">
+                                @ValorParam(ind.Ferritina, "F0", FerrClass)
+                            </td>
+                            @if (conKtv > 0)
+                            {
+                                <td class="dq-td dq-td-param">
+                                    @ValorParam(ind.KtV, "F2", KtvClass)
+                                </td>
+                            }
+                            <td class="dq-td dq-td-alertas">
+                                @foreach (var a in ind.Alertas.OrderByDescending(x => x.Orden))
+                                {
+                                    <span class="dq-alerta-tag dq-at-@(a.Severidad.ToLower())" title="@a.Mensaje">
+                                        @a.Codigo
+                                    </span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+</div>
+
+@code {
+    private int _anio = DateTime.Today.Year;
+    private int _mes  = DateTime.Today.Month;
+    private bool _cargando = false;
+    private bool _cargado  = false;
+    private Guid _tenantId;
+    private List<IndicadorPaciente> _indicadores = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        _tenantId = Guid.TryParse(auth.User.FindFirst("tenant_id")?.Value, out var t) ? t : Guid.Empty;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        StateHasChanged();
+        try
+        {
+            Loading.Show("Cargando indicadores clínicos...");
+            var periodo = new DateTime(_anio, _mes, 1);
+            var snapshots = await SnapshotRepo.GetByPeriodoConDetallesAsync(_tenantId, periodo);
+            _indicadores  = Computar(snapshots);
+            _cargado      = true;
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error al cargar: {ex.Message}");
+        }
+        finally
+        {
+            Loading.Hide();
+            _cargando = false;
+        }
+    }
+
+    // ── Compute indicators from snapshots ─────────────────────────────────
+    private static List<IndicadorPaciente> Computar(List<SnapshotMensual> snapshots)
+    {
+        var lista = new List<IndicadorPaciente>();
+        foreach (var s in snapshots)
+        {
+            decimal? ktv = s.Detalles?
+                .Where(d => d.ParametroNombre != null &&
+                    (d.ParametroNombre.Equals("KT_V", StringComparison.OrdinalIgnoreCase) ||
+                     d.ParametroNombre.IndexOf("kt", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                     d.ParametroNombre.IndexOf("v",  StringComparison.OrdinalIgnoreCase) >= 0))
+                .Select(d => d.ValorNumerico)
+                .FirstOrDefault(v => v.HasValue);
+
+            var alertas = ComputarAlertas(s.HbValor, s.SaturacionValor, s.FerritinaValor, ktv);
+            int riesgo  = alertas.Count > 0 ? alertas.Max(a => a.Orden) : 0;
+
+            lista.Add(new IndicadorPaciente(
+                NombreCompleto: s.Paciente?.NombreCompleto ?? "—",
+                Identificacion: s.Paciente?.Identificacion ?? "—",
+                PlanSalud: s.PlanSalud,
+                Hb: s.HbValor,
+                Tsat: s.SaturacionValor,
+                Ferritina: s.FerritinaValor,
+                KtV: ktv,
+                Alertas: alertas,
+                NivelRiesgo: riesgo));
+        }
+
+        // Sort: most critical first, then by Hb out-of-range, then alphabetical
+        return lista
+            .OrderByDescending(i => i.NivelRiesgo)
+            .ThenBy(i => i.NombreCompleto)
+            .ToList();
+    }
+
+    private static List<AlertaIndicador> ComputarAlertas(
+        decimal? hb, decimal? tsat, decimal? ferritina, decimal? ktv)
+    {
+        var r = new List<AlertaIndicador>();
+
+        if (hb.HasValue)
+        {
+            if      (hb < 8m)   r.Add(new("HB-CRIT",  "CRITICA", $"Hb {hb:F1} g/dL — anemia severa, evaluar transfusión.", 4));
+            else if (hb < 9m)   r.Add(new("HB-BAJA",  "ALTA",    $"Hb {hb:F1} g/dL — bajo mínimo recomendado.", 3));
+            else if (hb > 13m)  r.Add(new("HB-ALTA",  "ALTA",    $"Hb {hb:F1} g/dL — riesgo cardiovascular, revisar EPO.", 3));
+            else if (hb > 12m)  r.Add(new("HB-SOBRE", "MEDIA",   $"Hb {hb:F1} g/dL — sobre la meta (>12).", 2));
+        }
+
+        if (tsat.HasValue)
+        {
+            if      (tsat < 20m) r.Add(new("TSAT-BAJA", "ALTA",  $"TSAT {tsat:F0}% — déficit funcional de hierro.", 3));
+            else if (tsat > 50m) r.Add(new("TSAT-ALTA", "MEDIA", $"TSAT {tsat:F0}% — saturación elevada.", 2));
+        }
+
+        if (ferritina.HasValue)
+        {
+            if      (ferritina > 2000m) r.Add(new("FERR-SOBR", "ALTA",   $"Ferritina {ferritina:F0} ng/mL — sospecha sobrecarga de hierro.", 3));
+            else if (ferritina > 800m)  r.Add(new("FERR-ALT",  "MEDIA",  $"Ferritina {ferritina:F0} ng/mL — valor elevado.", 2));
+            else if (ferritina < 100m)  r.Add(new("FERR-BAJA", "ALTA",   $"Ferritina {ferritina:F0} ng/mL — déficit absoluto de hierro.", 3));
+            else if (ferritina < 200m)  r.Add(new("FERR-BAJ2", "MEDIA",  $"Ferritina {ferritina:F0} ng/mL — por debajo de la meta.", 2));
+        }
+
+        if (ktv.HasValue)
+        {
+            if      (ktv < 1.0m) r.Add(new("KTV-CRIT", "CRITICA", $"Kt/V {ktv:F2} — diálisis insuficiente, riesgo alto.", 4));
+            else if (ktv < 1.2m) r.Add(new("KTV-BAJO", "ALTA",    $"Kt/V {ktv:F2} — bajo mínimo KDOQI (1.2).", 3));
+        }
+
+        return r;
+    }
+
+    // ── Ring KPI RenderFragment ────────────────────────────────────────────
+    private RenderFragment KpiRing(string titulo, string rango, int enMeta, int conDato, string clase)
+    {
+        double pct    = conDato > 0 ? (double)enMeta / conDato * 100 : 0;
+        int    offset = (int)(220.0 * (1.0 - pct / 100.0));
+        var    pctTxt = pct.ToString("F0");
+        var    absTxt = $"{enMeta} / {conDato}";
+
+        return b =>
+        {
+            b.OpenElement(0, "div");
+            b.AddAttribute(1, "class", $"dq-kpi-card {clase}");
+            b.AddMarkupContent(2, $@"
+<div class='dq-kpi-titulo'>{titulo}</div>
+<div class='dq-kpi-ring-wrap'>
+  <svg class='dq-kpi-ring' viewBox='0 0 80 80'>
+    <circle cx='40' cy='40' r='35' class='dq-ring-bg'/>
+    <circle cx='40' cy='40' r='35' class='dq-ring-fill'
+            stroke-dasharray='220' stroke-dashoffset='{offset}'
+            transform='rotate(-90 40 40)'/>
+  </svg>
+  <div class='dq-kpi-pct'>{pctTxt}%</div>
+</div>
+<div class='dq-kpi-abs'>{absTxt} pac.</div>
+<div class='dq-kpi-rango'>{rango}</div>");
+            b.CloseElement();
+        };
+    }
+
+    // ── Render helper for nullable parameter value ─────────────────────────
+    private RenderFragment ValorParam(decimal? valor, string fmt, Func<decimal, string> classFn) => b =>
+    {
+        if (valor.HasValue)
+        {
+            b.OpenElement(0, "span");
+            b.AddAttribute(1, "class", $"dq-val {classFn(valor.Value)}");
+            b.AddContent(2, valor.Value.ToString(fmt));
+            b.CloseElement();
+        }
+        else
+        {
+            b.OpenElement(0, "span");
+            b.AddAttribute(1, "class", "dq-sin-dato");
+            b.AddContent(2, "—");
+            b.CloseElement();
+        }
+    };
+
+    // ── CSS class helpers (traffic light) ─────────────────────────────────
+    private static string HbClass(decimal v) => v switch
+    {
+        < 8m    => "dq-crit",
+        < 9m    => "dq-alto",
+        < 10m   => "dq-medio",
+        <= 12m  => "dq-ok",
+        <= 13m  => "dq-medio",
+        _       => "dq-alto"
+    };
+    private static string TsatClass(decimal v) =>
+        v < 20m ? "dq-alto" : v > 50m ? "dq-medio" : "dq-ok";
+    private static string FerrClass(decimal v) => v switch
+    {
+        < 100m  => "dq-alto",
+        < 200m  => "dq-medio",
+        <= 500m => "dq-ok",
+        <= 800m => "dq-medio",
+        _       => "dq-alto"
+    };
+    private static string KtvClass(decimal v) =>
+        v < 1.0m ? "dq-crit" : v < 1.2m ? "dq-alto" : v < 1.4m ? "dq-medio" : "dq-ok";
+
+    private static string TruncNombre(string nombre, int max) =>
+        nombre.Length <= max ? nombre : nombre[..max] + "…";
+
+    private static string NombreMes(int m) => m switch
+    {
+        1  => "Enero",   2  => "Febrero",   3  => "Marzo",
+        4  => "Abril",   5  => "Mayo",       6  => "Junio",
+        7  => "Julio",   8  => "Agosto",     9  => "Septiembre",
+        10 => "Octubre", 11 => "Noviembre",  12 => "Diciembre",
+        _  => m.ToString()
+    };
+
+    private record IndicadorPaciente(
+        string NombreCompleto, string Identificacion, string? PlanSalud,
+        decimal? Hb, decimal? Tsat, decimal? Ferritina, decimal? KtV,
+        List<AlertaIndicador> Alertas, int NivelRiesgo);
+
+    private record AlertaIndicador(string Codigo, string Severidad, string Mensaje, int Orden);
+}
+
+<style>
+    .dq-page {
+        padding: 1.5rem;
+        max-width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    /* Header */
+    .dq-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+    .dq-title {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0;
+    }
+    .dq-subtitle {
+        font-size: 0.85rem;
+        color: #64748b;
+        margin: 0.15rem 0 0;
+    }
+    .dq-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .dq-select {
+        padding: 0.4rem 0.65rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: #1e293b;
+        background: white;
+        cursor: pointer;
+    }
+    .dq-btn {
+        padding: 0.42rem 1rem;
+        border-radius: 8px;
+        font-size: 0.83rem;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        transition: all 0.15s;
+    }
+    .dq-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .dq-btn-primary { background: #0ea5e9; color: white; }
+    .dq-btn-primary:hover:not(:disabled) { background: #0284c7; }
+    .dq-spinner {
+        width: 14px; height: 14px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: dq-spin 0.7s linear infinite;
+        display: inline-block;
+    }
+    @@keyframes dq-spin { to { transform: rotate(360deg); } }
+
+    /* Empty state */
+    .dq-empty {
+        text-align: center;
+        padding: 3.5rem 1rem;
+        color: #94a3b8;
+        font-size: 0.9rem;
+        border: 1px dashed #e2e8f0;
+        border-radius: 12px;
+    }
+    .dq-empty p { margin: 0.3rem 0; }
+    .dq-empty a { color: #0ea5e9; }
+    .dq-empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+    /* ─── KPI Cards ─────────────────────────────────────────────────────── */
+    .dq-kpis {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .dq-kpi-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        min-width: 155px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.3rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .dq-kpi-titulo {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #64748b;
+        text-align: center;
+    }
+    .dq-kpi-ring-wrap {
+        position: relative;
+        width: 80px;
+        height: 80px;
+    }
+    .dq-kpi-ring { width: 80px; height: 80px; }
+    .dq-ring-bg {
+        fill: none;
+        stroke: #f1f5f9;
+        stroke-width: 8;
+    }
+    .dq-ring-fill {
+        fill: none;
+        stroke-width: 8;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.5s ease;
+    }
+    .dq-kpi-hb  .dq-ring-fill { stroke: #10b981; }
+    .dq-kpi-tsat .dq-ring-fill { stroke: #0ea5e9; }
+    .dq-kpi-ferr .dq-ring-fill { stroke: #8b5cf6; }
+    .dq-kpi-ktv  .dq-ring-fill { stroke: #f59e0b; }
+    .dq-kpi-pct {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .dq-kpi-abs {
+        font-size: 0.72rem;
+        color: #64748b;
+        font-weight: 500;
+    }
+    .dq-kpi-rango {
+        font-size: 0.65rem;
+        color: #94a3b8;
+        background: #f8fafc;
+        border-radius: 4px;
+        padding: 0.1rem 0.4rem;
+    }
+    .dq-kpi-sub {
+        font-size: 0.68rem;
+        color: #94a3b8;
+    }
+
+    /* Alertas card */
+    .dq-kpi-alerta {
+        gap: 0.5rem;
+    }
+    .dq-alertas-count {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        justify-content: center;
+    }
+    .dq-count-badge {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.3rem 0.6rem;
+        border-radius: 8px;
+    }
+    .dq-count-num  { font-size: 1.5rem; font-weight: 800; line-height: 1.1; }
+    .dq-count-label { font-size: 0.55rem; font-weight: 700; letter-spacing: 0.06em; }
+    .dq-count-crit  { background: #fef2f2; color: #ef4444; }
+    .dq-count-alta  { background: #fff7ed; color: #f97316; }
+    .dq-count-media { background: #fefce8; color: #ca8a04; }
+    .dq-count-ok    { font-size: 0.85rem; font-weight: 600; color: #10b981; }
+
+    /* ─── Tabla de indicadores ───────────────────────────────────────────── */
+    .dq-tabla-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .dq-tabla-titulo {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .dq-tabla-total {
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+    .dq-tabla-leyenda {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-left: auto;
+        font-size: 0.72rem;
+        color: #64748b;
+    }
+    .dq-leyenda-dot {
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .dq-leyenda-ok    { background: #10b981; }
+    .dq-leyenda-medio { background: #f59e0b; }
+    .dq-leyenda-alto  { background: #ef4444; }
+    .dq-leyenda-crit  { background: #7c3aed; }
+
+    .dq-tabla-wrap {
+        overflow-x: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .dq-tabla {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 600px;
+        font-size: 0.8rem;
+    }
+    .dq-th {
+        background: #0f172a;
+        color: #94a3b8;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.55rem 0.6rem;
+        text-align: center;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    .dq-th-ref {
+        font-size: 0.55rem;
+        color: #475569;
+        font-weight: 500;
+        letter-spacing: 0;
+        text-transform: none;
+        margin-top: 1px;
+    }
+    .dq-th-pac  { text-align: left; min-width: 200px; }
+    .dq-th-ced  { min-width: 85px; }
+    .dq-th-plan { min-width: 80px; }
+    .dq-th-param { min-width: 80px; }
+    .dq-th-alertas { min-width: 140px; text-align: left; }
+
+    .dq-row { border-bottom: 1px solid #f1f5f9; }
+    .dq-row:nth-child(even) td { background: #f8fafc; }
+    .dq-row:hover td { background: #e0f2fe !important; }
+    .dq-row-critica td { background: #fef2f2 !important; }
+    .dq-row-critica:hover td { background: #fecaca !important; }
+    .dq-row-alta td { background: #fff7ed !important; }
+    .dq-row-alta:hover td { background: #fed7aa !important; }
+
+    .dq-td {
+        padding: 0.45rem 0.6rem;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .dq-td-pac {
+        text-align: left;
+        font-weight: 600;
+        color: #0f172a;
+        white-space: nowrap;
+    }
+    .dq-td-ced  { font-size: 0.75rem; color: #64748b; }
+    .dq-td-plan { }
+    .dq-td-param { font-size: 0.82rem; }
+    .dq-td-alertas {
+        text-align: left;
+        padding-left: 0.5rem;
+    }
+
+    /* Value traffic light badges */
+    .dq-val {
+        display: inline-block;
+        font-weight: 700;
+        font-size: 0.82rem;
+        padding: 0.18rem 0.45rem;
+        border-radius: 6px;
+        min-width: 44px;
+        text-align: center;
+    }
+    .dq-ok     { background: #dcfce7; color: #15803d; }
+    .dq-medio  { background: #fef9c3; color: #854d0e; }
+    .dq-alto   { background: #fee2e2; color: #b91c1c; }
+    .dq-crit   { background: #ede9fe; color: #6d28d9; }
+    .dq-sin-dato { color: #cbd5e1; font-size: 0.9rem; }
+
+    /* Plan salud badge */
+    .dq-badge-plan {
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+        background: #f0f9ff;
+        color: #0284c7;
+    }
+
+    /* Alert tags */
+    .dq-alerta-tag {
+        display: inline-block;
+        font-size: 0.62rem;
+        font-weight: 700;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        margin: 1px 2px;
+        white-space: nowrap;
+    }
+    .dq-at-critica { background: #ede9fe; color: #6d28d9; }
+    .dq-at-alta    { background: #fee2e2; color: #b91c1c; }
+    .dq-at-media   { background: #fef9c3; color: #92400e; }
+</style>

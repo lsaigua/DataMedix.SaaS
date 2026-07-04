@@ -121,6 +121,15 @@
             </span>
             Cronograma Medicación
         </NavLink>
+        <NavLink href="/clinico/dashboard-calidad" class="dm-nav-link" @onclick="HandleClick">
+            <span class="dm-nav-li">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+            </span>
+            Calidad Clínica KDOQI
+        </NavLink>
 
         <AuthorizeView Roles="SUPERADMIN,ADMIN">
             <Authorized>
