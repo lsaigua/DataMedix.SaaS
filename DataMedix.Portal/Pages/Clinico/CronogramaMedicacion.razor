@@ -777,13 +777,25 @@
             var actualizado = await CronogramaService.MarcarAusenteAsync(
                 _tenantId, cronogramaId, nuevoEstado, usuarioId);
 
-            var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
-            if (idx >= 0) _cronogramas[idx] = actualizado;
-            _fechasColumna = ObtenerFechasColumna();
-            _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+            if (nuevoEstado)
+            {
+                // Ausente: solo reemplazar la fila; los totales se recalculan desde BD
+                var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
+                if (idx >= 0) _cronogramas[idx] = actualizado;
+                _fechasColumna = ObtenerFechasColumna();
+                _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+            }
+            else
+            {
+                // Reactivado con días regenerados: recargar todo para reflejar nuevas fechas
+                _cronogramas = await CronogramaService.GetCronogramasMesAsync(_tenantId, _anio, _mes);
+                _fechasColumna = ObtenerFechasColumna();
+                _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+                await CargarHbAsync();
+            }
             _needScrollSync = true;
 
-            Toast.ShowSuccess(nuevoEstado ? "Paciente marcado como AUSENTE" : "Paciente reactivado");
+            Toast.ShowSuccess(nuevoEstado ? "Paciente marcado como AUSENTE — días eliminados del cronograma" : "Paciente reactivado — cronograma regenerado");
         }
         catch (Exception ex)
         {

@@ -358,9 +358,18 @@ namespace DataMedix.Application.Services
 
             await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
 
-            // Si se marca ausente, eliminar todos sus días programados
             if (ausente)
+            {
+                // Eliminar todos los días programados del paciente ausente
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, new List<CronogramaDia>());
+            }
+            else if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
+                     (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
+            {
+                // Reactivar: regenerar días respetando turno y dosis actuales
+                var nuevasDias = GenerarDias(crono);
+                await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
+            }
 
             return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
         }
