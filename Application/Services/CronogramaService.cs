@@ -295,6 +295,46 @@ namespace DataMedix.Application.Services
         }
 
         // ──────────────────────────────────────────────────────────────────────
+        // ACTUALIZAR TURNO Y REGENERAR días de un cronograma individual
+        // ──────────────────────────────────────────────────────────────────────
+        public async Task<CronogramaMedicamento> ActualizarTurnoYRegenerarAsync(
+            Guid tenantId, Guid cronogramaId, string nuevoTurno, Guid? usuarioId = null)
+        {
+            var crono = await _repo.GetConDiasAsync(tenantId, cronogramaId);
+            if (crono == null) throw new InvalidOperationException("Cronograma no encontrado");
+
+            crono.PlanSalud = nuevoTurno.Trim();
+            crono.UpdatedAt = DateTime.UtcNow;
+            crono.UpdatedBy = usuarioId;
+
+            // Persiste la actualización del PlanSalud (entidad tracked, 1 SaveChanges)
+            await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
+            if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
+                (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
+            {
+                var nuevasDias = GenerarDias(crono);
+
+                // Preservar valores editados manualmente
+                var manuales = crono.Dias
+                    .Where(d => d.EpoEditadoManual || d.HierroEditadoManual)
+                    .ToDictionary(d => d.FechaSesion.Date);
+
+                foreach (var dia in nuevasDias)
+                {
+                    if (!manuales.TryGetValue(dia.FechaSesion.Date, out var manual)) continue;
+                    if (manual.EpoEditadoManual) { dia.EpoDosisuI = manual.EpoDosisuI; dia.EpoEditadoManual = true; }
+                    if (manual.HierroEditadoManual) { dia.HierroDosismg = manual.HierroDosismg; dia.HierroEditadoManual = true; }
+                    dia.Observacion = manual.Observacion;
+                }
+
+                await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
+            }
+
+            return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
         // CÁLCULO DE COSTOS
         // ──────────────────────────────────────────────────────────────────────
         public async Task<ResumenCostos> CalcularCostosAsync(

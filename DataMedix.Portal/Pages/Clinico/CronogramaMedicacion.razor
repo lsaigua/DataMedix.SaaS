@@ -104,6 +104,94 @@
         </div>
     }
 
+    <!-- ═══ FILTROS DE SEGMENTO ════════════════════════════════════════════ -->
+    @if (_cronogramas.Count > 0)
+    {
+        <div class="crono-filtros-bar">
+            <div class="crono-filtros-grupo">
+                <span class="crono-filtros-label">Turno:</span>
+                @foreach (var turno in new[] { "Todos", "LMV", "MJS" })
+                {
+                    var localTurno = turno;
+                    <button class="crono-seg-btn @(_filtroTurno == localTurno ? "crono-seg-active" : "")"
+                            @onclick="() => _filtroTurno = localTurno">@localTurno</button>
+                }
+            </div>
+            <div class="crono-filtros-grupo">
+                <span class="crono-filtros-label">Día:</span>
+                @foreach (var item in _diasFiltroOpciones)
+                {
+                    var localItem = item;
+                    <button class="crono-seg-btn @(_filtroDia == localItem.Val ? "crono-seg-active" : "")"
+                            @onclick="() => _filtroDia = localItem.Val">@localItem.Label</button>
+                }
+            </div>
+            <div class="crono-filtros-grupo crono-filtros-right">
+                <button class="crono-btn crono-btn-ghost"
+                        @onclick="() => _showGraficos = !_showGraficos">
+                    @(_showGraficos ? "▲ Ocultar Gráficos" : "▼ Top 20 por Costo")
+                </button>
+            </div>
+        </div>
+    }
+
+    <!-- ═══ GRÁFICOS DE COSTO ════════════════════════════════════════════ -->
+    @if (_showGraficos && _cronogramas.Count > 0)
+    {
+        @if (_precioEpo == 0 && _precioHierro == 0)
+        {
+            <div class="crono-graficos-panel">
+                <p class="crono-grafico-aviso">Configure los precios de EPO y Hierro (botón "Precios") para ver los gráficos de costo.</p>
+            </div>
+        }
+        else
+        {
+            var lista20 = Top20Pacientes.ToList();
+            if (lista20.Count > 0)
+            {
+                var maxCosto = lista20[0].Costo;
+                <div class="crono-graficos-panel">
+                    <div class="crono-grafico-titulo">
+                        Top @lista20.Count — Pacientes Mayor Costo · @NombreMes(_mes) @_anio
+                        <span class="crono-grafico-leyenda">
+                            <span class="crono-leg-dot crono-leg-epo"></span> EPO &nbsp;
+                            <span class="crono-leg-dot crono-leg-fe"></span> Hierro
+                        </span>
+                    </div>
+                    <div class="crono-grafico-body">
+                        @foreach (var p in lista20)
+                        {
+                            var wEpo = maxCosto > 0
+                                ? (p.TotalEpo * _precioEpo / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                                : "0";
+                            var wFe = maxCosto > 0
+                                ? (p.TotalHierro * _precioHierro / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                                : "0";
+                            <div class="crono-barra-row">
+                                <div class="crono-barra-nombre" title="@p.Nombre · @p.Cedula">
+                                    @TruncateNombre(p.Nombre, 22)
+                                </div>
+                                <div class="crono-barra-wrap">
+                                    @if (p.TotalEpo * _precioEpo > 0)
+                                    {
+                                        <div class="crono-barra-seg crono-barra-epo" style="width:@wEpo%"
+                                             title="EPO $@((p.TotalEpo * _precioEpo).ToString("N0"))"></div>
+                                    }
+                                    @if (p.TotalHierro * _precioHierro > 0)
+                                    {
+                                        <div class="crono-barra-seg crono-barra-fe-bar" style="width:@wFe%"
+                                             title="Hierro $@((p.TotalHierro * _precioHierro).ToString("N0"))"></div>
+                                    }
+                                </div>
+                                <div class="crono-barra-costo">$@p.Costo.ToString("N0")</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    }
+
     <!-- ═══ TABLA GRILLA ═════════════════════════════════════════════════════ -->
     @if (_cronogramas.Count == 0 && !_cargando)
     {
@@ -161,7 +249,28 @@
                                 @crono.Paciente.Identificacion
                             </td>
                             <td class="crono-td-fixed crono-td-turno">
-                                <span class="crono-badge-turno">@(crono.PlanSalud ?? "—")</span>
+                                @if (_editTurnoId == crono.Id)
+                                {
+                                    <div class="crono-turno-edit">
+                                        <input type="text" class="crono-input-turno"
+                                               @bind="_editTurnoValor"
+                                               @bind:event="oninput"
+                                               maxlength="25"
+                                               placeholder="LMV / MJS" />
+                                        <div class="crono-cell-edit-btns">
+                                            <button class="crono-btn-ok" @onclick="() => GuardarTurnoAsync(crono.Id)">✓</button>
+                                            <button class="crono-btn-cancel" @onclick="CancelarEditTurno">✕</button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="crono-badge-turno crono-badge-turno-edit"
+                                          @onclick="() => IniciarEditTurno(crono.Id, crono.PlanSalud)"
+                                          title="Click para editar turno">
+                                        @(crono.PlanSalud ?? "—")
+                                    </span>
+                                }
                             </td>
                             <td class="crono-td-fixed crono-td-dosis crono-td-epo">
                                 @(crono.EpoUiSemana?.ToString("N0") ?? "—")
@@ -268,11 +377,49 @@
     private List<DateTime> _fechasColumna = new();
     private ResumenCostos? _resumen;
 
+    // Filtros de segmento
+    private string _filtroTurno = "Todos";
+    private int    _filtroDia   = 0;   // 0=Todos; 1=Lun…6=Sáb  (alineado con DayOfWeek)
+    private static readonly (string Label, int Val)[] _diasFiltroOpciones =
+    {
+        ("Todos", 0), ("Lun", 1), ("Mar", 2), ("Mié", 3),
+        ("Jue", 4), ("Vie", 5), ("Sáb", 6)
+    };
+
+    // Edición inline de turno
+    private Guid?  _editTurnoId;
+    private string _editTurnoValor = "";
+
+    // Gráficos
+    private bool _showGraficos = false;
+    private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal Costo);
+
+    private IEnumerable<CostoPaciente> Top20Pacientes =>
+        _cronogramas
+            .Select(c =>
+            {
+                var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0);
+                var fe  = c.Dias.Sum(d => d.HierroDosismg ?? 0);
+                return new CostoPaciente(
+                    c.Paciente.NombreCompleto,
+                    c.Paciente.Identificacion,
+                    epo, fe,
+                    epo * _precioEpo + fe * _precioHierro);
+            })
+            .Where(p => p.Costo > 0)
+            .OrderByDescending(p => p.Costo)
+            .Take(20);
+
     private IEnumerable<CronogramaMedicamento> CronogramasVisibles =>
-        string.IsNullOrWhiteSpace(_busqueda) ? _cronogramas :
-        _cronogramas.Where(c =>
-            c.Paciente.Identificacion.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ||
-            c.Paciente.NombreCompleto.Contains(_busqueda, StringComparison.OrdinalIgnoreCase));
+        _cronogramas
+            .Where(c => string.IsNullOrWhiteSpace(_busqueda) ||
+                c.Paciente.Identificacion.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ||
+                c.Paciente.NombreCompleto.Contains(_busqueda, StringComparison.OrdinalIgnoreCase))
+            .Where(c => _filtroTurno == "Todos" ||
+                (!string.IsNullOrWhiteSpace(c.PlanSalud) &&
+                 c.PlanSalud.ToUpperInvariant().Contains(_filtroTurno)))
+            .Where(c => _filtroDia == 0 ||
+                c.Dias.Any(d => (int)d.FechaSesion.DayOfWeek == _filtroDia));
 
     private decimal _precioEpo = 0;
     private decimal _precioHierro = 0;
@@ -523,6 +670,53 @@
         return System.Globalization.ISOWeek.GetWeekOfYear(_fechasColumna[idx - 1]) !=
                System.Globalization.ISOWeek.GetWeekOfYear(fecha);
     }
+
+    private void IniciarEditTurno(Guid cronogramaId, string? planSalud)
+    {
+        _editTurnoId    = cronogramaId;
+        _editTurnoValor = planSalud ?? "";
+    }
+
+    private void CancelarEditTurno()
+    {
+        _editTurnoId    = null;
+        _editTurnoValor = "";
+    }
+
+    private async Task GuardarTurnoAsync(Guid cronogramaId)
+    {
+        try
+        {
+            Loading.Show("Actualizando turno y regenerando...");
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? usuarioId = null;
+            if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
+                usuarioId = uid;
+
+            var actualizado = await CronogramaService.ActualizarTurnoYRegenerarAsync(
+                _tenantId, cronogramaId, _editTurnoValor, usuarioId);
+
+            var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
+            if (idx >= 0) _cronogramas[idx] = actualizado;
+            _fechasColumna  = ObtenerFechasColumna();
+            _resumen        = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+            _needScrollSync = true;
+
+            CancelarEditTurno();
+            Toast.ShowSuccess("Turno actualizado y cronograma regenerado");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error al actualizar turno: {ex.Message}");
+        }
+        finally
+        {
+            Loading.Hide();
+        }
+    }
+
+    private static string TruncateNombre(string nombre, int maxLen) =>
+        nombre.Length <= maxLen ? nombre : nombre[..maxLen] + "…";
 
     private static decimal? ParseDecimal(string? s) =>
         decimal.TryParse(s, out var v) ? v : null;
@@ -952,6 +1146,159 @@
     }
     .crono-btn-ok { background: #10b981; color: white; }
     .crono-btn-cancel { background: #ef4444; color: white; }
+
+    /* ─── Filtros de segmento ───────────────────────────────────────────── */
+    .crono-filtros-bar {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 0.55rem 1rem;
+    }
+    .crono-filtros-grupo {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .crono-filtros-right { margin-left: auto; }
+    .crono-filtros-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-right: 0.25rem;
+        white-space: nowrap;
+    }
+    .crono-seg-btn {
+        padding: 0.25rem 0.65rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        background: white;
+        cursor: pointer;
+        transition: all 0.12s;
+    }
+    .crono-seg-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+    .crono-seg-active {
+        background: #0ea5e9 !important;
+        color: white !important;
+        border-color: #0284c7 !important;
+    }
+
+    /* ─── Edición inline de turno ───────────────────────────────────────── */
+    .crono-badge-turno-edit {
+        cursor: pointer;
+        border: 1px dashed #bae6fd;
+    }
+    .crono-badge-turno-edit:hover {
+        background: #e0f2fe;
+        border-color: #0ea5e9;
+    }
+    .crono-turno-edit {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 0.1rem;
+    }
+    .crono-input-turno {
+        width: 70px;
+        padding: 0.15rem 0.3rem;
+        border: 1px solid #0ea5e9;
+        border-radius: 4px;
+        font-size: 0.72rem;
+        text-align: center;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    /* ─── Gráficos de costo ─────────────────────────────────────────────── */
+    .crono-graficos-panel {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+    }
+    .crono-grafico-titulo {
+        font-size: 0.82rem;
+        font-weight: 800;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+    }
+    .crono-grafico-leyenda {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.72rem;
+        font-weight: 500;
+        color: #64748b;
+        margin-left: auto;
+    }
+    .crono-leg-dot {
+        display: inline-block;
+        width: 10px; height: 10px;
+        border-radius: 2px;
+    }
+    .crono-leg-epo { background: #7c3aed; }
+    .crono-leg-fe  { background: #0891b2; }
+    .crono-grafico-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+    .crono-barra-row {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+    .crono-barra-nombre {
+        width: 175px;
+        flex-shrink: 0;
+        font-size: 0.73rem;
+        font-weight: 500;
+        color: #1e293b;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .crono-barra-wrap {
+        flex: 1;
+        height: 18px;
+        background: #e2e8f0;
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+    }
+    .crono-barra-seg {
+        height: 100%;
+        min-width: 2px;
+        transition: width 0.3s ease;
+    }
+    .crono-barra-epo    { background: #7c3aed; }
+    .crono-barra-fe-bar { background: #0891b2; }
+    .crono-barra-costo {
+        width: 72px;
+        flex-shrink: 0;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #0f172a;
+        text-align: right;
+    }
+    .crono-grafico-aviso {
+        text-align: center;
+        color: #94a3b8;
+        font-size: 0.82rem;
+        margin: 0;
+        padding: 0.5rem 0;
+    }
 
     .crono-row td { border-bottom: 1px solid #f1f5f9; }
 </style>
