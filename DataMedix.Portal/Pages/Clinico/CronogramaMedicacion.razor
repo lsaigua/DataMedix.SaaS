@@ -114,7 +114,11 @@
     }
     else if (_cronogramas.Count > 0)
     {
-        <div class="crono-table-wrap">
+        <!-- Scrollbar espejo: visible en la parte superior sin ir al pie de la tabla -->
+        <div class="crono-scroll-mirror" id="cronoScrollMirror">
+            <div id="cronoScrollMirrorInner"></div>
+        </div>
+        <div class="crono-table-wrap" id="cronoTableWrap">
             <table class="crono-table">
                 <thead>
                     <tr>
@@ -220,8 +224,28 @@
                                     }
                                 </td>
                             }
-                            <td class="crono-td-total">@(totalEpo > 0 ? totalEpo.ToString("N0") : "—")</td>
-                            <td class="crono-td-total">@(totalHierro > 0 ? totalHierro.ToString("N0") : "—")</td>
+                            <td class="crono-td-total crono-td-total-epo">
+                                @if (totalEpo > 0)
+                                {
+                                    <div class="crono-total-num">@totalEpo.ToString("N0")</div>
+                                    @if (_precioEpo > 0)
+                                    {
+                                        <div class="crono-total-costo">$@((totalEpo * _precioEpo).ToString("N0"))</div>
+                                    }
+                                }
+                                else { <span class="crono-dash">—</span> }
+                            </td>
+                            <td class="crono-td-total crono-td-total-fe">
+                                @if (totalHierro > 0)
+                                {
+                                    <div class="crono-total-num">@totalHierro.ToString("N0")</div>
+                                    @if (_precioHierro > 0)
+                                    {
+                                        <div class="crono-total-costo">$@((totalHierro * _precioHierro).ToString("N0"))</div>
+                                    }
+                                }
+                                else { <span class="crono-dash">—</span> }
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -239,6 +263,7 @@
 
     private Guid _tenantId;
     private string _busqueda = "";
+    private bool _needScrollSync = false;
     private List<CronogramaMedicamento> _cronogramas = new();
     private List<DateTime> _fechasColumna = new();
     private ResumenCostos? _resumen;
@@ -269,6 +294,15 @@
         await CargarCronogramasAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_needScrollSync)
+        {
+            _needScrollSync = false;
+            await JS.InvokeVoidAsync("initCronoScrollSync");
+        }
+    }
+
     private async Task CargarConfiguracionAsync()
     {
         var configs = await ConfigRepo.GetByTenantAsync(_tenantId);
@@ -281,7 +315,10 @@
         _cronogramas = await CronogramaService.GetCronogramasMesAsync(_tenantId, _anio, _mes);
         _fechasColumna = ObtenerFechasColumna();
         if (_cronogramas.Count > 0)
+        {
             _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+            _needScrollSync = true;
+        }
     }
 
     private async Task GenerarCronogramaAsync()
@@ -299,6 +336,7 @@
             _cronogramas = await CronogramaService.GenerarOActualizarMesAsync(_tenantId, _anio, _mes, usuarioId);
             _fechasColumna = ObtenerFechasColumna();
             _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+            _needScrollSync = true;
             Toast.ShowSuccess($"Cronograma de {NombreMes(_mes)} {_anio} actualizado — {_cronogramas.Count} pacientes");
         }
         catch (Exception ex)
@@ -386,8 +424,9 @@
             Loading.Show("Exportando...");
             var bytes = GenerarExcelBytes();
             var base64 = Convert.ToBase64String(bytes);
-            await JS.InvokeVoidAsync("downloadFileFromBase64", base64,
+            await JS.InvokeVoidAsync("downloadFileFromBase64",
                 $"cronograma_{_anio}_{_mes:D2}.xlsx",
+                base64,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             Toast.ShowSuccess("Archivo descargado");
         }
@@ -645,10 +684,26 @@
     }
     .crono-empty p { margin: 0.25rem 0; }
 
+    /* Scrollbar espejo — encima de la tabla para no tener que ir al pie */
+    .crono-scroll-mirror {
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 14px;
+        border: 1px solid #e2e8f0;
+        border-bottom: none;
+        border-radius: 12px 12px 0 0;
+        background: #f1f5f9;
+        cursor: pointer;
+    }
+    .crono-scroll-mirror::-webkit-scrollbar        { height: 10px; }
+    .crono-scroll-mirror::-webkit-scrollbar-thumb  { background: #94a3b8; border-radius: 5px; }
+    .crono-scroll-mirror::-webkit-scrollbar-track  { background: #e2e8f0; border-radius: 5px; }
+    #cronoScrollMirrorInner                        { height: 1px; }
+
     /* Table wrapper: scroll horizontal */
     .crono-table-wrap {
         overflow-x: auto;
-        border-radius: 12px;
+        border-radius: 0 0 12px 12px;
         border: 1px solid #e2e8f0;
         box-shadow: 0 1px 4px rgba(0,0,0,0.04);
     }
@@ -743,18 +798,36 @@
     .crono-td-manual { background: #fffbeb !important; border-left: 2px solid #fcd34d !important; }
 
     .crono-td-total {
-        min-width: 70px;
+        min-width: 85px;
         text-align: center;
-        font-weight: 700;
         border-left: 3px solid #0f172a;
-        padding: 0.35rem 0.5rem;
-        background: #f0fdf4 !important;
-        color: #166534;
-        font-size: 0.82rem;
+        padding: 0.3rem 0.4rem;
+        vertical-align: middle;
     }
-    .crono-td-total:last-child {
-        background: #ecfdf5 !important;
-        color: #0f766e;
+    .crono-td-total-epo  { background: #f0fdf4 !important; }
+    .crono-td-total-fe   { background: #ecfdf5 !important; }
+
+    .crono-total-num {
+        font-size: 0.82rem;
+        font-weight: 800;
+        color: #166534;
+        line-height: 1.1;
+    }
+    .crono-td-total-fe .crono-total-num { color: #0f766e; }
+
+    .crono-total-costo {
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: #15803d;
+        margin-top: 1px;
+        background: #dcfce7;
+        border-radius: 3px;
+        padding: 0 3px;
+        display: inline-block;
+    }
+    .crono-td-total-fe .crono-total-costo {
+        color: #0d9488;
+        background: #ccfbf1;
     }
 
     /* Fechas en encabezado */
