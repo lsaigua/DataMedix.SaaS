@@ -50,11 +50,11 @@ coverage/
 .env.*
 
 # =========================
-# .NET secrets (nunca al repo)
+# .NET secrets
+# PROD nunca al repo — usa Railway env vars
+# DEV y QA se commitean para que Railway los embeba en la imagen
 # =========================
-appsettings.Development.json
 appsettings.Production.json
-appsettings.Staging.json
 
 # =========================
 # OS

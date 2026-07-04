@@ -135,9 +135,9 @@ namespace DataMedix.Application.Services
                         continue;
                     }
 
-                    // Resolver parámetro clínico por alias exacto (sin fallback parcial para evitar
-                    // que parámetros con nombre similar, como HCM, sobreescriban el valor de HB)
-                    var aliasKey = fila.Parametro!.Trim().ToUpperInvariant();
+                    // Resolver parámetro clínico por alias. La clave se normaliza para que
+                    // "SATURACIÓN" (con tilde) coincida con el alias "SATURACION" (sin tilde).
+                    var aliasKey = NormalizarAlias(fila.Parametro!);
                     mapaAliases.TryGetValue(aliasKey, out var parametro);
                     // Si no se reconoce, se guarda como dato crudo (ParametroClinicoId = null)
                     // Todos los registros se almacenan — solo los reconocidos contribuyen al snapshot
@@ -316,10 +316,10 @@ namespace DataMedix.Application.Services
                     .Select(r => r.ParametroClinico!.Codigo)
                     .ToHashSet();
 
-                if (codigosPresentes.Contains("HB"))   { snapshot.HbValor        = null; snapshot.HbUnidad        = null; }
-                if (codigosPresentes.Contains("FE"))   { snapshot.HierroValor     = null; snapshot.HierroUnidad    = null; }
-                if (codigosPresentes.Contains("FERR")) { snapshot.FerritinaValor  = null; snapshot.FerritinaUnidad = null; }
-                if (codigosPresentes.Contains("ISAT")) { snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null; }
+                if (codigosPresentes.Contains("HB"))                                                           { snapshot.HbValor        = null; snapshot.HbUnidad        = null; }
+                if (codigosPresentes.Contains("FE")   || codigosPresentes.Contains("HIERRO"))             { snapshot.HierroValor     = null; snapshot.HierroUnidad    = null; }
+                if (codigosPresentes.Contains("FERR") || codigosPresentes.Contains("FERRITINA"))          { snapshot.FerritinaValor  = null; snapshot.FerritinaUnidad = null; }
+                if (codigosPresentes.Contains("ISAT") || codigosPresentes.Contains("SATURACION"))         { snapshot.SaturacionValor = null; snapshot.SaturacionUnidad = null; }
 
                 // Mapear parámetros clave por código (nav prop ParametroClinico asignado al crear)
                 foreach (var res in grupo.Where(r => r.ParametroClinico != null))
@@ -327,12 +327,12 @@ namespace DataMedix.Application.Services
                     switch (res.ParametroClinico!.Codigo)
                     {
                         case "HB":
-                            snapshot.HbValor  = res.ValorNumerico; snapshot.HbUnidad  = res.UnidadMedida; break;
-                        case "FE":
-                            snapshot.HierroValor    = res.ValorNumerico; snapshot.HierroUnidad    = res.UnidadMedida; break;
-                        case "FERR":
+                            snapshot.HbValor         = res.ValorNumerico; snapshot.HbUnidad         = res.UnidadMedida; break;
+                        case "FE" or "HIERRO":
+                            snapshot.HierroValor     = res.ValorNumerico; snapshot.HierroUnidad     = res.UnidadMedida; break;
+                        case "FERR" or "FERRITINA":
                             snapshot.FerritinaValor  = res.ValorNumerico; snapshot.FerritinaUnidad  = res.UnidadMedida; break;
-                        case "ISAT":
+                        case "ISAT" or "SATURACION":
                             snapshot.SaturacionValor = res.ValorNumerico; snapshot.SaturacionUnidad = res.UnidadMedida; break;
                     }
                 }
@@ -579,5 +579,19 @@ namespace DataMedix.Application.Services
                 Estado = "ERROR",
                 MensajeError = mensaje
             };
+
+        // Elimina diacríticos (tildes) y pasa a mayúsculas para comparación insensible a acentos.
+        // Debe ser idéntico al NormalizarAlias del repositorio para que las claves del mapa coincidan.
+        private static string NormalizarAlias(string s)
+        {
+            var d = s.Trim().ToUpperInvariant()
+                      .Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder(d.Length);
+            foreach (var c in d)
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) !=
+                    System.Globalization.UnicodeCategory.NonSpacingMark)
+                    sb.Append(c);
+            return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+        }
     }
 }

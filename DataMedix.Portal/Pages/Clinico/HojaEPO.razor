@@ -166,7 +166,7 @@ else
                     <th class="epo-th epo-col-dialisis" rowspan="2" title="Tiempo en diálisis">T. Diál.</th>
                     @foreach (var mes in FiltroActual.Meses)
                     {
-                        <th class="epo-th epo-th-mes" colspan="11">@mes.ToString("MMM yyyy").ToUpper()</th>
+                        <th class="epo-th epo-th-mes" colspan="11">@mes.ToString("MMM yyyy", _esEs).ToUpper()</th>
                     }
                     <th class="epo-th epo-th-resumen" colspan="4">RESUMEN</th>
                 </tr>
@@ -821,8 +821,11 @@ else
     private static string FmtDec(decimal? v, string fmt = "F0") =>
         v.HasValue ? v.Value.ToString(fmt) : "—";
 
+    private static readonly System.Globalization.CultureInfo _esEs =
+        new System.Globalization.CultureInfo("es-ES");
+
     private static string NombreMes(int m) =>
-        new DateTime(2000, m, 1).ToString("MMM");
+        new DateTime(2000, m, 1).ToString("MMM", _esEs);
 
     private static string HbClase(decimal? v) =>
         v == null ? "" :
