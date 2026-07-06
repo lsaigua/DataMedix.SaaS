@@ -468,27 +468,33 @@ namespace DataMedix.Application.Services
 
             foreach (var semana in semanas)
             {
-                if (semana.Count == 0) continue;
+                var n = semana.Count;
+                if (n == 0) continue;
 
-                // Índice del día central según turno (LMV=Mié=índice 1, MJS=Jue=índice 1)
-                var (dosis1, dosis2, dosis3) = CalcularDosisEpoSemanal(ui);
+                var (d1, d2, d3) = CalcularDosisEpoSemanal(ui);
 
-                if (dosis3 > 0 && semana.Count >= 3)
+                if (d1 == 0 && d2 > 0 && d3 == 0)
                 {
-                    resultado[semana[0]] = dosis1;
-                    resultado[semana[1]] = dosis2;
-                    resultado[semana[2]] = dosis3;
+                    // Solo día central (2000 UI/sem): usar el día del medio si hay 3, sino el disponible
+                    resultado[n >= 2 ? semana[1] : semana[0]] = d2;
                 }
-                else if (dosis1 > 0 && dosis3 == 0 && semana.Count >= 1)
+                else if (n >= 3 && d3 > 0)
                 {
-                    // Solo día central
-                    var centro = semana.Count >= 2 ? semana[1] : semana[0];
-                    resultado[centro] = dosis2 > 0 ? dosis2 : dosis1;
+                    // Semana completa con plan de 3 días
+                    resultado[semana[0]] = d1;
+                    if (d2 > 0) resultado[semana[1]] = d2;
+                    resultado[semana[2]] = d3;
                 }
-                else if (semana.Count >= 2)
+                else if (n >= 2)
                 {
-                    resultado[semana[0]] = dosis1;
-                    resultado[semana[^1]] = dosis3 > 0 ? dosis3 : dosis2;
+                    // Semana parcial con 2 días: primer y último slot del plan
+                    resultado[semana[0]] = d1;
+                    resultado[semana[^1]] = d3 > 0 ? d3 : d2;
+                }
+                else
+                {
+                    // Semana parcial con 1 día (inicio o fin de mes): dosis del primer slot
+                    resultado[semana[0]] = d1 > 0 ? d1 : d2;
                 }
             }
 
