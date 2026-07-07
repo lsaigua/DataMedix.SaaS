@@ -1295,9 +1295,11 @@
     .crono-scroll-mirror::-webkit-scrollbar-track  { background: #e2e8f0; border-radius: 5px; }
     #cronoScrollMirrorInner                        { height: 1px; }
 
-    /* Table wrapper: scroll horizontal */
+    /* Table wrapper: scroll horizontal Y vertical para que position:sticky funcione */
     .crono-table-wrap {
-        overflow-x: auto;
+        overflow: auto;
+        max-height: calc(100svh - 480px);
+        min-height: 320px;
         border-radius: 0 0 12px 12px;
         border: 1px solid #e2e8f0;
         box-shadow: 0 1px 4px rgba(0,0,0,0.04);
