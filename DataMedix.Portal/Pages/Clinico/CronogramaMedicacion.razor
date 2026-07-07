@@ -151,7 +151,10 @@
     <!-- ═══ DESGLOSE EPO POR DOSIS PRESCRITA ════════════════════════════ -->
     @if (_cronogramas.Count > 0)
     {
-        var desgloseEpo = DesglosePorEpo;
+        var desgloseEpo     = DesglosePorEpo;
+        var pacsConEpo      = desgloseEpo.Sum(r => r.Pacientes);
+        var pacsVisible     = CronogramasVisibles.Count();
+        var pacsSinEpo      = pacsVisible - pacsConEpo;
         @if (desgloseEpo.Count > 0)
         {
             <div class="crono-desglose-epo">
@@ -178,11 +181,20 @@
                                 @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo">$ @fila.TotalCosto.ToString("N2")</td> }
                             </tr>
                         }
+                        @if (pacsSinEpo > 0)
+                        {
+                            <tr class="crono-desglose-epo-sin-epo">
+                                <td>Sin EPO</td>
+                                <td class="crono-desglose-epo-num">@pacsSinEpo</td>
+                                <td class="crono-desglose-epo-num">—</td>
+                                @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo">—</td> }
+                            </tr>
+                        }
                     </tbody>
                     <tfoot>
                         <tr>
                             <td class="crono-desglose-epo-total-label">TOTAL</td>
-                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desgloseEpo.Sum(r => r.Pacientes)</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pacsVisible</td>
                             <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desgloseEpo.Sum(r => r.TotalUI).ToString("N0")</td>
                             @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @desgloseEpo.Sum(r => r.TotalCosto).ToString("N2")</td> }
                         </tr>
@@ -1267,6 +1279,7 @@
     .crono-desglose-epo-total-label { color: #94a3b8; font-size: 0.65rem; letter-spacing: 0.06em; }
     .crono-desglose-epo-total-val   { text-align: right; }
     .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #38bdf8; }
+    .crono-desglose-epo-sin-epo td  { color: #94a3b8; font-style: italic; border-top: 1px dashed #e2e8f0; }
 
     /* Empty state */
     .crono-empty {
@@ -1360,7 +1373,9 @@
         left: 0;
         z-index: 6;                 /* body fixed > body scroll (auto) */
     }
-    .crono-th-fixed { z-index: 15; background: #0f172a !important; } /* header fixed > header scroll (10) */
+    .crono-th-fixed { z-index: 15; background: #0f172a !important; }
+    /* (0,2,1) > (0,1,2): gana sobre .crono-table thead th — fija las columnas sobre las de fecha al desplazarse */
+    .crono-table thead .crono-th-fixed { z-index: 25; }
     .crono-td-fixed { background: white; }
 
     /* Posiciones sticky: Paciente(0/180) · Cédula(180/80) · Sala(260/80) · Turno(340/90) · EPO(430/70) · Fe(500/70) */
