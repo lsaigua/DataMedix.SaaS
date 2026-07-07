@@ -148,6 +148,50 @@
         }
     }
 
+    <!-- ═══ DESGLOSE EPO POR DOSIS PRESCRITA ════════════════════════════ -->
+    @if (_cronogramas.Count > 0)
+    {
+        var desgloseEpo = DesglosePorEpo;
+        @if (desgloseEpo.Count > 0)
+        {
+            <div class="crono-desglose-epo">
+                <div class="crono-desglose-epo-header">
+                    <span>Desglose EPO</span>
+                    <span class="crono-desglose-epo-sub">por dosis semanal prescrita</span>
+                </div>
+                <table class="crono-desglose-epo-table">
+                    <thead>
+                        <tr>
+                            <th>Dosis UI/sem</th>
+                            <th>Pacientes</th>
+                            <th>Total UI mes</th>
+                            @if (_precioEpo > 0) { <th>Costo EPO</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fila in desgloseEpo)
+                        {
+                            <tr>
+                                <td class="crono-desglose-epo-dosis">@fila.DosisUiSem.ToString("N0") UI</td>
+                                <td class="crono-desglose-epo-num">@fila.Pacientes</td>
+                                <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
+                                @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo">$ @fila.TotalCosto.ToString("N2")</td> }
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="crono-desglose-epo-total-label">TOTAL</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desgloseEpo.Sum(r => r.Pacientes)</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desgloseEpo.Sum(r => r.TotalUI).ToString("N0")</td>
+                            @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @desgloseEpo.Sum(r => r.TotalCosto).ToString("N2")</td> }
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    }
+
     <!-- ═══ FILTROS DE SEGMENTO ════════════════════════════════════════════ -->
     @if (_cronogramas.Count > 0)
     {
@@ -500,6 +544,7 @@
     // Gráficos
     private bool _showGraficos = false;
     private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal Costo);
+    private record DesgloseEpoRow(decimal DosisUiSem, int Pacientes, decimal TotalUI, decimal TotalCosto);
 
     private IEnumerable<CostoPaciente> Top20Pacientes =>
         _cronogramas
@@ -567,6 +612,24 @@
             };
         }
     }
+
+    private List<DesgloseEpoRow> DesglosePorEpo =>
+        CronogramasVisibles
+            .Where(c => c.EpoUiSemana > 0)
+            .GroupBy(c => c.EpoUiSemana ?? 0)
+            .OrderBy(g => g.Key)
+            .Select(g =>
+            {
+                var totalUI = g.Sum(c => c.Dias
+                    .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
+                    .Sum(d => d.EpoDosisuI ?? 0));
+                return new DesgloseEpoRow(
+                    DosisUiSem: g.Key,
+                    Pacientes:  g.Count(),
+                    TotalUI:    totalUI,
+                    TotalCosto: totalUI * _precioEpo);
+            })
+            .ToList();
 
     private decimal _precioEpo = 0;
     private decimal _precioHierro = 0;
@@ -1145,6 +1208,65 @@
     .crono-resumen-value { font-size: 1rem; font-weight: 700; color: #0f172a; }
     .crono-cost { color: #0ea5e9; }
     .crono-resumen-total .crono-resumen-value { color: #7c3aed; font-size: 1.1rem; }
+
+    /* Desglose EPO por dosis prescrita */
+    .crono-desglose-epo {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .crono-desglose-epo-header {
+        background: #0f172a;
+        color: #94a3b8;
+        padding: 0.35rem 1rem;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .crono-desglose-epo-sub { font-size: 0.6rem; color: #475569; text-transform: none; letter-spacing: 0; }
+    .crono-desglose-epo-table { width: 100%; border-collapse: collapse; }
+    .crono-desglose-epo-table thead th {
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 0.63rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 0.28rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+        position: static;
+        top: auto;
+        z-index: 1;
+    }
+    .crono-desglose-epo-table thead th:not(:first-child) { text-align: right; }
+    .crono-desglose-epo-table tbody td {
+        padding: 0.32rem 1rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #1e293b;
+        font-size: 0.8rem;
+    }
+    .crono-desglose-epo-table tbody tr:last-child td { border-bottom: none; }
+    .crono-desglose-epo-table tbody tr:hover td { background: #f0f9ff; }
+    .crono-desglose-epo-dosis { font-weight: 700; color: #7c3aed; }
+    .crono-desglose-epo-num   { text-align: right; }
+    .crono-desglose-epo-costo { text-align: right; font-weight: 700; color: #0ea5e9; }
+    .crono-desglose-epo-table tfoot td {
+        background: #0f172a;
+        color: #e2e8f0;
+        font-weight: 700;
+        font-size: 0.78rem;
+        padding: 0.32rem 1rem;
+        border-top: 2px solid #334155;
+    }
+    .crono-desglose-epo-total-label { color: #94a3b8; font-size: 0.65rem; letter-spacing: 0.06em; }
+    .crono-desglose-epo-total-val   { text-align: right; }
+    .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #38bdf8; }
 
     /* Empty state */
     .crono-empty {
