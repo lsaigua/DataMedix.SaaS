@@ -37,17 +37,23 @@ namespace DataMedix.Application.Services
         private readonly IConfiguracionMedicamentoRepository _configRepo;
         private readonly IPrescripcionRepository _prescripcionRepo;
         private readonly ISnapshotMensualRepository _snapshotRepo;
+        private readonly IHierroSchedulerService _hierroScheduler;
+        private readonly IAplicacionHierroRepository _aplicacionHierroRepo;
 
         public CronogramaService(
             ICronogramaRepository repo,
             IConfiguracionMedicamentoRepository configRepo,
             IPrescripcionRepository prescripcionRepo,
-            ISnapshotMensualRepository snapshotRepo)
+            ISnapshotMensualRepository snapshotRepo,
+            IHierroSchedulerService hierroScheduler,
+            IAplicacionHierroRepository aplicacionHierroRepo)
         {
             _repo = repo;
             _configRepo = configRepo;
             _prescripcionRepo = prescripcionRepo;
             _snapshotRepo = snapshotRepo;
+            _hierroScheduler = hierroScheduler;
+            _aplicacionHierroRepo = aplicacionHierroRepo;
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -209,6 +215,9 @@ namespace DataMedix.Application.Services
             // ── 6. Reemplazar dias en lote (DELETE + INSERT, 2 queries) ───
             await _repo.BatchReplaceDiasAsync(cronogramaIdsConTurno, todasNuevasDias);
 
+            // ── 6b. Regenerar aplicaciones de Hierro IV (DELETE + INSERT) ─
+            await RegenerarAplicacionesHierroAsync(todosCronogramas, cronogramaIdsConTurno, usuarioId);
+
             // ── 7. Recargar con Dias y Paciente para la UI (1 query) ──────
             return await _repo.GetByPeriodoAsync(tenantId, anio, mes);
         }
@@ -358,6 +367,8 @@ namespace DataMedix.Application.Services
                 }
 
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
+                await RegenerarAplicacionesHierroAsync(
+                    new[] { crono }, new[] { cronogramaId }, usuarioId);
             }
 
             return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
@@ -380,15 +391,18 @@ namespace DataMedix.Application.Services
 
             if (ausente)
             {
-                // Eliminar todos los días programados del paciente ausente
+                // Eliminar todos los días y aplicaciones del paciente ausente
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, new List<CronogramaDia>());
+                await _aplicacionHierroRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
             }
             else if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
                      (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
             {
-                // Reactivar: regenerar días respetando turno y dosis actuales
+                // Reactivar: regenerar días y aplicaciones
                 var nuevasDias = GenerarDias(crono);
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
+                await RegenerarAplicacionesHierroAsync(
+                    new[] { crono }, new[] { cronogramaId }, usuarioId);
             }
 
             return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
@@ -451,7 +465,8 @@ namespace DataMedix.Application.Services
             var fechasSesion = ObtenerFechasSesion(
                 cronograma.PeriodoAnio, cronograma.PeriodoMes, turno.Value, cronograma.FechaInicioFlex);
             var dosisEpoPorDia = DistribuirEpo(cronograma.EpoUiSemana, turno.Value, fechasSesion);
-            var dosisHierroPorDia = DistribuirHierro(cronograma.HierroMgMes, fechasSesion);
+            var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(cronograma.HierroMgMes, fechasSesion);
+            var dosisHierroPorDia = fechasHierro.ToDictionary(f => f, _ => HierroSchedulerService.DosisAplicacion);
 
             return fechasSesion.Select(fecha => new CronogramaDia
             {
@@ -600,24 +615,39 @@ namespace DataMedix.Application.Services
             }
         }
 
-        private static Dictionary<DateTime, decimal> DistribuirHierro(
-            decimal? hierroMgMes, List<DateTime> fechasSesion)
+        private async Task RegenerarAplicacionesHierroAsync(
+            IEnumerable<CronogramaMedicamento> cronogramas,
+            IEnumerable<Guid> cronogramaIdsConTurno,
+            Guid? usuarioId)
         {
-            var resultado = new Dictionary<DateTime, decimal>();
-            if (!hierroMgMes.HasValue || hierroMgMes <= 0 || fechasSesion.Count == 0)
-                return resultado;
+            var nuevasAplicaciones = new List<AplicacionHierro>();
 
-            // HierroMgMes = dosis total para el turno de UNA semana (LMV y MJS tienen 3 sesiones).
-            // Dosis por sesion = HierroMgMes / 3, redondeada al entero mas cercano.
-            // Ejemplo: 600 mg / 3 = 200 mg por sesion (M:200 J:200 S:200).
-            const int sesionesXSemana = 3;
-            decimal dosisPorSesion = Math.Round(hierroMgMes.Value / sesionesXSemana, 0);
-            if (dosisPorSesion <= 0) dosisPorSesion = 1m;
+            foreach (var crono in cronogramas)
+            {
+                if (crono.Ausente || !(crono.HierroMgMes > 0)) continue;
+                var turno = ParsearTurno(crono.PlanSalud);
+                if (turno == null) continue;
 
-            foreach (var sesion in fechasSesion.OrderBy(f => f))
-                resultado[sesion] = dosisPorSesion;
+                var fechasSesion = ObtenerFechasSesion(
+                    crono.PeriodoAnio, crono.PeriodoMes, turno.Value, crono.FechaInicioFlex);
+                var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(crono.HierroMgMes, fechasSesion);
 
-            return resultado;
+                foreach (var fecha in fechasHierro)
+                {
+                    nuevasAplicaciones.Add(new AplicacionHierro
+                    {
+                        TenantId         = crono.TenantId,
+                        PacienteId       = crono.PacienteId,
+                        CronogramaId     = crono.Id,
+                        FechaProgramada  = fecha,
+                        DosisMg          = HierroSchedulerService.DosisAplicacion,
+                        Estado           = EstadoAplicacionHierro.Pendiente,
+                        CreatedBy        = usuarioId
+                    });
+                }
+            }
+
+            await _aplicacionHierroRepo.BatchReplaceAsync(cronogramaIdsConTurno, nuevasAplicaciones);
         }
 
         private static List<List<DateTime>> AgruparPorSemana(List<DateTime> fechas)

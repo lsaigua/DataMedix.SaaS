@@ -47,6 +47,8 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IReglaClinicaRepository, ReglaClinicaRepository>();
             services.AddScoped<ICronogramaRepository, CronogramaRepository>();
             services.AddScoped<IConfiguracionMedicamentoRepository, ConfiguracionMedicamentoRepository>();
+            services.AddScoped<IAplicacionHierroRepository, AplicacionHierroRepository>();
+            services.AddScoped<IHierroSchedulerService, HierroSchedulerService>();
             services.AddScoped<IReporteService, ReporteService>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IExcelReader, ExcelReader>();
@@ -135,6 +137,27 @@ namespace DataMedix.Infrastructure
                         ADD COLUMN IF NOT EXISTS sala             VARCHAR(20),
                         ADD COLUMN IF NOT EXISTS modo             SMALLINT NOT NULL DEFAULT 0,
                         ADD COLUMN IF NOT EXISTS fecha_inicio_flex DATE;
+                ");
+
+                // 5. Tabla aplicacion_hierro — registro individual por aplicación Fe IV (idempotente)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS aplicacion_hierro (
+                        id                UUID         NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+                        tenant_id         UUID         NOT NULL,
+                        paciente_id       UUID         NOT NULL,
+                        cronograma_id     UUID         NOT NULL
+                            REFERENCES cronograma_medicamento(id) ON DELETE CASCADE,
+                        fecha_programada  DATE         NOT NULL,
+                        dosis_mg          DECIMAL(10,2) NOT NULL DEFAULT 100,
+                        estado            VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE',
+                        observaciones     TEXT,
+                        created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        updated_at        TIMESTAMPTZ,
+                        created_by        UUID,
+                        updated_by        UUID
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_aplicacion_hierro_cronograma
+                        ON aplicacion_hierro (tenant_id, cronograma_id, fecha_programada);
                 ");
             }
             finally

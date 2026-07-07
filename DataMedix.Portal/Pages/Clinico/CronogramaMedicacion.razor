@@ -412,9 +412,11 @@
                                                 {
                                                     <span class="crono-val-epo">@dia.EpoDosisuI.Value.ToString("N0")</span>
                                                 }
-                                                @if (dia.HierroDosismg.HasValue)
+                                                @if (dia.HierroDosismg.HasValue && dia.HierroDosismg > 0)
                                                 {
-                                                    <span class="crono-val-fe">Fe @dia.HierroDosismg.Value.ToString("N0")</span>
+                                                    <span class="crono-val-fe-iv" title="Hierro IV — @dia.HierroDosismg.Value.ToString("N0") mg">
+                                                        @dia.HierroDosismg.Value.ToString("N0")<br/><small>Fe IV</small>
+                                                    </span>
                                                 }
                                                 @if (dia.EpoEditadoManual || dia.HierroEditadoManual)
                                                 {
@@ -1388,6 +1390,26 @@
         font-size: 0.68rem;
         font-weight: 600;
         color: #0891b2;
+    }
+    .crono-val-fe-iv {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 1.25;
+        color: #c2410c;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 4px;
+        padding: 0.08rem 0.28rem;
+        cursor: pointer;
+    }
+    .crono-val-fe-iv small {
+        font-size: 0.58rem;
+        font-weight: 600;
+        color: #ea580c;
+        letter-spacing: 0.02em;
     }
     .crono-manual-mark {
         font-size: 0.6rem;
