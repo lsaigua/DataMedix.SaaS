@@ -755,33 +755,67 @@
         using var wb = new ClosedXML.Excel.XLWorkbook();
         var ws = wb.Worksheets.Add("Cronograma");
 
-        // Encabezados
+        var rv  = ResumenVisible;
+        var fechas = FechasColumnaFiltradas;
+
+        // ── Fila 1: Título ────────────────────────────────────────────────────
+        ws.Cell(1, 1).Value = $"CRONOGRAMA DE MEDICACIÓN — {SubtituloModo.ToUpper()}";
+        ws.Range(1, 1, 1, 10).Merge();
+        ws.Row(1).Style.Font.Bold = true;
+        ws.Row(1).Style.Font.FontSize = 13;
+        ws.Row(1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#0f172a");
+        ws.Row(1).Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+
+        // ── Fila 2: Resumen ───────────────────────────────────────────────────
+        int rc = 1;
+        void RLabel(string t) { ws.Cell(2, rc).Value = t;   ws.Cell(2, rc).Style.Font.Bold = true; ws.Cell(2, rc).Style.Font.FontColor = ClosedXML.Excel.XLColor.FromHtml("#64748b"); rc++; }
+        void RValue(object v) { ws.Cell(3, rc - 1).Value = v.ToString(); ws.Cell(3, rc - 1).Style.Font.Bold = true; }
+
+        RLabel("PACIENTES");  RValue(rv?.TotalPacientes ?? 0);
+        RLabel("SESIONES");   RValue(rv?.TotalSesiones ?? 0);
+        RLabel("TOTAL EPO (UI)"); RValue(rv?.TotalEpoUI.ToString("N0") ?? "—");
+        RLabel("TOTAL HIERRO (mg)"); RValue(rv?.TotalHierroMg.ToString("N0") ?? "—");
+        if (_precioEpo > 0 || _precioHierro > 0)
+        {
+            RLabel("COSTO EPO");   RValue("$ " + (rv?.CostoEpo.ToString("N2") ?? "—"));
+            RLabel("COSTO HIERRO"); RValue("$ " + (rv?.CostoHierro.ToString("N2") ?? "—"));
+            RLabel("TOTAL");       RValue("$ " + (rv?.CostoTotal.ToString("N2") ?? "—"));
+        }
+        ws.Row(2).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#f1f5f9");
+        ws.Row(3).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#f8fafc");
+
+        // ── Fila 5: Encabezados de datos ──────────────────────────────────────
+        int headerRow = 5;
         int col = 1;
-        ws.Cell(1, col++).Value = "Paciente";
-        ws.Cell(1, col++).Value = "Turno";
-        ws.Cell(1, col++).Value = "EPO UI/sem";
-        ws.Cell(1, col++).Value = "Hierro mg/mes";
-        foreach (var f in _fechasColumna)
-            ws.Cell(1, col++).Value = f.ToString("dd/MM ddd", _es);
-        ws.Cell(1, col++).Value = "Total EPO UI";
-        ws.Cell(1, col).Value = "Total Hierro mg";
+        ws.Cell(headerRow, col++).Value = "Paciente";
+        ws.Cell(headerRow, col++).Value = "Cédula";
+        ws.Cell(headerRow, col++).Value = "Sala";
+        ws.Cell(headerRow, col++).Value = "Turno";
+        ws.Cell(headerRow, col++).Value = "EPO UI/sem";
+        ws.Cell(headerRow, col++).Value = "Hierro mg/mes";
+        foreach (var f in fechas)
+            ws.Cell(headerRow, col++).Value = f.ToString("dd/MM ddd", _es);
+        ws.Cell(headerRow, col++).Value = "Total EPO UI";
+        ws.Cell(headerRow, col).Value   = "Total Hierro mg";
 
-        var headerRow = ws.Row(1);
-        headerRow.Style.Font.Bold = true;
-        headerRow.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#0f172a");
-        headerRow.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+        var hdr = ws.Row(headerRow);
+        hdr.Style.Font.Bold = true;
+        hdr.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#0f172a");
+        hdr.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
 
-        // Filas de datos — respeta los mismos filtros activos en la grilla
-        int row = 2;
+        // ── Filas de datos ────────────────────────────────────────────────────
+        int row = headerRow + 1;
         foreach (var crono in CronogramasVisibles)
         {
             var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
             col = 1;
             ws.Cell(row, col++).Value = crono.Paciente.NombreCompleto;
+            ws.Cell(row, col++).Value = crono.Paciente.Identificacion;
+            ws.Cell(row, col++).Value = crono.Sala ?? "";
             ws.Cell(row, col++).Value = crono.PlanSalud ?? "";
             ws.Cell(row, col++).Value = (double?)crono.EpoUiSemana ?? 0;
             ws.Cell(row, col++).Value = (double?)crono.HierroMgMes ?? 0;
-            foreach (var f in _fechasColumna)
+            foreach (var f in fechas)
             {
                 if (diasMap.TryGetValue(f.Date, out var d))
                 {
@@ -792,8 +826,11 @@
                 }
                 else col++;
             }
-            ws.Cell(row, col++).Value = (double)crono.Dias.Sum(d => d.EpoDosisuI ?? 0);
-            ws.Cell(row, col).Value = (double)crono.Dias.Sum(d => d.HierroDosismg ?? 0);
+            // Totales de fila respetan el filtro de día activo
+            decimal totEpo    = crono.Dias.Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia).Sum(d => d.EpoDosisuI    ?? 0);
+            decimal totHierro = crono.Dias.Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia).Sum(d => d.HierroDosismg ?? 0);
+            ws.Cell(row, col++).Value = (double)totEpo;
+            ws.Cell(row, col).Value   = (double)totHierro;
             row++;
         }
 
