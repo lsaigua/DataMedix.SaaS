@@ -28,8 +28,8 @@ namespace DataMedix.Application.Services
     ///   12000 → 3 días (4000 c/u)
     ///   18000 → 3 días (6000 c/u)
     ///
-    /// Distribución Hierro: HierroMgMes ÷ núm_sesiones_mes (redondeado a entero),
-    /// aplicado equitativamente a CADA sesión del turno en el mes.
+    /// Distribución Hierro: HierroMgMes ÷ 3 sesiones/semana (redondeado a entero),
+    /// aplicado a CADA sesión del turno. Ej: 600 mg → 200 mg por sesión en MJS.
     /// </summary>
     public class CronogramaService
     {
@@ -607,13 +607,14 @@ namespace DataMedix.Application.Services
             if (!hierroMgMes.HasValue || hierroMgMes <= 0 || fechasSesion.Count == 0)
                 return resultado;
 
-            // Distribuir igualmente entre todas las sesiones del turno en el mes.
-            // dosisPorSesion = hierroMgMes / núm_sesiones, redondeado a entero.
-            var sesiones = fechasSesion.OrderBy(f => f).ToList();
-            decimal dosisPorSesion = Math.Round(hierroMgMes.Value / sesiones.Count, 0);
+            // HierroMgMes = dosis total para el turno de UNA semana (LMV y MJS tienen 3 sesiones).
+            // Dosis por sesion = HierroMgMes / 3, redondeada al entero mas cercano.
+            // Ejemplo: 600 mg / 3 = 200 mg por sesion (M:200 J:200 S:200).
+            const int sesionesXSemana = 3;
+            decimal dosisPorSesion = Math.Round(hierroMgMes.Value / sesionesXSemana, 0);
             if (dosisPorSesion <= 0) dosisPorSesion = 1m;
 
-            foreach (var sesion in sesiones)
+            foreach (var sesion in fechasSesion.OrderBy(f => f))
                 resultado[sesion] = dosisPorSesion;
 
             return resultado;
