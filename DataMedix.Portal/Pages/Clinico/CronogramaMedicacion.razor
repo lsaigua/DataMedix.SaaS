@@ -1189,10 +1189,10 @@
         font-size: 0.78rem;
     }
 
-    /* Cabecera sticky */
+    /* Cabecera sticky — fila 1 (título mes) en top:0; fila 2 (columnas) en top:44px */
     .crono-table thead th {
         position: sticky;
-        top: 0;
+        top: 44px;                  /* fila 2 se pega DEBAJO de la fila 1 */
         background: #0f172a;
         color: #94a3b8;
         font-size: 0.65rem;
@@ -1201,11 +1201,11 @@
         letter-spacing: 0.05em;
         padding: 0.55rem 0.5rem;
         text-align: center;
-        z-index: 2;
+        z-index: 10;                /* por encima de celdas de body */
         white-space: nowrap;
     }
 
-    /* Fila título mes/año */
+    /* Fila título mes/año — se pega en top:0 Y en left:0 (esquina superior izquierda) */
     .crono-titulo-mes {
         background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%) !important;
         color: white !important;
@@ -1217,8 +1217,11 @@
         text-align: left !important;
         border-bottom: 2px solid #0ea5e9 !important;
         position: sticky;
-        top: 0;
-        z-index: 5 !important;
+        top: 0 !important;          /* primera fila: tope del contenedor */
+        left: 0;                    /* también se fija al desplazarse a la derecha */
+        z-index: 20 !important;     /* por encima de todo */
+        height: 44px;
+        box-sizing: border-box;
     }
     .crono-titulo-filtro {
         font-size: 0.75rem;
@@ -1231,9 +1234,9 @@
     .crono-th-fixed, .crono-td-fixed {
         position: sticky;
         left: 0;
-        z-index: 3;
+        z-index: 6;                 /* body fixed > body scroll (auto) */
     }
-    .crono-th-fixed { z-index: 4; background: #0f172a !important; }
+    .crono-th-fixed { z-index: 15; background: #0f172a !important; } /* header fixed > header scroll (10) */
     .crono-td-fixed { background: white; }
 
     /* Posiciones sticky: Paciente(0/180) · Cédula(180/80) · Sala(260/80) · Turno(340/90) · EPO(430/70) · Fe(500/70) */
