@@ -542,6 +542,13 @@ namespace DataMedix.Infrastructure.Repositories
                 .AsNoTracking()
                 .ToListAsync();
 
+        public async Task<List<PrescripcionFinal>> GetFinalByPeriodoBatchAsync(
+            Guid tenantId, DateTime periodDate) =>
+            await _db.PrescripcionesFinales
+                .Where(p => p.TenantId == tenantId && p.PeriodDate == periodDate && p.Activo)
+                .AsNoTracking()
+                .ToListAsync();
+
         public async Task<HashSet<Guid>> GetPacientesConHierroPrevioAsync(
             Guid tenantId, DateTime hasta)
         {

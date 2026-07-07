@@ -77,6 +77,8 @@ namespace DataMedix.Application.Interfaces
         Task<List<PrescripcionSugerida>> GetByPeriodoAsync(Guid tenantId, DateTime periodDate, string? busqueda = null);
         /// <summary>Carga todas las prescripciones sugeridas de un período (para batch).</summary>
         Task<List<PrescripcionSugerida>> GetByPeriodoBatchAsync(Guid tenantId, DateTime periodDate);
+        /// <summary>Carga todas las prescripciones finales (ajustes médico) de un período (para batch).</summary>
+        Task<List<PrescripcionFinal>> GetFinalByPeriodoBatchAsync(Guid tenantId, DateTime periodDate);
         /// <summary>Pacientes que ya recibieron hierro EV en algún período anterior.</summary>
         Task<HashSet<Guid>> GetPacientesConHierroPrevioAsync(Guid tenantId, DateTime hasta);
         /// <summary>Última dosis de EPO (UI/sem) por paciente antes del período actual.</summary>

@@ -77,11 +77,15 @@ namespace DataMedix.Application.Services
             // ── 1. Leer datos fuente ───────────────────────────────────────
             var prescripciones    = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoActual);
             var prescripcionesAnt = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoAnterior);
+            var finalesAct        = await _prescripcionRepo.GetFinalByPeriodoBatchAsync(tenantId, periodoActual);
+            var finalesAnt        = await _prescripcionRepo.GetFinalByPeriodoBatchAsync(tenantId, periodoAnterior);
             var snapshots         = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoActual,  tamano: 1000);
             var snapshotsAnt      = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoAnterior, tamano: 1000);
 
-            var mapaPresc   = prescripciones.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
-            var mapaPresAnt = prescripcionesAnt.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaPresc    = prescripciones.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaPresAnt  = prescripcionesAnt.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaFinalAct = finalesAct.GroupBy(f => f.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaFinalAnt = finalesAnt.GroupBy(f => f.PacienteId).ToDictionary(g => g.Key, g => g.First());
             var mapaSnap    = snapshots.GroupBy(s => s.PacienteId).ToDictionary(g => g.Key, g => g.First());
             var mapaSnapAnt = snapshotsAnt.GroupBy(s => s.PacienteId).ToDictionary(g => g.Key, g => g.First());
 
@@ -104,18 +108,23 @@ namespace DataMedix.Application.Services
             {
                 mapaPresc.TryGetValue(pid, out var presc);
                 mapaPresAnt.TryGetValue(pid, out var prescAnt);
+                mapaFinalAct.TryGetValue(pid, out var finalAct);
+                mapaFinalAnt.TryGetValue(pid, out var finalAnt);
                 mapaSnap.TryGetValue(pid, out var snap);
                 mapaSnapAnt.TryGetValue(pid, out var snapAnt);
 
                 var prescVigente = presc ?? prescAnt;
+                var finalVigente = finalAct ?? finalAnt;
                 var planSalud    = snap?.PlanSalud ?? snapAnt?.PlanSalud;
+
+                // Dosis efectiva = calculada por reglas + ajuste médico (HojaEPO)
+                var (epoEfectivo, hierroEfectivo) = ComputarEfectivos(prescVigente, finalVigente);
 
                 if (mapaExistentes.TryGetValue(pid, out var existente))
                 {
-                    // Actualizar campos en el objeto tracked; EF detecta cambios automáticamente
-                    if (!string.IsNullOrWhiteSpace(planSalud))   existente.PlanSalud    = planSalud;
-                    if (prescVigente?.EpoUiSemana.HasValue == true) existente.EpoUiSemana = prescVigente.EpoUiSemana;
-                    if (prescVigente?.HierroMgMes.HasValue == true) existente.HierroMgMes = prescVigente.HierroMgMes;
+                    if (!string.IsNullOrWhiteSpace(planSalud))  existente.PlanSalud    = planSalud;
+                    if (epoEfectivo.HasValue)                   existente.EpoUiSemana  = epoEfectivo;
+                    if (hierroEfectivo.HasValue)                existente.HierroMgMes  = hierroEfectivo;
                     existente.UpdatedAt = ahora;
                     existente.UpdatedBy = usuarioId;
                     todosCronogramas.Add(existente);
@@ -129,8 +138,8 @@ namespace DataMedix.Application.Services
                         PeriodoAnio = anio,
                         PeriodoMes  = mes,
                         PlanSalud   = planSalud,
-                        EpoUiSemana = prescVigente?.EpoUiSemana,
-                        HierroMgMes = prescVigente?.HierroMgMes,
+                        EpoUiSemana = epoEfectivo,
+                        HierroMgMes = hierroEfectivo,
                         CreatedBy   = usuarioId,
                         UpdatedAt   = ahora,
                         UpdatedBy   = usuarioId
@@ -249,12 +258,17 @@ namespace DataMedix.Application.Services
             var snapshot = await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo)
                 ?? await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo.AddMonths(-1));
 
+            var final = await _prescripcionRepo.GetFinalByPacienteYPeriodoAsync(tenantId, pacienteId, periodo)
+                ?? await _prescripcionRepo.GetFinalByPacienteYPeriodoAsync(tenantId, pacienteId, periodo.AddMonths(-1));
+
+            var (epoEfectivo, hierroEfectivo) = ComputarEfectivos(prescripcion, final);
+
             var datos = new DatosPacienteParaCronograma(
                 PacienteId: pacienteId,
                 NombreCompleto: snapshot?.Paciente?.NombreCompleto ?? "",
                 PlanSalud: snapshot?.PlanSalud,
-                EpoUiSemana: prescripcion?.EpoUiSemana,
-                HierroMgMes: prescripcion?.HierroMgMes);
+                EpoUiSemana: epoEfectivo,
+                HierroMgMes: hierroEfectivo);
 
             return await GenerarPorPacienteConDatosAsync(tenantId, datos, anio, mes, usuarioId);
         }
@@ -430,6 +444,33 @@ namespace DataMedix.Application.Services
         // ──────────────────────────────────────────────────────────────────────
         // HELPERS INTERNOS
         // ──────────────────────────────────────────────────────────────────────
+
+        // Dosis efectiva = calculada por reglas (PrescripcionSugerida) +
+        // ajuste médico (PrescripcionFinal), replicando HojaEpoCeldaDto.EpoEfectivo/HierroEfectivo.
+        private static (decimal? epo, decimal? hierro) ComputarEfectivos(
+            PrescripcionSugerida? sugerida, PrescripcionFinal? final)
+        {
+            var epoCalc    = sugerida?.EpoUiSemana;
+            var hierroCalc = sugerida?.HierroMgMes;
+
+            decimal? epoAj = null, hierroAj = null;
+            if (final != null)
+            {
+                if (decimal.TryParse(final.EpoDosis,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var ev))
+                    epoAj = ev;
+                if (decimal.TryParse(final.HierroDosis,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var hv))
+                    hierroAj = hv;
+            }
+
+            return (
+                (epoCalc.HasValue || epoAj.HasValue) ? (epoCalc ?? 0) + (epoAj ?? 0) : null,
+                (hierroCalc.HasValue || hierroAj.HasValue) ? (hierroCalc ?? 0) + (hierroAj ?? 0) : null
+            );
+        }
 
         private static TipoTurno? ParsearTurno(string? planSalud)
         {
