@@ -15,6 +15,10 @@ namespace DataMedix.Domain.Entities
         public bool Activo { get; set; } = true;
         public bool Ausente { get; set; } = false;
         public string? MotivoAusencia { get; set; }
+        public string? Sala { get; set; }
+        // Modo 0=CalendarioMensual (del 1 al fin de mes), 1=Flexible (fechaInicio → +1 mes)
+        public short Modo { get; set; } = ModoCronograma.CalendarioMensual;
+        public DateTime? FechaInicioFlex { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         public Guid? CreatedBy { get; set; }
@@ -75,5 +79,11 @@ namespace DataMedix.Domain.Entities
     {
         public const string Borrador = "BORRADOR";
         public const string Confirmado = "CONFIRMADO";
+    }
+
+    public static class ModoCronograma
+    {
+        public const short CalendarioMensual = 0;
+        public const short Flexible = 1;
     }
 }

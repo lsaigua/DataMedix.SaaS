@@ -554,6 +554,9 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(c => c.Activo).HasColumnName("activo").HasDefaultValue(true);
                 e.Property(c => c.Ausente).HasColumnName("ausente").HasDefaultValue(false);
                 e.Property(c => c.MotivoAusencia).HasColumnName("motivo_ausencia");
+                e.Property(c => c.Sala).HasColumnName("sala").HasMaxLength(20);
+                e.Property(c => c.Modo).HasColumnName("modo").HasDefaultValue((short)0);
+                e.Property(c => c.FechaInicioFlex).HasColumnName("fecha_inicio_flex").HasColumnType("date");
                 e.Property(c => c.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
                 e.Property(c => c.UpdatedAt).HasColumnName("updated_at");
                 e.Property(c => c.CreatedBy).HasColumnName("created_by");

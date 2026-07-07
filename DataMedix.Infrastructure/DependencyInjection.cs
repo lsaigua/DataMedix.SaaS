@@ -130,8 +130,11 @@ namespace DataMedix.Infrastructure
                 // 4. Columnas ausente/motivo_ausencia en cronograma_medicamento (idempotente)
                 await db.Database.ExecuteSqlRawAsync(@"
                     ALTER TABLE cronograma_medicamento
-                        ADD COLUMN IF NOT EXISTS ausente          BOOLEAN NOT NULL DEFAULT FALSE,
-                        ADD COLUMN IF NOT EXISTS motivo_ausencia  TEXT;
+                        ADD COLUMN IF NOT EXISTS ausente          BOOLEAN  NOT NULL DEFAULT FALSE,
+                        ADD COLUMN IF NOT EXISTS motivo_ausencia  TEXT,
+                        ADD COLUMN IF NOT EXISTS sala             VARCHAR(20),
+                        ADD COLUMN IF NOT EXISTS modo             SMALLINT NOT NULL DEFAULT 0,
+                        ADD COLUMN IF NOT EXISTS fecha_inicio_flex DATE;
                 ");
             }
             finally

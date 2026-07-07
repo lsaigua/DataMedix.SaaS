@@ -69,7 +69,7 @@ namespace DataMedix.Application.Services
         //   7. 1 lectura final: recargar cronogramas con Dias para mostrar en pantalla
         // ──────────────────────────────────────────────────────────────────────
         public async Task<List<CronogramaMedicamento>> GenerarOActualizarMesAsync(
-            Guid tenantId, int anio, int mes, Guid? usuarioId = null)
+            Guid tenantId, int anio, int mes, Guid? usuarioId = null, DateTime? fechaInicioFlex = null)
         {
             var periodoActual  = new DateTime(anio, mes, 1);
             var periodoAnterior = periodoActual.AddMonths(-1);
@@ -120,29 +120,35 @@ namespace DataMedix.Application.Services
                 // Dosis efectiva = calculada por reglas + ajuste médico (HojaEPO)
                 var (epoEfectivo, hierroEfectivo) = ComputarEfectivos(prescVigente, finalVigente);
 
+                var modoNuevo = fechaInicioFlex.HasValue ? ModoCronograma.Flexible : ModoCronograma.CalendarioMensual;
+
                 if (mapaExistentes.TryGetValue(pid, out var existente))
                 {
-                    if (!string.IsNullOrWhiteSpace(planSalud))  existente.PlanSalud    = planSalud;
-                    if (epoEfectivo.HasValue)                   existente.EpoUiSemana  = epoEfectivo;
-                    if (hierroEfectivo.HasValue)                existente.HierroMgMes  = hierroEfectivo;
-                    existente.UpdatedAt = ahora;
-                    existente.UpdatedBy = usuarioId;
+                    if (!string.IsNullOrWhiteSpace(planSalud))  existente.PlanSalud      = planSalud;
+                    if (epoEfectivo.HasValue)                   existente.EpoUiSemana    = epoEfectivo;
+                    if (hierroEfectivo.HasValue)                existente.HierroMgMes    = hierroEfectivo;
+                    existente.Modo             = modoNuevo;
+                    existente.FechaInicioFlex  = fechaInicioFlex.HasValue ? fechaInicioFlex.Value.Date : null;
+                    existente.UpdatedAt        = ahora;
+                    existente.UpdatedBy        = usuarioId;
                     todosCronogramas.Add(existente);
                 }
                 else
                 {
                     var nuevo = new CronogramaMedicamento
                     {
-                        TenantId    = tenantId,
-                        PacienteId  = pid,
-                        PeriodoAnio = anio,
-                        PeriodoMes  = mes,
-                        PlanSalud   = planSalud,
-                        EpoUiSemana = epoEfectivo,
-                        HierroMgMes = hierroEfectivo,
-                        CreatedBy   = usuarioId,
-                        UpdatedAt   = ahora,
-                        UpdatedBy   = usuarioId
+                        TenantId         = tenantId,
+                        PacienteId       = pid,
+                        PeriodoAnio      = anio,
+                        PeriodoMes       = mes,
+                        PlanSalud        = planSalud,
+                        EpoUiSemana      = epoEfectivo,
+                        HierroMgMes      = hierroEfectivo,
+                        Modo             = modoNuevo,
+                        FechaInicioFlex  = fechaInicioFlex.HasValue ? fechaInicioFlex.Value.Date : null,
+                        CreatedBy        = usuarioId,
+                        UpdatedAt        = ahora,
+                        UpdatedBy        = usuarioId
                     };
                     paraInsertar.Add(nuevo);
                     todosCronogramas.Add(nuevo);
@@ -389,6 +395,21 @@ namespace DataMedix.Application.Services
         }
 
         // ──────────────────────────────────────────────────────────────────────
+        // ACTUALIZAR SALA
+        // ──────────────────────────────────────────────────────────────────────
+        public async Task ActualizarSalaAsync(
+            Guid tenantId, Guid cronogramaId, string? sala, Guid? usuarioId = null)
+        {
+            var crono = await _repo.GetConDiasAsync(tenantId, cronogramaId);
+            if (crono == null) throw new InvalidOperationException("Cronograma no encontrado");
+
+            crono.Sala      = string.IsNullOrWhiteSpace(sala) ? null : sala.Trim();
+            crono.UpdatedAt = DateTime.UtcNow;
+            crono.UpdatedBy = usuarioId;
+            await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
         // CÁLCULO DE COSTOS
         // ──────────────────────────────────────────────────────────────────────
         public async Task<ResumenCostos> CalcularCostosAsync(
@@ -427,7 +448,8 @@ namespace DataMedix.Application.Services
             if (turno == null)
                 return new List<CronogramaDia>();
 
-            var fechasSesion = ObtenerFechasSesion(cronograma.PeriodoAnio, cronograma.PeriodoMes, turno.Value);
+            var fechasSesion = ObtenerFechasSesion(
+                cronograma.PeriodoAnio, cronograma.PeriodoMes, turno.Value, cronograma.FechaInicioFlex);
             var dosisEpoPorDia = DistribuirEpo(cronograma.EpoUiSemana, turno.Value, fechasSesion);
             var dosisHierroPorDia = DistribuirHierro(cronograma.HierroMgMes, fechasSesion);
 
@@ -481,14 +503,17 @@ namespace DataMedix.Application.Services
             return null;
         }
 
-        private static List<DateTime> ObtenerFechasSesion(int anio, int mes, TipoTurno turno)
+        // fechaInicioFlex: si se provee, define el rango [fechaInicioFlex, fechaInicioFlex + 1 mes).
+        // Si es null se usa el rango clásico [1ro del mes, fin del mes].
+        private static List<DateTime> ObtenerFechasSesion(int anio, int mes, TipoTurno turno,
+            DateTime? fechaInicioFlex = null)
         {
             var diasSemana = turno == TipoTurno.LMV
                 ? new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday }
                 : new[] { DayOfWeek.Tuesday, DayOfWeek.Thursday, DayOfWeek.Saturday };
 
-            var inicio = new DateTime(anio, mes, 1);
-            var fin = inicio.AddMonths(1);
+            var inicio = fechaInicioFlex.HasValue ? fechaInicioFlex.Value.Date : new DateTime(anio, mes, 1);
+            var fin    = inicio.AddMonths(1);   // exclusivo: genera [inicio, fin)
             var fechas = new List<DateTime>();
 
             for (var d = inicio; d < fin; d = d.AddDays(1))
@@ -647,5 +672,7 @@ namespace DataMedix.Application.Services
         public decimal CostoTotal => CostoEpo + CostoHierro;
         public decimal PrecioEpoPorUI { get; set; }
         public decimal PrecioHierroPorMg { get; set; }
+        public int TotalPacientes { get; set; }
+        public int TotalSesiones { get; set; }
     }
 }
