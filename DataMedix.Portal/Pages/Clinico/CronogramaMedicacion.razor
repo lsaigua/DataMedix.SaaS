@@ -278,7 +278,7 @@
                         <th class="crono-th-fixed crono-th-turno">Turno</th>
                         <th class="crono-th-fixed crono-th-dosis crono-th-epo">EPO<br/><small>UI/sem</small></th>
                         <th class="crono-th-fixed crono-th-dosis crono-th-fe">Fe IV<br/><small>mg/mes</small></th>
-                        @foreach (var fecha in _fechasColumna)
+                        @foreach (var fecha in FechasColumnaFiltradas)
                         {
                             <th class="crono-th-fecha @(EsFinDeSemana(fecha) ? "crono-fds" : "") @(EsHoy(fecha) ? "crono-hoy-th" : "") @(EsInicioSemana(fecha) ? "crono-semana-inicio" : "")">
                                 <div class="crono-fecha-dia">@fecha.ToString("ddd", _es).ToUpper()</div>
@@ -293,8 +293,12 @@
                     @foreach (var crono in CronogramasVisibles)
                     {
                         var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
-                        decimal totalEpo = crono.Dias.Sum(d => d.EpoDosisuI ?? 0);
-                        decimal totalHierro = crono.Dias.Sum(d => d.HierroDosismg ?? 0);
+                        decimal totalEpo = crono.Dias
+                            .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
+                            .Sum(d => d.EpoDosisuI ?? 0);
+                        decimal totalHierro = crono.Dias
+                            .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
+                            .Sum(d => d.HierroDosismg ?? 0);
                         <tr class="crono-row @(crono.Ausente ? "crono-row-ausente" : "")">
                             <td class="crono-td-fixed crono-td-paciente">
                                 @crono.Paciente.NombreCompleto
@@ -370,7 +374,7 @@
                             <td class="crono-td-fixed crono-td-dosis crono-td-fe">
                                 @(crono.HierroMgMes?.ToString("N0") ?? "—")
                             </td>
-                            @foreach (var fecha in _fechasColumna)
+                            @foreach (var fecha in FechasColumnaFiltradas)
                             {
                                 var dia = diasMap.TryGetValue(fecha.Date, out var d) ? d : null;
                                 var editKey = (crono.Id, fecha);
@@ -530,19 +534,30 @@
         ? $"{NombreMes(_mes)} {_anio}"
         : $"Flexible {_fechaInicioFlex:dd/MM/yy} – {FechaFinFlex:dd/MM/yy}";
 
-    // RF1: totales desde registros visibles (respeta todos los filtros)
+    // Columnas visibles según el filtro de día activo (vacía no relevante fuera del render)
+    private IReadOnlyList<DateTime> FechasColumnaFiltradas =>
+        _filtroDia == 0
+            ? _fechasColumna
+            : _fechasColumna.Where(f => (int)f.DayOfWeek == _filtroDia).ToList();
+
+    // RF1: totales desde registros visibles (respeta todos los filtros, incluido día)
     private ResumenCostos? ResumenVisible
     {
         get
         {
             var visible = CronogramasVisibles.ToList();
             if (visible.Count == 0) return null;
-            var totalEpo    = visible.Sum(c => c.Dias.Sum(d => d.EpoDosisuI   ?? 0));
-            var totalHierro = visible.Sum(c => c.Dias.Sum(d => d.HierroDosismg ?? 0));
+            var totalEpo    = visible.Sum(c => c.Dias
+                .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
+                .Sum(d => d.EpoDosisuI   ?? 0));
+            var totalHierro = visible.Sum(c => c.Dias
+                .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
+                .Sum(d => d.HierroDosismg ?? 0));
             return new ResumenCostos
             {
                 TotalPacientes = visible.Count,
-                TotalSesiones  = visible.Sum(c => c.Dias.Count),
+                TotalSesiones  = visible.Sum(c => c.Dias
+                    .Count(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)),
                 TotalEpoUI     = totalEpo,
                 TotalHierroMg  = totalHierro,
                 CostoEpo       = totalEpo * _precioEpo,
