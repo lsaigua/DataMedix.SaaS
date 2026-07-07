@@ -466,7 +466,10 @@ namespace DataMedix.Application.Services
                 cronograma.PeriodoAnio, cronograma.PeriodoMes, turno.Value, cronograma.FechaInicioFlex);
             var dosisEpoPorDia = DistribuirEpo(cronograma.EpoUiSemana, turno.Value, fechasSesion);
             var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(cronograma.HierroMgMes, fechasSesion);
-            var dosisHierroPorDia = fechasHierro.ToDictionary(f => f, _ => HierroSchedulerService.DosisAplicacion);
+            decimal dosisAplicacion = fechasHierro.Count > 0
+                ? Math.Round((cronograma.HierroMgMes ?? 0) / fechasHierro.Count, 0)
+                : 0;
+            var dosisHierroPorDia = fechasHierro.ToDictionary(f => f, _ => dosisAplicacion);
 
             return fechasSesion.Select(fecha => new CronogramaDia
             {
@@ -631,6 +634,9 @@ namespace DataMedix.Application.Services
                 var fechasSesion = ObtenerFechasSesion(
                     crono.PeriodoAnio, crono.PeriodoMes, turno.Value, crono.FechaInicioFlex);
                 var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(crono.HierroMgMes, fechasSesion);
+                decimal dosisAplicacion = fechasHierro.Count > 0
+                    ? Math.Round((crono.HierroMgMes ?? 0) / fechasHierro.Count, 0)
+                    : 0;
 
                 foreach (var fecha in fechasHierro)
                 {
@@ -640,7 +646,7 @@ namespace DataMedix.Application.Services
                         PacienteId       = crono.PacienteId,
                         CronogramaId     = crono.Id,
                         FechaProgramada  = fecha,
-                        DosisMg          = HierroSchedulerService.DosisAplicacion,
+                        DosisMg          = dosisAplicacion,
                         Estado           = EstadoAplicacionHierro.Pendiente,
                         CreatedBy        = usuarioId
                     });

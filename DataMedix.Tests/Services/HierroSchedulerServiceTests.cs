@@ -6,14 +6,17 @@ namespace DataMedix.Tests.Services
 {
     /// <summary>
     /// Tests del algoritmo de distribución clínica de Hierro IV.
-    /// Casos verificados: turno LMV/MJS, 100 mg, 200 mg, 600 mg, 1000 mg,
-    /// bordes (0 mg, null, más apps que sesiones) y separación mínima 48 h.
+    ///
+    /// Algoritmo: n = ceil(HierroMgMes / 200), dosis/app = HierroMgMes/n,
+    /// distribución centrada por segmentos: idx = round((2i+1)*m/(2n)).
+    ///
+    /// LMV Marzo 2025: 13 sesiones (índices 0–12, días 3,5,7,10,12,14,17,19,21,24,26,28,31)
+    /// MJS Marzo 2025: 12 sesiones (días 4,6,8,11,13,15,18,20,22,25,27,29)
     /// </summary>
     public class HierroSchedulerServiceTests
     {
         private readonly HierroSchedulerService _sut = new();
 
-        // ── Sesiones LMV de un mes típico (13 sesiones) ────────────────────
         private static readonly List<DateTime> LmvMarzo2025 = new()
         {
             new DateTime(2025, 3, 3),  new DateTime(2025, 3, 5),  new DateTime(2025, 3, 7),
@@ -23,7 +26,6 @@ namespace DataMedix.Tests.Services
             new DateTime(2025, 3, 31)
         };
 
-        // ── Sesiones MJS de un mes típico (13 sesiones) ────────────────────
         private static readonly List<DateTime> MjsMarzo2025 = new()
         {
             new DateTime(2025, 3, 4),  new DateTime(2025, 3, 6),  new DateTime(2025, 3, 8),
@@ -32,52 +34,96 @@ namespace DataMedix.Tests.Services
             new DateTime(2025, 3, 25), new DateTime(2025, 3, 27), new DateTime(2025, 3, 29),
         };
 
+        // ── Bordes ──────────────────────────────────────────────────────────
         [Fact]
         public void Hierro0_RetornaListaVacia()
-        {
-            _sut.GenerarFechasAplicacion(0, LmvMarzo2025).Should().BeEmpty();
-        }
+            => _sut.GenerarFechasAplicacion(0, LmvMarzo2025).Should().BeEmpty();
 
         [Fact]
         public void HierroNull_RetornaListaVacia()
-        {
-            _sut.GenerarFechasAplicacion(null, LmvMarzo2025).Should().BeEmpty();
-        }
+            => _sut.GenerarFechasAplicacion(null, LmvMarzo2025).Should().BeEmpty();
 
         [Fact]
         public void SinSesiones_RetornaListaVacia()
+            => _sut.GenerarFechasAplicacion(600, new List<DateTime>()).Should().BeEmpty();
+
+        [Fact]
+        public void ConstanteMaxDosisAplicacionEs200mg()
+            => HierroSchedulerService.MaxDosisAplicacion.Should().Be(200m);
+
+        // ── Número de aplicaciones: n = ceil(HierroMgMes / 200) ─────────────
+        [Theory]
+        [InlineData(100,  1)]   // ceil(100/200) = 1
+        [InlineData(200,  1)]   // ceil(200/200) = 1
+        [InlineData(300,  2)]   // ceil(300/200) = 2
+        [InlineData(400,  2)]   // ceil(400/200) = 2
+        [InlineData(600,  3)]   // ceil(600/200) = 3
+        [InlineData(1000, 5)]   // ceil(1000/200) = 5
+        public void NumeroDeAplicacionesCorrecto_LMV(decimal hierroMgMes, int esperado)
+            => _sut.GenerarFechasAplicacion(hierroMgMes, LmvMarzo2025).Should().HaveCount(esperado);
+
+        [Theory]
+        [InlineData(100,  1)]
+        [InlineData(200,  1)]
+        [InlineData(600,  3)]
+        public void NumeroDeAplicacionesCorrecto_MJS(decimal hierroMgMes, int esperado)
+            => _sut.GenerarFechasAplicacion(hierroMgMes, MjsMarzo2025).Should().HaveCount(esperado);
+
+        // ── Distribución centrada ────────────────────────────────────────────
+        [Fact]
+        public void Hierro200_AplicacionEnMitadDelMes_LMV()
         {
-            _sut.GenerarFechasAplicacion(600, new List<DateTime>()).Should().BeEmpty();
+            // n=1, m=13: idx = round(1*13/2) = round(6.5) = 6 (banker's) → sessions[6] = Mar 17
+            var result = _sut.GenerarFechasAplicacion(200, LmvMarzo2025);
+            result.Should().HaveCount(1);
+            result[0].Should().Be(new DateTime(2025, 3, 17), "200mg → 1 aplicación en sesión central del mes");
         }
 
         [Fact]
-        public void ConstanteDosisAplicacionEs100mg()
+        public void Hierro100_AplicacionEnMitadDelMes()
         {
-            HierroSchedulerService.DosisAplicacion.Should().Be(100m);
+            // n=1 (mismo que 200mg), dosis = 100mg en la sesión central
+            var result = _sut.GenerarFechasAplicacion(100, LmvMarzo2025);
+            result.Should().HaveCount(1);
+            result[0].Should().Be(LmvMarzo2025[LmvMarzo2025.Count / 2]);
         }
 
-        [Theory]
-        [InlineData(100, 1)]
-        [InlineData(200, 2)]
-        [InlineData(300, 3)]
-        [InlineData(600, 6)]
-        [InlineData(1000, 10)]
-        public void NumeroDeAplicacionesCorrecto_LMV(decimal hierroMgMes, int esperado)
+        [Fact]
+        public void Hierro400_DosAplicaciones_Centradas_15DiasApart_LMV()
         {
-            var result = _sut.GenerarFechasAplicacion(hierroMgMes, LmvMarzo2025);
-            result.Should().HaveCount(esperado);
+            // n=2, m=13: idx[0]=round(1*13/4)=round(3.25)=3 → Mar10
+            //            idx[1]=round(3*13/4)=round(9.75)=10 → Mar26
+            var result = _sut.GenerarFechasAplicacion(400, LmvMarzo2025).OrderBy(d => d).ToList();
+            result.Should().HaveCount(2);
+            result[0].Should().Be(new DateTime(2025, 3, 10));
+            result[1].Should().Be(new DateTime(2025, 3, 26));
+            (result[1] - result[0]).Days.Should().BeGreaterThan(14,
+                "las dos aplicaciones deben estar al menos 15 días separadas");
         }
 
-        [Theory]
-        [InlineData(100, 1)]
-        [InlineData(200, 2)]
-        [InlineData(600, 6)]
-        public void NumeroDeAplicacionesCorrecto_MJS(decimal hierroMgMes, int esperado)
+        [Fact]
+        public void Hierro600_TresAplicaciones_Centradas_LMV()
         {
-            var result = _sut.GenerarFechasAplicacion(hierroMgMes, MjsMarzo2025);
-            result.Should().HaveCount(esperado);
+            // n=3, m=13: idx[0]=round(1*13/6)=round(2.17)=2 → Mar7
+            //            idx[1]=round(3*13/6)=round(6.5)=6   → Mar17
+            //            idx[2]=round(5*13/6)=round(10.83)=11 → Mar28
+            var result = _sut.GenerarFechasAplicacion(600, LmvMarzo2025).OrderBy(d => d).ToList();
+            result.Should().HaveCount(3);
+            result[0].Should().Be(new DateTime(2025, 3, 7));
+            result[1].Should().Be(new DateTime(2025, 3, 17));
+            result[2].Should().Be(new DateTime(2025, 3, 28));
         }
 
+        [Fact]
+        public void Hierro600_NoComienzaEnPrimeraSesion_NiTerminaEnUltima()
+        {
+            // La distribución centrada NO va del borde al borde
+            var result = _sut.GenerarFechasAplicacion(600, LmvMarzo2025).OrderBy(d => d).ToList();
+            result.First().Should().NotBe(LmvMarzo2025.First(), "distribución centrada, no inicia en primera sesión");
+            result.Last().Should().NotBe(LmvMarzo2025.Last(), "distribución centrada, no termina en última sesión");
+        }
+
+        // ── Invariantes generales ────────────────────────────────────────────
         [Fact]
         public void TodasLasFechasEstanEnLaListaDeSesiones()
         {
@@ -94,41 +140,6 @@ namespace DataMedix.Tests.Services
         }
 
         [Fact]
-        public void Hierro600_DistribucionUniforme_13Sesiones()
-        {
-            // 6 apps sobre 13 sesiones → deben cubrir el mes entero (1ra y última semana incluidas)
-            var result = _sut.GenerarFechasAplicacion(600, LmvMarzo2025).OrderBy(d => d).ToList();
-            result.First().Should().Be(LmvMarzo2025.First(), "debe comenzar desde el inicio del mes");
-            result.Last().Should().Be(LmvMarzo2025.Last(), "debe llegar hasta el final del mes");
-        }
-
-        [Fact]
-        public void Hierro100_AplicacionCentral()
-        {
-            // 1 app → sesión central del mes (índice m/2)
-            var result = _sut.GenerarFechasAplicacion(100, LmvMarzo2025);
-            result.Should().HaveCount(1);
-            result[0].Should().Be(LmvMarzo2025[LmvMarzo2025.Count / 2]);
-        }
-
-        [Fact]
-        public void Hierro1300_CapaAlMaximoDeSesiones_13()
-        {
-            // 13 apps = igual a sesiones disponibles → debe devolver las 13
-            var result = _sut.GenerarFechasAplicacion(1300, LmvMarzo2025);
-            result.Should().HaveCount(13);
-            result.Should().BeEquivalentTo(LmvMarzo2025);
-        }
-
-        [Fact]
-        public void HierroMayorQueSesionesDisponibles_CapaAlMax()
-        {
-            // 20 apps pero solo 13 sesiones → se capan en 13
-            var result = _sut.GenerarFechasAplicacion(2000, LmvMarzo2025);
-            result.Should().HaveCount(13);
-        }
-
-        [Fact]
         public void FechasOrdenadas()
         {
             var result = _sut.GenerarFechasAplicacion(600, LmvMarzo2025);
@@ -140,6 +151,31 @@ namespace DataMedix.Tests.Services
         {
             var result = _sut.GenerarFechasAplicacion(600, LmvMarzo2025);
             result.Distinct().Should().HaveCount(result.Count);
+        }
+
+        // ── Cap al número de sesiones disponibles ────────────────────────────
+        [Fact]
+        public void HierroExactoIgualSesiones_RetornaTodas()
+        {
+            // ceil(13*200/200) = 13 = m → shortcut, retorna todas las sesiones
+            var result = _sut.GenerarFechasAplicacion(13 * 200, LmvMarzo2025);
+            result.Should().HaveCount(13);
+            result.Should().BeEquivalentTo(LmvMarzo2025);
+        }
+
+        [Fact]
+        public void HierroMayorQueSesionesDisponibles_CapaAlMax()
+        {
+            // ceil(3000/200) = 15 > 13 sesiones → cap en 13
+            var result = _sut.GenerarFechasAplicacion(3000, LmvMarzo2025);
+            result.Should().HaveCount(13);
+        }
+
+        [Fact]
+        public void Hierro1000_CincoAplicaciones_EnLmv()
+        {
+            // ceil(1000/200) = 5 < 13 → 5 aplicaciones
+            _sut.GenerarFechasAplicacion(1000, LmvMarzo2025).Should().HaveCount(5);
         }
     }
 }
