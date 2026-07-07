@@ -12,6 +12,7 @@
 @inject GlobalLoadingService Loading
 @inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
+@inject IPrecioEpoDosisRepository PrecioEpoDosisRepo
 
 <PageTitle>Cronograma de Medicación — DataMedix</PageTitle>
 
@@ -85,11 +86,25 @@
     {
         <div class="crono-config-panel">
             <div class="crono-config-title">Configuración de Precios</div>
-            <div class="crono-config-row">
-                <label>EPO (precio por UI):</label>
-                <input type="number" step="0.0001" min="0" class="crono-config-input"
-                       value="@_precioEpo"
-                       @onchange="e => _precioEpo = ParseDecimal(e.Value?.ToString()) ?? 0" />
+            <div class="crono-config-epo-section">
+                <div class="crono-config-epo-label">EPO — precio por dosis administrada:</div>
+                <table class="crono-config-epo-table">
+                    <thead><tr><th>Dosis UI</th><th>Precio</th></tr></thead>
+                    <tbody>
+                        @foreach (var dosis in _dosisEpoConfig)
+                        {
+                            var localDosis = dosis;
+                            <tr>
+                                <td>@localDosis.DosisUI.ToString("N0") UI</td>
+                                <td>
+                                    <input type="number" step="0.0001" min="0" class="crono-config-input"
+                                           value="@localDosis.Precio"
+                                           @onchange="e => localDosis.Precio = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             </div>
             <div class="crono-config-row">
                 <label>Hierro (precio por mg):</label>
@@ -104,10 +119,10 @@
         </div>
     }
 
-    <!-- ═══ RESUMEN DE COSTOS — totales dinámicos según filtros activos ═════ -->
+    <!-- ═══ RESUMEN DE COSTOS + DESGLOSE POR DOSIS ADMINISTRADA ══════════ -->
     @if (_cronogramas.Count > 0)
     {
-        var rv = ResumenVisible;
+        var (rv, desglose) = ComputarResumenYDesglose();
         @if (rv != null)
         {
             bool hayFiltro = _filtroTurno != "Todos" || _filtroDia != 0 ||
@@ -129,7 +144,7 @@
                     <span class="crono-resumen-label">Total Hierro</span>
                     <span class="crono-resumen-value">@rv.TotalHierroMg.ToString("N0") mg</span>
                 </div>
-                @if (_precioEpo > 0 || _precioHierro > 0)
+                @if (_preciosEpo.Values.Any(v => v > 0) || _precioHierro > 0)
                 {
                     <div class="crono-resumen-item">
                         <span class="crono-resumen-label">Costo EPO</span>
@@ -146,57 +161,50 @@
                 }
             </div>
         }
-    }
 
-    <!-- ═══ DESGLOSE EPO POR DOSIS PRESCRITA ════════════════════════════ -->
-    @if (_cronogramas.Count > 0)
-    {
-        var desgloseEpo     = DesglosePorEpo;
-        var pacsConEpo      = desgloseEpo.Sum(r => r.Pacientes);
-        var pacsVisible     = CronogramasVisibles.Count();
-        var pacsSinEpo      = pacsVisible - pacsConEpo;
-        @if (desgloseEpo.Count > 0)
+        <!-- Resumen costos por dosis administrada -->
+        @if (desglose.Count > 0)
         {
+            bool hayCostos = _preciosEpo.Values.Any(v => v > 0);
             <div class="crono-desglose-epo">
                 <div class="crono-desglose-epo-header">
-                    <span>Desglose EPO</span>
-                    <span class="crono-desglose-epo-sub">por dosis semanal prescrita</span>
+                    <span>Resumen EPO</span>
+                    <span class="crono-desglose-epo-sub">por dosis administrada</span>
                 </div>
                 <table class="crono-desglose-epo-table">
                     <thead>
                         <tr>
-                            <th>Dosis UI/sem</th>
-                            <th>Pacientes</th>
-                            <th>Total UI mes</th>
-                            @if (_precioEpo > 0) { <th>Costo EPO</th> }
+                            <th>Dosis UI</th>
+                            <th>Aplicaciones</th>
+                            <th>Total UI</th>
+                            @if (hayCostos) { <th>Precio</th><th>Costo</th> }
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var fila in desgloseEpo)
+                        @foreach (var fila in desglose)
                         {
                             <tr>
-                                <td class="crono-desglose-epo-dosis">@fila.DosisUiSem.ToString("N0") UI</td>
-                                <td class="crono-desglose-epo-num">@fila.Pacientes</td>
+                                <td class="crono-desglose-epo-dosis">@fila.DosisUI.ToString("N0") UI</td>
+                                <td class="crono-desglose-epo-num">@fila.Aplicaciones</td>
                                 <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
-                                @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo">$ @fila.TotalCosto.ToString("N2")</td> }
-                            </tr>
-                        }
-                        @if (pacsSinEpo > 0)
-                        {
-                            <tr class="crono-desglose-epo-sin-epo">
-                                <td>Sin EPO</td>
-                                <td class="crono-desglose-epo-num">@pacsSinEpo</td>
-                                <td class="crono-desglose-epo-num">—</td>
-                                @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo">—</td> }
+                                @if (hayCostos)
+                                {
+                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N4")</td>
+                                    <td class="crono-desglose-epo-costo">$ @fila.Costo.ToString("N2")</td>
+                                }
                             </tr>
                         }
                     </tbody>
                     <tfoot>
                         <tr>
                             <td class="crono-desglose-epo-total-label">TOTAL</td>
-                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pacsVisible</td>
-                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desgloseEpo.Sum(r => r.TotalUI).ToString("N0")</td>
-                            @if (_precioEpo > 0) { <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @desgloseEpo.Sum(r => r.TotalCosto).ToString("N2")</td> }
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglose.Sum(r => r.Aplicaciones)</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglose.Sum(r => r.TotalUI).ToString("N0")</td>
+                            @if (hayCostos)
+                            {
+                                <td></td>
+                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @desglose.Sum(r => r.Costo).ToString("N2")</td>
+                            }
                         </tr>
                     </tfoot>
                 </table>
@@ -247,7 +255,7 @@
     <!-- ═══ GRÁFICOS DE COSTO ════════════════════════════════════════════ -->
     @if (_showGraficos && _cronogramas.Count > 0)
     {
-        @if (_precioEpo == 0 && _precioHierro == 0)
+        @if (!_preciosEpo.Values.Any(v => v > 0) && _precioHierro == 0)
         {
             <div class="crono-graficos-panel">
                 <p class="crono-grafico-aviso">Configure los precios de EPO y Hierro (botón "Precios") para ver los gráficos de costo.</p>
@@ -271,7 +279,7 @@
                         @foreach (var p in lista20)
                         {
                             var wEpo = maxCosto > 0
-                                ? (p.TotalEpo * _precioEpo / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                                ? (p.EpoCosto / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
                                 : "0";
                             var wFe = maxCosto > 0
                                 ? (p.TotalHierro * _precioHierro / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
@@ -281,10 +289,10 @@
                                     @TruncateNombre(p.Nombre, 22)
                                 </div>
                                 <div class="crono-barra-wrap">
-                                    @if (p.TotalEpo * _precioEpo > 0)
+                                    @if (p.EpoCosto > 0)
                                     {
                                         <div class="crono-barra-seg crono-barra-epo" style="width:@wEpo%"
-                                             title="EPO $@((p.TotalEpo * _precioEpo).ToString("N0"))"></div>
+                                             title="EPO $@(p.EpoCosto.ToString("N0"))"></div>
                                     }
                                     @if (p.TotalHierro * _precioHierro > 0)
                                     {
@@ -349,12 +357,13 @@
                     @foreach (var crono in CronogramasVisibles)
                     {
                         var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
-                        decimal totalEpo = crono.Dias
+                        var diasFiltrados = crono.Dias
                             .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
-                            .Sum(d => d.EpoDosisuI ?? 0);
-                        decimal totalHierro = crono.Dias
-                            .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
-                            .Sum(d => d.HierroDosismg ?? 0);
+                            .ToList();
+                        decimal totalEpo = diasFiltrados.Sum(d => d.EpoDosisuI ?? 0);
+                        decimal totalHierro = diasFiltrados.Sum(d => d.HierroDosismg ?? 0);
+                        decimal epoRowCosto = diasFiltrados.Sum(d =>
+                            (d.EpoDosisuI ?? 0) * _preciosEpo.GetValueOrDefault(d.EpoDosisuI ?? 0, 0));
                         <tr class="crono-row @(crono.Ausente ? "crono-row-ausente" : "")">
                             <td class="crono-td-fixed crono-td-paciente">
                                 @crono.Paciente.NombreCompleto
@@ -491,9 +500,9 @@
                                 @if (totalEpo > 0)
                                 {
                                     <div class="crono-total-num">@totalEpo.ToString("N0")</div>
-                                    @if (_precioEpo > 0)
+                                    @if (epoRowCosto > 0)
                                     {
-                                        <div class="crono-total-costo">$@((totalEpo * _precioEpo).ToString("N0"))</div>
+                                        <div class="crono-total-costo">$@(epoRowCosto.ToString("N0"))</div>
                                     }
                                 }
                                 else { <span class="crono-dash">—</span> }
@@ -555,8 +564,8 @@
 
     // Gráficos
     private bool _showGraficos = false;
-    private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal Costo);
-    private record DesgloseEpoRow(decimal DosisUiSem, int Pacientes, decimal TotalUI, decimal TotalCosto);
+    private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal EpoCosto, decimal Costo);
+    private record ResumenDosisAdmRow(decimal DosisUI, int Aplicaciones, decimal TotalUI, decimal Precio, decimal Costo);
 
     private IEnumerable<CostoPaciente> Top20Pacientes =>
         _cronogramas
@@ -564,11 +573,13 @@
             {
                 var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0);
                 var fe  = c.Dias.Sum(d => d.HierroDosismg ?? 0);
+                var epoCosto = c.Dias.Sum(d =>
+                    (d.EpoDosisuI ?? 0) * _preciosEpo.GetValueOrDefault(d.EpoDosisuI ?? 0, 0));
                 return new CostoPaciente(
                     c.Paciente.NombreCompleto,
                     c.Paciente.Identificacion,
-                    epo, fe,
-                    epo * _precioEpo + fe * _precioHierro);
+                    epo, fe, epoCosto,
+                    epoCosto + fe * _precioHierro);
             })
             .Where(p => p.Costo > 0)
             .OrderByDescending(p => p.Costo)
@@ -599,51 +610,66 @@
             ? _fechasColumna
             : _fechasColumna.Where(f => (int)f.DayOfWeek == _filtroDia).ToList();
 
-    // RF1: totales desde registros visibles (respeta todos los filtros, incluido día)
-    private ResumenCostos? ResumenVisible
+    // RF1: resumen + desglose por dosis administrada en un único recorrido O(n)
+    private (ResumenCostos? resumen, List<ResumenDosisAdmRow> desglose) ComputarResumenYDesglose()
     {
-        get
-        {
-            var visible = CronogramasVisibles.ToList();
-            if (visible.Count == 0) return null;
-            var totalEpo    = visible.Sum(c => c.Dias
-                .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
-                .Sum(d => d.EpoDosisuI   ?? 0));
-            var totalHierro = visible.Sum(c => c.Dias
-                .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
-                .Sum(d => d.HierroDosismg ?? 0));
-            return new ResumenCostos
-            {
-                TotalPacientes = visible.Count,
-                TotalSesiones  = visible.Sum(c => c.Dias
-                    .Count(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)),
-                TotalEpoUI     = totalEpo,
-                TotalHierroMg  = totalHierro,
-                CostoEpo       = totalEpo * _precioEpo,
-                CostoHierro    = totalHierro * _precioHierro
-            };
-        }
-    }
+        var visible = CronogramasVisibles.ToList();
+        if (visible.Count == 0) return (null, new());
 
-    private List<DesgloseEpoRow> DesglosePorEpo =>
-        CronogramasVisibles
-            .Where(c => c.EpoUiSemana > 0)
-            .GroupBy(c => c.EpoUiSemana ?? 0)
-            .OrderBy(g => g.Key)
-            .Select(g =>
+        var aplsPorDosis = new Dictionary<decimal, (int Apps, decimal TotalUI, decimal Costo)>();
+        int totalSesiones = 0;
+        decimal totalEpoUI = 0, totalHierroMg = 0, costoEpo = 0, costoHierro = 0;
+
+        foreach (var crono in visible)
+        {
+            IEnumerable<CronogramaDia> dias = _filtroDia == 0
+                ? crono.Dias
+                : crono.Dias.Where(d => (int)d.FechaSesion.DayOfWeek == _filtroDia);
+            foreach (var dia in dias)
             {
-                var totalUI = g.Sum(c => c.Dias
-                    .Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia)
-                    .Sum(d => d.EpoDosisuI ?? 0));
-                return new DesgloseEpoRow(
-                    DosisUiSem: g.Key,
-                    Pacientes:  g.Count(),
-                    TotalUI:    totalUI,
-                    TotalCosto: totalUI * _precioEpo);
-            })
+                totalSesiones++;
+                var epoUI = dia.EpoDosisuI ?? 0;
+                var feUI  = dia.HierroDosismg ?? 0;
+                totalEpoUI    += epoUI;
+                totalHierroMg += feUI;
+                if (epoUI > 0)
+                {
+                    var precio   = _preciosEpo.GetValueOrDefault(epoUI, 0);
+                    var costoDia = epoUI * precio;
+                    costoEpo += costoDia;
+                    if (!aplsPorDosis.TryGetValue(epoUI, out var acc))
+                        acc = (0, 0, 0);
+                    aplsPorDosis[epoUI] = (acc.Apps + 1, acc.TotalUI + epoUI, acc.Costo + costoDia);
+                }
+                costoHierro += feUI * _precioHierro;
+            }
+        }
+
+        var resumen = new ResumenCostos
+        {
+            TotalPacientes = visible.Count,
+            TotalSesiones  = totalSesiones,
+            TotalEpoUI     = totalEpoUI,
+            TotalHierroMg  = totalHierroMg,
+            CostoEpo       = costoEpo,
+            CostoHierro    = costoHierro
+        };
+
+        var desglose = aplsPorDosis
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new ResumenDosisAdmRow(
+                kv.Key,
+                kv.Value.Apps,
+                kv.Value.TotalUI,
+                _preciosEpo.GetValueOrDefault(kv.Key, 0),
+                kv.Value.Costo))
             .ToList();
 
-    private decimal _precioEpo = 0;
+        return (resumen, desglose);
+    }
+
+    private List<PrecioEpoDosis> _dosisEpoConfig = new();
+    private Dictionary<decimal, decimal> _preciosEpo = new();
     private decimal _precioHierro = 0;
 
     private (Guid CronogramaId, DateTime Fecha)? _editKey;
@@ -681,8 +707,19 @@
     private async Task CargarConfiguracionAsync()
     {
         var configs = await ConfigRepo.GetByTenantAsync(_tenantId);
-        _precioEpo = configs.FirstOrDefault(c => c.Medicamento == "EPO")?.PrecioUnitario ?? 0;
         _precioHierro = configs.FirstOrDefault(c => c.Medicamento == "HIERRO")?.PrecioUnitario ?? 0;
+
+        _dosisEpoConfig = await PrecioEpoDosisRepo.GetByTenantAsync(_tenantId);
+        if (_dosisEpoConfig.Count == 0)
+        {
+            _dosisEpoConfig = new List<PrecioEpoDosis>
+            {
+                new() { TenantId = _tenantId, DosisUI = 2000, Precio = 0 },
+                new() { TenantId = _tenantId, DosisUI = 4000, Precio = 0 },
+                new() { TenantId = _tenantId, DosisUI = 6000, Precio = 0 },
+            };
+        }
+        _preciosEpo = _dosisEpoConfig.ToDictionary(p => p.DosisUI, p => p.Precio);
     }
 
     private async Task CargarCronogramasAsync()
@@ -742,13 +779,9 @@
     {
         try
         {
-            await ConfigRepo.UpsertAsync(new ConfiguracionMedicamento
-            {
-                TenantId = _tenantId,
-                Medicamento = "EPO",
-                PrecioUnitario = _precioEpo,
-                Unidad = "UI"
-            });
+            await PrecioEpoDosisRepo.UpsertManyAsync(_dosisEpoConfig);
+            _preciosEpo = _dosisEpoConfig.ToDictionary(p => p.DosisUI, p => p.Precio);
+
             await ConfigRepo.UpsertAsync(new ConfiguracionMedicamento
             {
                 TenantId = _tenantId,
@@ -832,7 +865,7 @@
         using var wb = new ClosedXML.Excel.XLWorkbook();
         var ws = wb.Worksheets.Add("Cronograma");
 
-        var rv  = ResumenVisible;
+        var (rv, _) = ComputarResumenYDesglose();
         var fechas = FechasColumnaFiltradas;
 
         // ── Fila 1: Título ────────────────────────────────────────────────────
@@ -852,7 +885,7 @@
         RLabel("SESIONES");   RValue(rv?.TotalSesiones ?? 0);
         RLabel("TOTAL EPO (UI)"); RValue(rv?.TotalEpoUI.ToString("N0") ?? "—");
         RLabel("TOTAL HIERRO (mg)"); RValue(rv?.TotalHierroMg.ToString("N0") ?? "—");
-        if (_precioEpo > 0 || _precioHierro > 0)
+        if (_preciosEpo.Values.Any(v => v > 0) || _precioHierro > 0)
         {
             RLabel("COSTO EPO");   RValue("$ " + (rv?.CostoEpo.ToString("N2") ?? "—"));
             RLabel("COSTO HIERRO"); RValue("$ " + (rv?.CostoHierro.ToString("N2") ?? "—"));
@@ -1197,6 +1230,15 @@
         color: #1e293b;
     }
     .crono-config-actions { display: flex; gap: 0.4rem; margin-left: auto; }
+
+    /* EPO dosis table inside config panel */
+    .crono-config-epo-section { display: flex; flex-direction: column; gap: 0.35rem; }
+    .crono-config-epo-label { font-size: 0.8rem; color: #475569; font-weight: 600; }
+    .crono-config-epo-table { border-collapse: collapse; font-size: 0.82rem; }
+    .crono-config-epo-table th,
+    .crono-config-epo-table td { padding: 0.2rem 0.6rem; text-align: left; }
+    .crono-config-epo-table th { color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
+    .crono-config-epo-table td:first-child { color: #1e293b; min-width: 80px; }
 
     /* Resumen costos */
     .crono-resumen {

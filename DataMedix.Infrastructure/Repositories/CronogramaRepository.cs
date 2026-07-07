@@ -201,4 +201,41 @@ namespace DataMedix.Infrastructure.Repositories
             await _db.SaveChangesAsync();
         }
     }
+
+    public class PrecioEpoDosisRepository : IPrecioEpoDosisRepository
+    {
+        private readonly DataMedixDbContext _db;
+
+        public PrecioEpoDosisRepository(DataMedixDbContext db) => _db = db;
+
+        public async Task<List<PrecioEpoDosis>> GetByTenantAsync(Guid tenantId)
+            => await _db.PreciosEpoDosis
+                .Where(p => p.TenantId == tenantId && p.Activo)
+                .OrderBy(p => p.DosisUI)
+                .ToListAsync();
+
+        public async Task UpsertManyAsync(List<PrecioEpoDosis> precios)
+        {
+            if (precios.Count == 0) return;
+            var tenantId = precios[0].TenantId;
+            var dosisIds = precios.Select(p => p.DosisUI).ToList();
+
+            var existing = await _db.PreciosEpoDosis
+                .Where(p => p.TenantId == tenantId && dosisIds.Contains(p.DosisUI))
+                .ToListAsync();
+
+            foreach (var precio in precios)
+            {
+                var found = existing.FirstOrDefault(e => e.DosisUI == precio.DosisUI);
+                if (found == null)
+                    _db.PreciosEpoDosis.Add(precio);
+                else
+                {
+                    found.Precio     = precio.Precio;
+                    found.UpdatedAt  = DateTime.UtcNow;
+                }
+            }
+            await _db.SaveChangesAsync();
+        }
+    }
 }

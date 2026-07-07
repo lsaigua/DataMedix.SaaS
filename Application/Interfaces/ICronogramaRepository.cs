@@ -23,4 +23,11 @@ namespace DataMedix.Application.Interfaces
         Task<ConfiguracionMedicamento?> GetByMedicamentoAsync(Guid tenantId, string medicamento);
         Task UpsertAsync(ConfiguracionMedicamento config);
     }
+
+    /// <summary>Precios de EPO por dosis administrada; extensible sin cambio de código.</summary>
+    public interface IPrecioEpoDosisRepository
+    {
+        Task<List<PrecioEpoDosis>> GetByTenantAsync(Guid tenantId);
+        Task UpsertManyAsync(List<PrecioEpoDosis> precios);
+    }
 }

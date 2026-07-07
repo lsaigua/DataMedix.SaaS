@@ -75,6 +75,18 @@ namespace DataMedix.Domain.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
+    /// <summary>Precio por dosis unitaria de EPO administrada en sesión.</summary>
+    public class PrecioEpoDosis
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public Guid TenantId { get; set; }
+        public decimal DosisUI { get; set; }
+        public decimal Precio { get; set; } = 0;
+        public bool Activo { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+    }
+
     public static class EstadoCronograma
     {
         public const string Borrador = "BORRADOR";

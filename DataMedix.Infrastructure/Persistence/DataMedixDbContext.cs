@@ -54,6 +54,7 @@ namespace DataMedix.Infrastructure.Persistence
         public DbSet<ConfiguracionMedicamento> ConfiguracionesMedicamento => Set<ConfiguracionMedicamento>();
         public DbSet<CronogramaAuditoria> CronogramasAuditoria => Set<CronogramaAuditoria>();
         public DbSet<AplicacionHierro> AplicacionesHierro => Set<AplicacionHierro>();
+        public DbSet<PrecioEpoDosis> PreciosEpoDosis => Set<PrecioEpoDosis>();
 
         // Facturación / uso (base central — accesible para super admin)
         public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
@@ -610,6 +611,23 @@ namespace DataMedix.Infrastructure.Persistence
             });
 
             // ========================
+            // PRECIO EPO DOSIS
+            // ========================
+            m.Entity<PrecioEpoDosis>(e =>
+            {
+                e.ToTable("precio_epo_dosis");
+                e.HasKey(p => p.Id);
+                e.Property(p => p.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(p => p.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(p => p.DosisUI).HasColumnName("dosis_ui").HasColumnType("decimal(10,2)").IsRequired();
+                e.Property(p => p.Precio).HasColumnName("precio").HasColumnType("decimal(12,4)").HasDefaultValue(0m);
+                e.Property(p => p.Activo).HasColumnName("activo").HasDefaultValue(true);
+                e.Property(p => p.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(p => p.UpdatedAt).HasColumnName("updated_at");
+                e.HasIndex(p => new { p.TenantId, p.DosisUI }).IsUnique();
+            });
+
+            // ========================
             // CRONOGRAMA AUDITORIA
             // ========================
             m.Entity<CronogramaAuditoria>(e =>
@@ -743,6 +761,8 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
             m.Entity<AplicacionHierro>()
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
+            m.Entity<PrecioEpoDosis>()
+             .HasQueryFilter(p => !_tenantCtx.IsResolved || p.TenantId == _tenantCtx.TenantId);
             m.Entity<AuditoriaLog>()
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
             m.Entity<UsuarioRol>()

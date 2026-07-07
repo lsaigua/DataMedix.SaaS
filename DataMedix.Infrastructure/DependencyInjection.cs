@@ -49,6 +49,7 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IConfiguracionMedicamentoRepository, ConfiguracionMedicamentoRepository>();
             services.AddScoped<IAplicacionHierroRepository, AplicacionHierroRepository>();
             services.AddScoped<IHierroSchedulerService, HierroSchedulerService>();
+            services.AddScoped<IPrecioEpoDosisRepository, PrecioEpoDosisRepository>();
             services.AddScoped<IReporteService, ReporteService>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IExcelReader, ExcelReader>();
@@ -158,6 +159,21 @@ namespace DataMedix.Infrastructure
                     );
                     CREATE INDEX IF NOT EXISTS ix_aplicacion_hierro_cronograma
                         ON aplicacion_hierro (tenant_id, cronograma_id, fecha_programada);
+                ");
+
+                // 6. Tabla precio_epo_dosis — precio por dosis administrada de EPO (extensible sin código)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS precio_epo_dosis (
+                        id          UUID          NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+                        tenant_id   UUID          NOT NULL,
+                        dosis_ui    DECIMAL(10,2) NOT NULL,
+                        precio      DECIMAL(12,4) NOT NULL DEFAULT 0,
+                        activo      BOOLEAN       NOT NULL DEFAULT TRUE,
+                        created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                        updated_at  TIMESTAMPTZ
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS ix_precio_epo_dosis_tenant_dosis
+                        ON precio_epo_dosis (tenant_id, dosis_ui);
                 ");
             }
             finally
