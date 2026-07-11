@@ -127,7 +127,7 @@
         {
             bool hayFiltro = _filtroTurno != "Todos" || _filtroDia != 0 ||
                              _filtroSala != "Todas" || !string.IsNullOrWhiteSpace(_busqueda) ||
-                             _filtroFecha.HasValue;
+                             TieneFiltroFecha;
             <div class="crono-resumen @(hayFiltro ? "crono-resumen-filtrado" : "")">
                 <div class="crono-resumen-item">
                     <span class="crono-resumen-label">Pacientes</span>
@@ -245,13 +245,17 @@
                 </select>
             </div>
             <div class="crono-filtros-grupo">
-                <span class="crono-filtros-label">Fecha:</span>
+                <span class="crono-filtros-label">Desde:</span>
                 <input type="date" class="crono-select crono-filtro-fecha"
-                       value="@(_filtroFecha?.ToString("yyyy-MM-dd") ?? "")"
-                       @onchange="OnFiltroFechaChange" />
-                @if (_filtroFecha.HasValue)
+                       value="@(_filtroFechaDesde?.ToString("yyyy-MM-dd") ?? "")"
+                       @onchange="OnFiltroFechaDesdeChange" />
+                <span class="crono-filtros-label crono-filtros-label-hasta">Hasta:</span>
+                <input type="date" class="crono-select crono-filtro-fecha"
+                       value="@(_filtroFechaHasta?.ToString("yyyy-MM-dd") ?? "")"
+                       @onchange="OnFiltroFechaHastaChange" />
+                @if (TieneFiltroFecha)
                 {
-                    <button class="crono-btn-clear-fecha" @onclick="() => _filtroFecha = null" title="Limpiar filtro de fecha">✕</button>
+                    <button class="crono-btn-clear-fecha" @onclick="LimpiarFiltroFecha" title="Limpiar rango de fechas">✕</button>
                 }
             </div>
             <div class="crono-filtros-grupo crono-filtros-right">
@@ -368,8 +372,8 @@
                     @foreach (var crono in CronogramasVisibles)
                     {
                         var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
-                        var diasFiltrados = (_filtroFecha.HasValue
-                            ? crono.Dias.Where(d => d.FechaSesion.Date == _filtroFecha.Value.Date)
+                        var diasFiltrados = (TieneFiltroFecha
+                            ? crono.Dias.Where(d => FechaEnRango(d.FechaSesion))
                             : _filtroDia == 0
                                 ? crono.Dias
                                 : crono.Dias.Where(d => (int)d.FechaSesion.DayOfWeek == _filtroDia))
@@ -558,10 +562,20 @@
     private List<DateTime> _fechasColumna = new();
 
     // Filtros de segmento
-    private string    _filtroTurno = "Todos";
-    private int       _filtroDia   = 0;   // 0=Todos; 1=Lun…6=Sáb  (alineado con DayOfWeek)
-    private string    _filtroSala  = "Todas";
-    private DateTime? _filtroFecha = null;
+    private string    _filtroTurno      = "Todos";
+    private int       _filtroDia        = 0;   // 0=Todos; 1=Lun…6=Sáb  (alineado con DayOfWeek)
+    private string    _filtroSala       = "Todas";
+    private DateTime? _filtroFechaDesde = null;
+    private DateTime? _filtroFechaHasta = null;
+
+    private bool TieneFiltroFecha => _filtroFechaDesde.HasValue || _filtroFechaHasta.HasValue;
+    private bool FechaEnRango(DateTime fecha)
+    {
+        var d = fecha.Date;
+        if (_filtroFechaDesde.HasValue && d < _filtroFechaDesde.Value.Date) return false;
+        if (_filtroFechaHasta.HasValue && d > _filtroFechaHasta.Value.Date) return false;
+        return true;
+    }
     private static readonly (string Label, int Val)[] _diasFiltroOpciones =
     {
         ("Todos", 0), ("Lun", 1), ("Mar", 2), ("Mié", 3),
@@ -608,8 +622,8 @@
             .Where(c => _filtroTurno == "Todos" ||
                 (!string.IsNullOrWhiteSpace(c.PlanSalud) &&
                  c.PlanSalud.ToUpperInvariant().Contains(_filtroTurno)))
-            .Where(c => _filtroFecha.HasValue
-                ? c.Dias.Any(d => d.FechaSesion.Date == _filtroFecha.Value.Date)
+            .Where(c => TieneFiltroFecha
+                ? c.Dias.Any(d => FechaEnRango(d.FechaSesion))
                 : _filtroDia == 0 || c.Dias.Any(d => (int)d.FechaSesion.DayOfWeek == _filtroDia))
             .Where(c => _filtroSala == "Todas" ||
                 string.Equals(c.Sala, _filtroSala, StringComparison.OrdinalIgnoreCase));
@@ -622,8 +636,8 @@
 
     // Columnas visibles según el filtro de fecha o día activo
     private IReadOnlyList<DateTime> FechasColumnaFiltradas =>
-        _filtroFecha.HasValue
-            ? _fechasColumna.Where(f => f.Date == _filtroFecha.Value.Date).ToList()
+        TieneFiltroFecha
+            ? _fechasColumna.Where(f => FechaEnRango(f)).ToList()
             : _filtroDia == 0
                 ? _fechasColumna
                 : _fechasColumna.Where(f => (int)f.DayOfWeek == _filtroDia).ToList();
@@ -640,8 +654,8 @@
 
         foreach (var crono in visible)
         {
-            IEnumerable<CronogramaDia> dias = _filtroFecha.HasValue
-                ? crono.Dias.Where(d => d.FechaSesion.Date == _filtroFecha.Value.Date)
+            IEnumerable<CronogramaDia> dias = TieneFiltroFecha
+                ? crono.Dias.Where(d => FechaEnRango(d.FechaSesion))
                 : _filtroDia == 0
                     ? crono.Dias
                     : crono.Dias.Where(d => (int)d.FechaSesion.DayOfWeek == _filtroDia);
@@ -1125,12 +1139,20 @@
             _fechaInicioFlex = fecha.Date;
     }
 
-    private void OnFiltroFechaChange(ChangeEventArgs e)
+    private void OnFiltroFechaDesdeChange(ChangeEventArgs e)
     {
-        if (DateTime.TryParse(e.Value?.ToString(), out var fecha))
-            _filtroFecha = fecha.Date;
-        else
-            _filtroFecha = null;
+        _filtroFechaDesde = DateTime.TryParse(e.Value?.ToString(), out var f) ? f.Date : null;
+    }
+
+    private void OnFiltroFechaHastaChange(ChangeEventArgs e)
+    {
+        _filtroFechaHasta = DateTime.TryParse(e.Value?.ToString(), out var f) ? f.Date : null;
+    }
+
+    private void LimpiarFiltroFecha()
+    {
+        _filtroFechaDesde = null;
+        _filtroFechaHasta = null;
     }
 
     private static decimal? ParseDecimal(string? s) =>
@@ -1677,11 +1699,12 @@
     }
     .crono-filtros-right { margin-left: auto; }
     .crono-filtro-fecha {
-        width: 130px;
+        width: 122px;
         padding: 0.22rem 0.4rem;
         font-size: 0.78rem;
         cursor: pointer;
     }
+    .crono-filtros-label-hasta { margin-left: 0.35rem; }
     .crono-btn-clear-fecha {
         background: none;
         border: none;
