@@ -1121,9 +1121,14 @@
                 }
                 else col++;
             }
-            // Totales de fila respetan el filtro de día activo
-            decimal totEpo    = crono.Dias.Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia).Sum(d => d.EpoDosisuI    ?? 0);
-            decimal totHierro = crono.Dias.Where(d => _filtroDia == 0 || (int)d.FechaSesion.DayOfWeek == _filtroDia).Sum(d => d.HierroDosismg ?? 0);
+            // Totales de fila: mismo filtro que la vista (rango de fechas, día específico o todo)
+            var diasXls = (TieneFiltroFecha
+                ? crono.Dias.Where(d => FechaEnRango(d.FechaSesion))
+                : _filtroDia == 0
+                    ? crono.Dias
+                    : crono.Dias.Where(d => (int)d.FechaSesion.DayOfWeek == _filtroDia)).ToList();
+            decimal totEpo    = diasXls.Sum(d => d.EpoDosisuI    ?? 0);
+            decimal totHierro = diasXls.Sum(d => d.HierroDosismg ?? 0);
             ws.Cell(row, col++).Value = (double)totEpo;
             ws.Cell(row, col).Value   = (double)totHierro;
             row++;
