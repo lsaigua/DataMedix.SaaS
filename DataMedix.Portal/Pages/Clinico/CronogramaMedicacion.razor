@@ -123,7 +123,7 @@
     <!-- ═══ RESUMEN DE COSTOS + DESGLOSE POR DOSIS ADMINISTRADA ══════════ -->
     @if (_cronogramas.Count > 0)
     {
-        var (rv, desglose) = ComputarResumenYDesglose();
+        var (rv, desglose, desglPend) = ComputarResumenYDesglose();
         @if (rv != null)
         {
             bool hayFiltro = _filtroTurno != "Todos" || _filtroDia != 0 ||
@@ -206,6 +206,55 @@
                             {
                                 <td></td>
                                 <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @desglose.Sum(r => r.Costo).ToString("N2")</td>
+                            }
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+
+        <!-- Resumen dosis pendientes NO administradas -->
+        @if (desglPend.Count > 0)
+        {
+            bool hayCostosPend = _preciosEpo.Values.Any(v => v > 0);
+            <div class="crono-desglose-epo crono-desglose-pend">
+                <div class="crono-desglose-epo-header">
+                    <span>EPO Pendiente</span>
+                    <span class="crono-desglose-epo-sub">dosis no administrada — compensación programada</span>
+                </div>
+                <table class="crono-desglose-epo-table">
+                    <thead>
+                        <tr>
+                            <th>Dosis UI</th>
+                            <th>Pacientes</th>
+                            <th>Total UI</th>
+                            @if (hayCostosPend) { <th>Precio</th><th>Costo potencial</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fila in desglPend)
+                        {
+                            <tr>
+                                <td class="crono-desglose-epo-dosis crono-desglose-pend-dosis">@fila.DosisUI.ToString("N0") UI</td>
+                                <td class="crono-desglose-epo-num">@fila.Aplicaciones</td>
+                                <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
+                                @if (hayCostosPend)
+                                {
+                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N4")</td>
+                                    <td class="crono-desglose-epo-costo crono-pend-costo-val">$ @fila.Costo.ToString("N2")</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="crono-desglose-epo-total-label">TOTAL</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglPend.Sum(r => r.Aplicaciones)</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglPend.Sum(r => r.TotalUI).ToString("N0")</td>
+                            @if (hayCostosPend)
+                            {
+                                <td></td>
+                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val crono-pend-costo-val">$ @desglPend.Sum(r => r.Costo).ToString("N2")</td>
                             }
                         </tr>
                     </tfoot>
@@ -384,9 +433,11 @@
                         decimal totalHierro = diasFiltrados.Sum(d => d.HierroDosismg ?? 0);
                         decimal epoRowCosto = diasFiltrados.Sum(d =>
                             (d.EpoDosisuI ?? 0) * _preciosEpo.GetValueOrDefault(d.EpoDosisuI ?? 0, 0));
-                        // En vista de mes completo (sin filtros de fecha/día), agregar dosis inicial pendiente
+                        // Solo sumar pendiente al total del row si ya fue marcada Aplicada
                         bool vistaCompleta = !TieneFiltroFecha && _filtroDia == 0;
-                        if (vistaCompleta && crono.EpoDosisPendienteUI > 0)
+                        if (vistaCompleta && crono.EpoDosisPendienteUI > 0 &&
+                            _eventosPendientes.TryGetValue(crono.Id, out var evRow) &&
+                            evRow.Estado == EstadoDosisPendiente.Aplicada)
                         {
                             totalEpo    += crono.EpoDosisPendienteUI!.Value;
                             epoRowCosto += CostoPendienteEpo(crono);
@@ -630,11 +681,14 @@
         _cronogramas
             .Select(c =>
             {
-                var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0) + (c.EpoDosisPendienteUI ?? 0);
+                bool evAplic = _eventosPendientes.TryGetValue(c.Id, out var evT) &&
+                               evT.Estado == EstadoDosisPendiente.Aplicada;
+                var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0) +
+                          (evAplic ? (c.EpoDosisPendienteUI ?? 0) : 0);
                 var fe  = c.Dias.Sum(d => d.HierroDosismg ?? 0);
                 var epoCosto = c.Dias.Sum(d =>
                     (d.EpoDosisuI ?? 0) * _preciosEpo.GetValueOrDefault(d.EpoDosisuI ?? 0, 0))
-                    + CostoPendienteEpo(c);
+                    + (evAplic ? CostoPendienteEpo(c) : 0);
                 return new CostoPaciente(
                     c.Paciente.NombreCompleto,
                     c.Paciente.Identificacion,
@@ -673,13 +727,14 @@
                 ? _fechasColumna
                 : _fechasColumna.Where(f => (int)f.DayOfWeek == _filtroDia).ToList();
 
-    // RF1: resumen + desglose por dosis administrada en un único recorrido O(n)
-    private (ResumenCostos? resumen, List<ResumenDosisAdmRow> desglose) ComputarResumenYDesglose()
+    // RF1: resumen + desglose administrado + desglose pendiente (no administrado) — un solo recorrido O(n)
+    private (ResumenCostos? resumen, List<ResumenDosisAdmRow> desglose, List<ResumenDosisAdmRow> desglPend) ComputarResumenYDesglose()
     {
         var visible = CronogramasVisibles.ToList();
-        if (visible.Count == 0) return (null, new());
+        if (visible.Count == 0) return (null, new(), new());
 
-        var aplsPorDosis = new Dictionary<decimal, (int Apps, decimal TotalUI, decimal Costo)>();
+        var aplsPorDosis  = new Dictionary<decimal, (int Apps, decimal TotalUI, decimal Costo)>();
+        var pendPorDosis  = new Dictionary<decimal, (int Pacientes, decimal TotalUI, decimal Costo)>();
         int totalSesiones = 0;
         decimal totalEpoUI = 0, totalHierroMg = 0, costoEpo = 0, costoHierro = 0;
 
@@ -710,21 +765,33 @@
                 costoHierro += feUI * _precioHierro;
             }
 
-            // Incluir dosis inicial pendiente en totales (solo vista mes completo)
+            // Dosis inicial pendiente: administrada solo si fue marcada Aplicada; sino va a pendPorDosis
             if (resumenCompleto && crono.EpoDosisPendienteUI > 0 && crono.EpoUiSemana > 0)
             {
                 var pendUI      = crono.EpoDosisPendienteUI!.Value;
                 var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value);
                 if (dosisSesion > 0)
                 {
+                    bool evAplic = _eventosPendientes.TryGetValue(crono.Id, out var evC) &&
+                                   evC.Estado == EstadoDosisPendiente.Aplicada;
                     var sesEq     = (int)Math.Round(pendUI / dosisSesion);
                     var precio    = _preciosEpo.GetValueOrDefault(dosisSesion, 0);
                     var costoPend = sesEq * precio;
-                    totalEpoUI += pendUI;
-                    costoEpo   += costoPend;
-                    if (!aplsPorDosis.TryGetValue(dosisSesion, out var acc))
-                        acc = (0, 0, 0);
-                    aplsPorDosis[dosisSesion] = (acc.Apps + sesEq, acc.TotalUI + pendUI, acc.Costo + costoPend);
+
+                    if (evAplic)
+                    {
+                        totalEpoUI += pendUI;
+                        costoEpo   += costoPend;
+                        if (!aplsPorDosis.TryGetValue(dosisSesion, out var acc))
+                            acc = (0, 0, 0);
+                        aplsPorDosis[dosisSesion] = (acc.Apps + sesEq, acc.TotalUI + pendUI, acc.Costo + costoPend);
+                    }
+                    else
+                    {
+                        if (!pendPorDosis.TryGetValue(dosisSesion, out var pacc))
+                            pacc = (0, 0, 0);
+                        pendPorDosis[dosisSesion] = (pacc.Pacientes + 1, pacc.TotalUI + pendUI, pacc.Costo + costoPend);
+                    }
                 }
             }
         }
@@ -742,14 +809,18 @@
         var desglose = aplsPorDosis
             .OrderBy(kv => kv.Key)
             .Select(kv => new ResumenDosisAdmRow(
-                kv.Key,
-                kv.Value.Apps,
-                kv.Value.TotalUI,
-                _preciosEpo.GetValueOrDefault(kv.Key, 0),
-                kv.Value.Costo))
+                kv.Key, kv.Value.Apps, kv.Value.TotalUI,
+                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
             .ToList();
 
-        return (resumen, desglose);
+        var desglPend = pendPorDosis
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new ResumenDosisAdmRow(
+                kv.Key, kv.Value.Pacientes, kv.Value.TotalUI,
+                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
+            .ToList();
+
+        return (resumen, desglose, desglPend);
     }
 
     private List<PrecioEpoDosis> _dosisEpoConfig = new();
@@ -977,7 +1048,7 @@
         using var wb = new ClosedXML.Excel.XLWorkbook();
         var ws = wb.Worksheets.Add("Cronograma");
 
-        var (rv, _) = ComputarResumenYDesglose();
+        var (rv, _, _) = ComputarResumenYDesglose();
         var fechas = FechasColumnaFiltradas;
 
         // ── Fila 1: Título ────────────────────────────────────────────────────
@@ -1483,6 +1554,16 @@
     .crono-desglose-epo-total-val   { text-align: right; }
     .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #38bdf8; }
     .crono-desglose-epo-sin-epo td  { color: #94a3b8; font-style: italic; border-top: 1px dashed #e2e8f0; }
+
+    /* Panel EPO pendiente — naranja oscuro para diferenciarlo del administrado */
+    .crono-desglose-pend { border-color: #fed7aa; }
+    .crono-desglose-pend .crono-desglose-epo-header { background: #7c2d12; color: #fed7aa; }
+    .crono-desglose-pend .crono-desglose-epo-sub { color: #9a3412; }
+    .crono-desglose-pend .crono-desglose-epo-table thead th { background: #fff7ed; }
+    .crono-desglose-pend .crono-desglose-epo-table tfoot td { background: #7c2d12; border-top-color: #9a3412; }
+    .crono-desglose-pend .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #fdba74; }
+    .crono-desglose-pend-dosis { font-weight: 700; color: #f97316 !important; }
+    .crono-pend-costo-val { color: #f97316 !important; }
 
     /* Empty state */
     .crono-empty {
