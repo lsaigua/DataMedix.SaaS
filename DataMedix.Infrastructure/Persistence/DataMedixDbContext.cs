@@ -551,6 +551,7 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(c => c.PlanSalud).HasColumnName("plan_salud").HasMaxLength(200);
                 e.Property(c => c.EpoUiSemana).HasColumnName("epo_ui_semana").HasColumnType("decimal(10,2)");
                 e.Property(c => c.HierroMgMes).HasColumnName("hierro_mg_mes").HasColumnType("decimal(10,2)");
+                e.Property(c => c.EpoDosisPendienteUI).HasColumnName("epo_dosis_pendiente_ui").HasColumnType("decimal(10,2)");
                 e.Property(c => c.Observaciones).HasColumnName("observaciones");
                 e.Property(c => c.Estado).HasColumnName("estado").HasMaxLength(50).HasDefaultValue("BORRADOR");
                 e.Property(c => c.Activo).HasColumnName("activo").HasDefaultValue(true);

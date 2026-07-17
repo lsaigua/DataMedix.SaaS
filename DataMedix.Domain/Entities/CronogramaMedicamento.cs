@@ -10,6 +10,8 @@ namespace DataMedix.Domain.Entities
         public string? PlanSalud { get; set; }
         public decimal? EpoUiSemana { get; set; }
         public decimal? HierroMgMes { get; set; }
+        // UI de EPO que no pudo distribuirse en la primera semana parcial del cronograma
+        public decimal? EpoDosisPendienteUI { get; set; }
         public string? Observaciones { get; set; }
         public string Estado { get; set; } = EstadoCronograma.Borrador;
         public bool Activo { get; set; } = true;

@@ -185,6 +185,14 @@ namespace DataMedix.Application.Services
                 cronogramaIdsConTurno.Add(crono.Id);
                 var nuevasDias = GenerarDias(crono);
 
+                // Calcular dosis inicial pendiente (primera semana parcial del cronograma)
+                var turnoGeneracion = ParsearTurno(crono.PlanSalud);
+                crono.EpoDosisPendienteUI = turnoGeneracion.HasValue
+                    ? CalcularDosisInicialPendiente(
+                        crono.EpoUiSemana, turnoGeneracion.Value,
+                        nuevasDias.Select(d => d.FechaSesion).ToList())
+                    : null;
+
                 // Preservar valores editados manualmente (crono.Dias viene del GetByPeriodoAsync anterior)
                 if (crono.Dias.Any())
                 {
@@ -211,6 +219,9 @@ namespace DataMedix.Application.Services
 
                 todasNuevasDias.AddRange(nuevasDias);
             }
+
+            // Persistir EpoDosisPendienteUI calculado en todos los headers (entidades tracked)
+            await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
 
             // ── 6. Reemplazar dias en lote (DELETE + INSERT, 2 queries) ───
             await _repo.BatchReplaceDiasAsync(cronogramaIdsConTurno, todasNuevasDias);
@@ -353,6 +364,15 @@ namespace DataMedix.Application.Services
             {
                 var nuevasDias = GenerarDias(crono);
 
+                // Actualizar dosis pendiente con el nuevo turno
+                var turnoActualizado = ParsearTurno(crono.PlanSalud);
+                crono.EpoDosisPendienteUI = turnoActualizado.HasValue
+                    ? CalcularDosisInicialPendiente(
+                        crono.EpoUiSemana, turnoActualizado.Value,
+                        nuevasDias.Select(d => d.FechaSesion).ToList())
+                    : null;
+                await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
                 // Preservar valores editados manualmente
                 var manuales = crono.Dias
                     .Where(d => d.EpoEditadoManual || d.HierroEditadoManual)
@@ -391,15 +411,24 @@ namespace DataMedix.Application.Services
 
             if (ausente)
             {
-                // Eliminar todos los días y aplicaciones del paciente ausente
+                // Al marcar ausente: limpiar dosis pendiente y eliminar días
+                crono.EpoDosisPendienteUI = null;
+                await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, new List<CronogramaDia>());
                 await _aplicacionHierroRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
             }
             else if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
                      (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
             {
-                // Reactivar: regenerar días y aplicaciones
+                // Reactivar: recalcular dosis pendiente + regenerar días y aplicaciones
                 var nuevasDias = GenerarDias(crono);
+                var turnoReact = ParsearTurno(crono.PlanSalud);
+                crono.EpoDosisPendienteUI = turnoReact.HasValue
+                    ? CalcularDosisInicialPendiente(
+                        crono.EpoUiSemana, turnoReact.Value,
+                        nuevasDias.Select(d => d.FechaSesion).ToList())
+                    : null;
+                await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
                 await RegenerarAplicacionesHierroAsync(
                     new[] { crono }, new[] { cronogramaId }, usuarioId);
@@ -677,6 +706,48 @@ namespace DataMedix.Application.Services
             }
             if (semanaActual.Count > 0) grupos.Add(semanaActual);
             return grupos;
+        }
+
+        /// <summary>
+        /// Calcula la dosis de EPO (UI) que quedó pendiente porque el cronograma
+        /// inició después del primer día de turno de la primera semana.
+        /// Solo aplica a la primera semana parcial; semanas posteriores se gestionan
+        /// con la lógica normal de distribución.
+        /// </summary>
+        private static decimal CalcularDosisInicialPendiente(
+            decimal? epoUiSemana, TipoTurno turno, List<DateTime> fechasSesion)
+        {
+            if (!epoUiSemana.HasValue || epoUiSemana <= 0 || fechasSesion.Count == 0) return 0;
+
+            var semanas = AgruparPorSemana(fechasSesion);
+            if (semanas.Count == 0) return 0;
+
+            var primeraSemana = semanas[0];
+            // Semana completa: ninguna dosis quedó pendiente
+            if (primeraSemana.Count >= 3) return 0;
+
+            var ui = (int)Math.Round(epoUiSemana.Value);
+            var (d1, d2, d3) = CalcularDosisEpoSemanal(ui);
+            var dosisSemanale = d1 + d2 + d3;
+
+            // Replicar exactamente la rama que DistribuirEpo aplicaría a esta semana parcial
+            int n = primeraSemana.Count;
+            decimal distribuidoPrimeraSemana;
+            if (d1 == 0 && d2 > 0 && d3 == 0)
+            {
+                // Solo dosis central (2000 UI/sem): siempre se coloca
+                distribuidoPrimeraSemana = d2;
+            }
+            else if (n >= 2)
+            {
+                distribuidoPrimeraSemana = d1 + (d3 > 0 ? d3 : d2);
+            }
+            else // n == 1
+            {
+                distribuidoPrimeraSemana = d1 > 0 ? d1 : d2;
+            }
+
+            return Math.Max(0, dosisSemanale - distribuidoPrimeraSemana);
         }
 
         private static int ISOWeek(DateTime d) =>

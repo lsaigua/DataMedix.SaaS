@@ -161,6 +161,12 @@ namespace DataMedix.Infrastructure
                         ON aplicacion_hierro (tenant_id, cronograma_id, fecha_programada);
                 ");
 
+                // 7. Columna epo_dosis_pendiente_ui en cronograma_medicamento (idempotente)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE cronograma_medicamento
+                        ADD COLUMN IF NOT EXISTS epo_dosis_pendiente_ui DECIMAL(10,2) NULL;
+                ");
+
                 // 6. Tabla precio_epo_dosis — precio por dosis administrada de EPO (extensible sin código)
                 await db.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS precio_epo_dosis (
