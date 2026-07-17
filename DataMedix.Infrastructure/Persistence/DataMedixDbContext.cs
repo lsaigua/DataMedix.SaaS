@@ -55,6 +55,7 @@ namespace DataMedix.Infrastructure.Persistence
         public DbSet<CronogramaAuditoria> CronogramasAuditoria => Set<CronogramaAuditoria>();
         public DbSet<AplicacionHierro> AplicacionesHierro => Set<AplicacionHierro>();
         public DbSet<PrecioEpoDosis> PreciosEpoDosis => Set<PrecioEpoDosis>();
+        public DbSet<EventoDosisPendiente> EventosDosisPendiente => Set<EventoDosisPendiente>();
 
         // Facturación / uso (base central — accesible para super admin)
         public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
@@ -672,6 +673,28 @@ namespace DataMedix.Infrastructure.Persistence
             });
 
             // ========================
+            // EVENTO DOSIS PENDIENTE
+            // ========================
+            m.Entity<EventoDosisPendiente>(e =>
+            {
+                e.ToTable("evento_dosis_pendiente");
+                e.HasKey(ev => ev.Id);
+                e.Property(ev => ev.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(ev => ev.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(ev => ev.CronogramaId).HasColumnName("cronograma_id").IsRequired();
+                e.Property(ev => ev.PacienteId).HasColumnName("paciente_id").IsRequired();
+                e.Property(ev => ev.FechaProgramada).HasColumnName("fecha_programada").HasColumnType("date").IsRequired();
+                e.Property(ev => ev.DosisUI).HasColumnName("dosis_ui").HasColumnType("decimal(10,2)").IsRequired();
+                e.Property(ev => ev.Estado).HasColumnName("estado").HasMaxLength(20).HasDefaultValue("PROGRAMADA");
+                e.Property(ev => ev.Observaciones).HasColumnName("observaciones");
+                e.Property(ev => ev.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(ev => ev.UpdatedAt).HasColumnName("updated_at");
+                e.Property(ev => ev.UpdatedBy).HasColumnName("updated_by");
+                e.HasIndex(ev => new { ev.TenantId, ev.CronogramaId }).IsUnique();
+                e.HasOne(ev => ev.Cronograma).WithMany().HasForeignKey(ev => ev.CronogramaId).OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ========================
             // USAGE EVENTS (facturación)
             // ========================
             m.Entity<UsageEvent>(e =>
@@ -764,6 +787,8 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
             m.Entity<PrecioEpoDosis>()
              .HasQueryFilter(p => !_tenantCtx.IsResolved || p.TenantId == _tenantCtx.TenantId);
+            m.Entity<EventoDosisPendiente>()
+             .HasQueryFilter(e => !_tenantCtx.IsResolved || e.TenantId == _tenantCtx.TenantId);
             m.Entity<AuditoriaLog>()
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
             m.Entity<UsuarioRol>()

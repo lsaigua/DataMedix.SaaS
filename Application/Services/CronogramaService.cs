@@ -39,6 +39,7 @@ namespace DataMedix.Application.Services
         private readonly ISnapshotMensualRepository _snapshotRepo;
         private readonly IHierroSchedulerService _hierroScheduler;
         private readonly IAplicacionHierroRepository _aplicacionHierroRepo;
+        private readonly IEventoDosisPendienteRepository _eventoPendienteRepo;
 
         public CronogramaService(
             ICronogramaRepository repo,
@@ -46,7 +47,8 @@ namespace DataMedix.Application.Services
             IPrescripcionRepository prescripcionRepo,
             ISnapshotMensualRepository snapshotRepo,
             IHierroSchedulerService hierroScheduler,
-            IAplicacionHierroRepository aplicacionHierroRepo)
+            IAplicacionHierroRepository aplicacionHierroRepo,
+            IEventoDosisPendienteRepository eventoPendienteRepo)
         {
             _repo = repo;
             _configRepo = configRepo;
@@ -54,6 +56,7 @@ namespace DataMedix.Application.Services
             _snapshotRepo = snapshotRepo;
             _hierroScheduler = hierroScheduler;
             _aplicacionHierroRepo = aplicacionHierroRepo;
+            _eventoPendienteRepo = eventoPendienteRepo;
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -223,6 +226,32 @@ namespace DataMedix.Application.Services
             // Persistir EpoDosisPendienteUI calculado en todos los headers (entidades tracked)
             await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
 
+            // ── Eventos dosis pendiente (Fase 2) ──────────────────────────
+            var conPendiente = todosCronogramas
+                .Where(c => !c.Ausente && (c.EpoDosisPendienteUI ?? 0) > 0).ToList();
+            var sinPendienteIds = todosCronogramas
+                .Where(c => c.Ausente || (c.EpoDosisPendienteUI ?? 0) <= 0)
+                .Select(c => c.Id).ToList();
+
+            foreach (var crono in conPendiente)
+            {
+                var sesionesDelCrono = todasNuevasDias
+                    .Where(d => d.CronogramaId == crono.Id)
+                    .Select(d => d.FechaSesion).OrderBy(d => d).ToList();
+                var fechaComp = CalcularFechaCompensatoria(sesionesDelCrono);
+                if (fechaComp.HasValue)
+                    await _eventoPendienteRepo.UpsertAsync(new EventoDosisPendiente
+                    {
+                        TenantId        = crono.TenantId,
+                        CronogramaId    = crono.Id,
+                        PacienteId      = crono.PacienteId,
+                        FechaProgramada = fechaComp.Value,
+                        DosisUI         = crono.EpoDosisPendienteUI!.Value
+                    });
+            }
+            if (sinPendienteIds.Count > 0)
+                await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(sinPendienteIds);
+
             // ── 6. Reemplazar dias en lote (DELETE + INSERT, 2 queries) ───
             await _repo.BatchReplaceDiasAsync(cronogramaIdsConTurno, todasNuevasDias);
 
@@ -373,6 +402,26 @@ namespace DataMedix.Application.Services
                     : null;
                 await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
 
+                // Actualizar evento de dosis pendiente (Fase 2)
+                if ((crono.EpoDosisPendienteUI ?? 0) > 0)
+                {
+                    var fechaComp = CalcularFechaCompensatoria(
+                        nuevasDias.Select(d => d.FechaSesion).ToList());
+                    if (fechaComp.HasValue)
+                        await _eventoPendienteRepo.UpsertAsync(new EventoDosisPendiente
+                        {
+                            TenantId        = crono.TenantId,
+                            CronogramaId    = crono.Id,
+                            PacienteId      = crono.PacienteId,
+                            FechaProgramada = fechaComp.Value,
+                            DosisUI         = crono.EpoDosisPendienteUI!.Value
+                        });
+                }
+                else
+                {
+                    await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
+                }
+
                 // Preservar valores editados manualmente
                 var manuales = crono.Dias
                     .Where(d => d.EpoEditadoManual || d.HierroEditadoManual)
@@ -416,6 +465,7 @@ namespace DataMedix.Application.Services
                 await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, new List<CronogramaDia>());
                 await _aplicacionHierroRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
+                await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
             }
             else if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
                      (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
@@ -429,6 +479,27 @@ namespace DataMedix.Application.Services
                         nuevasDias.Select(d => d.FechaSesion).ToList())
                     : null;
                 await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
+                // Actualizar evento de dosis pendiente (Fase 2)
+                if ((crono.EpoDosisPendienteUI ?? 0) > 0)
+                {
+                    var fechaComp = CalcularFechaCompensatoria(
+                        nuevasDias.Select(d => d.FechaSesion).ToList());
+                    if (fechaComp.HasValue)
+                        await _eventoPendienteRepo.UpsertAsync(new EventoDosisPendiente
+                        {
+                            TenantId        = crono.TenantId,
+                            CronogramaId    = crono.Id,
+                            PacienteId      = crono.PacienteId,
+                            FechaProgramada = fechaComp.Value,
+                            DosisUI         = crono.EpoDosisPendienteUI!.Value
+                        });
+                }
+                else
+                {
+                    await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
+                }
+
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
                 await RegenerarAplicacionesHierroAsync(
                     new[] { crono }, new[] { cronogramaId }, usuarioId);
@@ -748,6 +819,12 @@ namespace DataMedix.Application.Services
             }
 
             return Math.Max(0, dosisSemanale - distribuidoPrimeraSemana);
+        }
+
+        private static DateTime? CalcularFechaCompensatoria(List<DateTime> fechasSesion)
+        {
+            var semanas = AgruparPorSemana(fechasSesion);
+            return semanas.Count >= 2 ? semanas[1][0] : (DateTime?)null;
         }
 
         private static int ISOWeek(DateTime d) =>

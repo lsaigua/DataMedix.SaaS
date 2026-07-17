@@ -89,6 +89,35 @@ namespace DataMedix.Domain.Entities
         public DateTime? UpdatedAt { get; set; }
     }
 
+    /// <summary>
+    /// Evento formal de dosis compensatoria generado cuando el cronograma inicia
+    /// en semana parcial. Registra la fecha sugerida y permite trazabilidad de aplicación.
+    /// </summary>
+    public class EventoDosisPendiente
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public Guid TenantId { get; set; }
+        public Guid CronogramaId { get; set; }
+        public Guid PacienteId { get; set; }
+        /// <summary>Primera sesión de la semana 2 del cronograma (día sugerido de aplicación).</summary>
+        public DateTime FechaProgramada { get; set; }
+        public decimal DosisUI { get; set; }
+        public string Estado { get; set; } = EstadoDosisPendiente.Programada;
+        public string? Observaciones { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+        public Guid? UpdatedBy { get; set; }
+
+        public CronogramaMedicamento Cronograma { get; set; } = null!;
+    }
+
+    public static class EstadoDosisPendiente
+    {
+        public const string Programada = "PROGRAMADA";
+        public const string Aplicada   = "APLICADA";
+        public const string Suspendida = "SUSPENDIDA";
+    }
+
     public static class EstadoCronograma
     {
         public const string Borrador = "BORRADOR";

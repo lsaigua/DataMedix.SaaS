@@ -50,6 +50,7 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IAplicacionHierroRepository, AplicacionHierroRepository>();
             services.AddScoped<IHierroSchedulerService, HierroSchedulerService>();
             services.AddScoped<IPrecioEpoDosisRepository, PrecioEpoDosisRepository>();
+            services.AddScoped<IEventoDosisPendienteRepository, EventoDosisPendienteRepository>();
             services.AddScoped<IReporteService, ReporteService>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IExcelReader, ExcelReader>();
@@ -165,6 +166,26 @@ namespace DataMedix.Infrastructure
                 await db.Database.ExecuteSqlRawAsync(@"
                     ALTER TABLE cronograma_medicamento
                         ADD COLUMN IF NOT EXISTS epo_dosis_pendiente_ui DECIMAL(10,2) NULL;
+                ");
+
+                // 8. Tabla evento_dosis_pendiente — evento formal de dosis compensatoria (Fase 2)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS evento_dosis_pendiente (
+                        id                UUID          NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+                        tenant_id         UUID          NOT NULL,
+                        cronograma_id     UUID          NOT NULL
+                            REFERENCES cronograma_medicamento(id) ON DELETE CASCADE,
+                        paciente_id       UUID          NOT NULL,
+                        fecha_programada  DATE          NOT NULL,
+                        dosis_ui          DECIMAL(10,2) NOT NULL,
+                        estado            VARCHAR(20)   NOT NULL DEFAULT 'PROGRAMADA',
+                        observaciones     TEXT,
+                        created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                        updated_at        TIMESTAMPTZ,
+                        updated_by        UUID
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS ix_evento_dosis_pendiente_crono
+                        ON evento_dosis_pendiente (tenant_id, cronograma_id);
                 ");
 
                 // 6. Tabla precio_epo_dosis — precio por dosis administrada de EPO (extensible sin código)

@@ -13,6 +13,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
 @inject IPrecioEpoDosisRepository PrecioEpoDosisRepo
+@inject IEventoDosisPendienteRepository EventoRepo
 
 <PageTitle>Cronograma de Medicación — DataMedix</PageTitle>
 
@@ -468,7 +469,21 @@
                             <td class="crono-td-fixed crono-td-pendiente">
                                 @if (crono.EpoDosisPendienteUI > 0)
                                 {
-                                    <span class="crono-badge-pendiente">@crono.EpoDosisPendienteUI!.Value.ToString("N0")</span>
+                                    _eventosPendientes.TryGetValue(crono.Id, out var evPend);
+                                    bool aplicada = evPend?.Estado == EstadoDosisPendiente.Aplicada;
+                                    <span class="crono-badge-pendiente @(aplicada ? "crono-badge-pendiente-aplicada" : "")">
+                                        @crono.EpoDosisPendienteUI!.Value.ToString("N0")
+                                    </span>
+                                    @if (evPend != null)
+                                    {
+                                        <div class="crono-pend-fecha">@evPend.FechaProgramada.ToString("dd/MM")</div>
+                                        <button class="crono-btn-marcar-aplicada @(aplicada ? "crono-btn-ma-on" : "")"
+                                                title="@(aplicada ? "Aplicada — click para desmarcar" : "Marcar como aplicada")"
+                                                disabled="@(_cargandoEvento.Contains(crono.Id))"
+                                                @onclick="() => ToggleAplicadaAsync(crono.Id, evPend.Id, aplicada)">
+                                            @(aplicada ? "✓ Aplicada" : "Aplicar")
+                                        </button>
+                                    }
                                 }
                                 else { <span class="crono-dash">—</span> }
                             </td>
@@ -767,6 +782,10 @@
     private decimal? _editEpo;
     private decimal? _editHierro;
 
+    // Eventos de dosis pendiente (Fase 2), indexados por CronogramaId
+    private Dictionary<Guid, EventoDosisPendiente> _eventosPendientes = new();
+    private HashSet<Guid> _cargandoEvento = new();
+
     // Hb del último snapshot mensual, indexado por PacienteId
     private Dictionary<Guid, decimal?> _mapaHb = new();
 
@@ -819,6 +838,8 @@
         _fechasColumna = ObtenerFechasColumna();
         if (_cronogramas.Count > 0)
             _needScrollSync = true;
+        var eventos = await EventoRepo.GetByPeriodoAsync(_tenantId, _anio, _mes);
+        _eventosPendientes = eventos.ToDictionary(e => e.CronogramaId);
         await CargarHbAsync();
     }
 
@@ -1155,6 +1176,37 @@
         finally
         {
             _cargandoAusente.Remove(cronogramaId);
+        }
+    }
+
+    private async Task ToggleAplicadaAsync(Guid cronogramaId, Guid eventoId, bool estabaAplicada)
+    {
+        _cargandoEvento.Add(cronogramaId);
+        StateHasChanged();
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? usuarioId = null;
+            if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
+                usuarioId = uid;
+
+            var nuevoEstado = estabaAplicada
+                ? EstadoDosisPendiente.Programada
+                : EstadoDosisPendiente.Aplicada;
+
+            await EventoRepo.ActualizarEstadoAsync(eventoId, nuevoEstado, usuarioId);
+
+            // Actualizar el mapa local sin recargar todo
+            if (_eventosPendientes.TryGetValue(cronogramaId, out var ev))
+                ev.Estado = nuevoEstado;
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error al actualizar estado: {ex.Message}");
+        }
+        finally
+        {
+            _cargandoEvento.Remove(cronogramaId);
         }
     }
 
@@ -1537,7 +1589,7 @@
     .crono-th-dosis,    .crono-td-dosis    { min-width: 70px; }
     .crono-th-epo,      .crono-td-epo      { left: 430px; }
     .crono-th-fe,       .crono-td-fe       { left: 500px; }
-    .crono-th-pendiente, .crono-td-pendiente { min-width: 72px; left: 570px; text-align: center; }
+    .crono-th-pendiente, .crono-td-pendiente { min-width: 86px; left: 570px; text-align: center; }
 
     /* Badge dosis inicial pendiente — naranja */
     .crono-badge-pendiente {
@@ -1551,6 +1603,40 @@
         letter-spacing: 0.02em;
         white-space: nowrap;
     }
+
+    /* Badge pendiente cuando ya fue aplicada — verde */
+    .crono-badge-pendiente-aplicada { background: #16a34a; }
+
+    /* Fecha sugerida de compensación */
+    .crono-pend-fecha {
+        font-size: 0.65rem;
+        color: #64748b;
+        margin-top: 2px;
+        line-height: 1;
+    }
+
+    /* Botón "Aplicar" / "✓ Aplicada" */
+    .crono-btn-marcar-aplicada {
+        display: block;
+        margin-top: 3px;
+        padding: 1px 6px;
+        font-size: 0.62rem;
+        font-weight: 600;
+        border: 1px solid #f97316;
+        border-radius: 8px;
+        background: transparent;
+        color: #f97316;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, color 0.15s;
+    }
+    .crono-btn-marcar-aplicada:hover { background: #f97316; color: #fff; }
+    .crono-btn-ma-on {
+        background: #16a34a;
+        border-color: #16a34a;
+        color: #fff;
+    }
+    .crono-btn-ma-on:hover { background: #15803d; border-color: #15803d; }
 
     /* Celdas de datos — guías de tabla más visibles */
     .crono-table tbody tr { border-bottom: 1px solid #e2e8f0; }
