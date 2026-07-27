@@ -167,12 +167,40 @@
         <!-- Resumen costos por dosis administrada -->
         @if (desglose.Count > 0)
         {
-            bool hayCostos = _preciosEpo.Values.Any(v => v > 0);
-            <div class="crono-desglose-epo">
-                <div class="crono-desglose-epo-header">
-                    <span>Resumen EPO</span>
+            bool hayCostos     = _preciosEpo.Values.Any(v => v > 0);
+            var  admAplic      = desglose.Sum(r => r.Aplicaciones);
+            var  admUI         = desglose.Sum(r => r.TotalUI);
+            var  admCosto      = desglose.Sum(r => r.Costo);
+            <section class="crono-desglose-epo @(_showResumenEpo ? "" : "crono-desglose-colapsado")">
+                <button type="button"
+                        class="crono-desglose-epo-header"
+                        id="crono-desglose-adm-btn"
+                        aria-expanded="@(_showResumenEpo ? "true" : "false")"
+                        aria-controls="crono-desglose-adm-body"
+                        title="@(_showResumenEpo ? "Ocultar el detalle por dosis" : "Mostrar el detalle por dosis")"
+                        @onclick="ToggleResumenEpoAsync">
+                    <span class="crono-desglose-chevron" aria-hidden="true">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 8l4 4 4-4" />
+                        </svg>
+                    </span>
+                    <span class="crono-desglose-epo-titulo">Resumen EPO</span>
                     <span class="crono-desglose-epo-sub">por dosis administrada</span>
-                </div>
+
+                    <!-- Cifras clave siempre visibles: colapsar no debe esconder el dato -->
+                    <span class="crono-desglose-peek">
+                        <span class="crono-peek-chip">@admAplic.ToString("N0") aplic.</span>
+                        <span class="crono-peek-chip">@admUI.ToString("N0") UI</span>
+                        @if (hayCostos)
+                        {
+                            <span class="crono-peek-chip crono-peek-costo">$ @admCosto.ToString("N2")</span>
+                        }
+                    </span>
+                </button>
+                <div class="crono-desglose-epo-body" id="crono-desglose-adm-body"
+                     role="region" aria-labelledby="crono-desglose-adm-btn">
+                <div class="crono-desglose-epo-body-inner">
                 <table class="crono-desglose-epo-table">
                     <thead>
                         <tr>
@@ -200,28 +228,57 @@
                     <tfoot>
                         <tr>
                             <td class="crono-desglose-epo-total-label">TOTAL</td>
-                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglose.Sum(r => r.Aplicaciones)</td>
-                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglose.Sum(r => r.TotalUI).ToString("N0")</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@admAplic</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@admUI.ToString("N0")</td>
                             @if (hayCostos)
                             {
                                 <td></td>
-                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @desglose.Sum(r => r.Costo).ToString("N2")</td>
+                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @admCosto.ToString("N2")</td>
                             }
                         </tr>
                     </tfoot>
                 </table>
-            </div>
+                </div>
+                </div>
+            </section>
         }
 
         <!-- Resumen dosis pendientes NO administradas -->
         @if (desglPend.Count > 0)
         {
             bool hayCostosPend = _preciosEpo.Values.Any(v => v > 0);
-            <div class="crono-desglose-epo crono-desglose-pend">
-                <div class="crono-desglose-epo-header">
-                    <span>EPO Pendiente</span>
+            var  pendPac       = desglPend.Sum(r => r.Aplicaciones);
+            var  pendUI        = desglPend.Sum(r => r.TotalUI);
+            var  pendCosto     = desglPend.Sum(r => r.Costo);
+            <section class="crono-desglose-epo crono-desglose-pend @(_showEpoPendiente ? "" : "crono-desglose-colapsado")">
+                <button type="button"
+                        class="crono-desglose-epo-header"
+                        id="crono-desglose-pend-btn"
+                        aria-expanded="@(_showEpoPendiente ? "true" : "false")"
+                        aria-controls="crono-desglose-pend-body"
+                        title="@(_showEpoPendiente ? "Ocultar el detalle de dosis pendientes" : "Mostrar el detalle de dosis pendientes")"
+                        @onclick="ToggleEpoPendienteAsync">
+                    <span class="crono-desglose-chevron" aria-hidden="true">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 8l4 4 4-4" />
+                        </svg>
+                    </span>
+                    <span class="crono-desglose-epo-titulo">EPO Pendiente</span>
                     <span class="crono-desglose-epo-sub">dosis no administrada — compensación programada</span>
-                </div>
+
+                    <span class="crono-desglose-peek">
+                        <span class="crono-peek-chip">@pendPac.ToString("N0") pac.</span>
+                        <span class="crono-peek-chip">@pendUI.ToString("N0") UI</span>
+                        @if (hayCostosPend)
+                        {
+                            <span class="crono-peek-chip crono-peek-costo">$ @pendCosto.ToString("N2")</span>
+                        }
+                    </span>
+                </button>
+                <div class="crono-desglose-epo-body" id="crono-desglose-pend-body"
+                     role="region" aria-labelledby="crono-desglose-pend-btn">
+                <div class="crono-desglose-epo-body-inner">
                 <table class="crono-desglose-epo-table">
                     <thead>
                         <tr>
@@ -249,17 +306,19 @@
                     <tfoot>
                         <tr>
                             <td class="crono-desglose-epo-total-label">TOTAL</td>
-                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglPend.Sum(r => r.Aplicaciones)</td>
-                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglPend.Sum(r => r.TotalUI).ToString("N0")</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendPac</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendUI.ToString("N0")</td>
                             @if (hayCostosPend)
                             {
                                 <td></td>
-                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val crono-pend-costo-val">$ @desglPend.Sum(r => r.Costo).ToString("N2")</td>
+                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val crono-pend-costo-val">$ @pendCosto.ToString("N2")</td>
                             }
                         </tr>
                     </tfoot>
                 </table>
-            </div>
+                </div>
+                </div>
+            </section>
         }
     }
 
@@ -863,6 +922,34 @@
     // Cronogramas con toggle ausente en progreso
     private HashSet<Guid> _cargandoAusente = new();
 
+    // ── Paneles de resumen colapsables ────────────────────────────────────────
+    // Se recuerda la preferencia del usuario en localStorage para que no tenga
+    // que volver a colapsar los paneles en cada visita.
+    private const string PrefResumenEpo   = "dm.crono.resumenEpo";
+    private const string PrefEpoPendiente = "dm.crono.epoPendiente";
+
+    private bool _showResumenEpo   = true;
+    private bool _showEpoPendiente = true;
+    private bool _prefsCargadas;
+
+    private async Task ToggleResumenEpoAsync()
+    {
+        _showResumenEpo = !_showResumenEpo;
+        await GuardarPrefAsync(PrefResumenEpo, _showResumenEpo);
+    }
+
+    private async Task ToggleEpoPendienteAsync()
+    {
+        _showEpoPendiente = !_showEpoPendiente;
+        await GuardarPrefAsync(PrefEpoPendiente, _showEpoPendiente);
+    }
+
+    private async Task GuardarPrefAsync(string clave, bool valor)
+    {
+        try { await JS.InvokeVoidAsync("dmPrefs.setBool", clave, valor); }
+        catch (JSException) { /* localStorage bloqueado: el toggle sigue funcionando en sesión */ }
+    }
+
     private static readonly System.Globalization.CultureInfo _es =
         new System.Globalization.CultureInfo("es-ES");
 
@@ -878,6 +965,18 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender && !_prefsCargadas)
+        {
+            _prefsCargadas = true;
+            try
+            {
+                _showResumenEpo   = await JS.InvokeAsync<bool>("dmPrefs.getBool", PrefResumenEpo,   true);
+                _showEpoPendiente = await JS.InvokeAsync<bool>("dmPrefs.getBool", PrefEpoPendiente, true);
+                StateHasChanged();
+            }
+            catch (JSException) { /* sin localStorage: se mantienen los paneles expandidos */ }
+        }
+
         if (_needScrollSync)
         {
             _needScrollSync = false;
@@ -1507,10 +1606,12 @@
         border-radius: 12px;
         overflow: hidden;
     }
+    /* Cabecera = control de disclosure: toda la barra es clickable (área grande,
+       ley de Fitts) y funciona con teclado por ser un button nativo. */
     .crono-desglose-epo-header {
         background: #0f172a;
         color: #94a3b8;
-        padding: 0.35rem 1rem;
+        padding: 0.45rem 1rem;
         font-size: 0.65rem;
         font-weight: 700;
         text-transform: uppercase;
@@ -1518,8 +1619,72 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        width: 100%;
+        border: 0;
+        margin: 0;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.16s ease;
     }
-    .crono-desglose-epo-sub { font-size: 0.6rem; color: #475569; text-transform: none; letter-spacing: 0; }
+    .crono-desglose-epo-header:hover  { background: #1e293b; }
+    .crono-desglose-epo-header:active { background: #172033; }
+    .crono-desglose-epo-header:focus-visible {
+        outline: 2px solid #38bdf8;
+        outline-offset: -2px;
+    }
+    .crono-desglose-epo-titulo { color: #e2e8f0; }
+    .crono-desglose-epo-sub { font-size: 0.6rem; color: #94a3b8; text-transform: none; letter-spacing: 0; }
+
+    /* Chevron: única señal de estado que rota 180° al expandir */
+    .crono-desglose-chevron {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.05rem;
+        height: 1.05rem;
+        flex: none;
+        color: #94a3b8;
+        transform: rotate(0deg);
+        transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .crono-desglose-chevron svg { width: 100%; height: 100%; }
+    .crono-desglose-colapsado .crono-desglose-chevron { transform: rotate(-90deg); }
+
+    /* Cifras clave en la cabecera: colapsar oculta el detalle, nunca el total */
+    .crono-desglose-peek {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .crono-peek-chip {
+        background: rgba(148, 163, 184, 0.16);
+        color: #cbd5e1;
+        border-radius: 999px;
+        padding: 0.12rem 0.5rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+    }
+    .crono-peek-costo { background: rgba(56, 189, 248, 0.18); color: #7dd3fc; }
+
+    /* Animación de altura sin JS: grid 1fr → 0fr anima a contenido variable */
+    .crono-desglose-epo-body {
+        display: grid;
+        grid-template-rows: 1fr;
+        transition: grid-template-rows 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .crono-desglose-epo-body-inner { overflow: hidden; min-height: 0; }
+    .crono-desglose-colapsado .crono-desglose-epo-body { grid-template-rows: 0fr; }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .crono-desglose-epo-body,
+        .crono-desglose-chevron { transition: none; }
+    }
     .crono-desglose-epo-table { width: 100%; border-collapse: collapse; }
     .crono-desglose-epo-table thead th {
         background: #f1f5f9;
@@ -1563,7 +1728,15 @@
     /* Panel EPO pendiente — naranja oscuro para diferenciarlo del administrado */
     .crono-desglose-pend { border-color: #fed7aa; }
     .crono-desglose-pend .crono-desglose-epo-header { background: #7c2d12; color: #fed7aa; }
-    .crono-desglose-pend .crono-desglose-epo-sub { color: #9a3412; }
+    .crono-desglose-pend .crono-desglose-epo-header:hover  { background: #9a3412; }
+    .crono-desglose-pend .crono-desglose-epo-header:active { background: #8a3110; }
+    .crono-desglose-pend .crono-desglose-epo-header:focus-visible { outline-color: #fdba74; }
+    .crono-desglose-pend .crono-desglose-epo-titulo { color: #ffedd5; }
+    /* Antes #9a3412 sobre #7c2d12: contraste insuficiente para leer el subtítulo */
+    .crono-desglose-pend .crono-desglose-epo-sub { color: #fdba74; }
+    .crono-desglose-pend .crono-desglose-chevron { color: #fdba74; }
+    .crono-desglose-pend .crono-peek-chip  { background: rgba(253, 186, 116, 0.18); color: #fed7aa; }
+    .crono-desglose-pend .crono-peek-costo { background: rgba(249, 115, 22, 0.24); color: #ffedd5; }
     .crono-desglose-pend .crono-desglose-epo-table thead th { background: #fff7ed; }
     .crono-desglose-pend .crono-desglose-epo-table tfoot td { background: #7c2d12; border-top-color: #9a3412; }
     .crono-desglose-pend .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #fdba74; }
