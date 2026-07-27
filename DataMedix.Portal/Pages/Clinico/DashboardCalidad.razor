@@ -148,8 +148,8 @@
                     @foreach (var ind in _indicadores)
                     {
                         <tr class="dq-row @(ind.NivelRiesgo >= 4 ? "dq-row-critica" : ind.NivelRiesgo >= 3 ? "dq-row-alta" : "")">
-                            <td class="dq-td dq-td-pac" title="@ind.NombreCompleto">
-                                @TruncNombre(ind.NombreCompleto, 28)
+                            <td class="dq-td dq-td-pac" title="@PacienteDisplay.Mask(ind.NombreCompleto)">
+                                @PacienteDisplay.Mask(ind.NombreCompleto, 28)
                             </td>
                             <td class="dq-td dq-td-ced">@ind.Identificacion</td>
                             <td class="dq-td dq-td-plan">

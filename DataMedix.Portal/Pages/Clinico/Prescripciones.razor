@@ -26,7 +26,7 @@
         {
             <p class="dm-page-subtitle">
                 <a href="/pacientes" class="dm-link-back">← Pacientes</a>
-                &nbsp;/&nbsp;@PacienteSeleccionado.NombreCompleto
+                &nbsp;/&nbsp;@PacienteDisplay.Mask(PacienteSeleccionado.NombreCompleto)
                 <span class="dm-ident-badge">@PacienteSeleccionado.Identificacion</span>
             </p>
         }
@@ -163,7 +163,7 @@ else
                     <div class="dm-paciente-cell">
                         <div class="dm-avatar">@(presc.Paciente?.PrimerNombre?.FirstOrDefault() ?? '?')</div>
                         <div>
-                            <div class="dm-nombre">@(presc.Paciente?.NombreCompleto ?? "Paciente")</div>
+                            <div class="dm-nombre">@PacienteDisplay.Mask(presc.Paciente?.NombreCompleto ?? "Paciente")</div>
                             <div class="dm-ident-small">@(presc.Paciente?.Identificacion ?? "—")</div>
                         </div>
                     </div>
@@ -359,7 +359,7 @@ else
         <div class="dm-modal" @onclick:stopPropagation>
             <div class="dm-modal-header">
                 <h3>Aprobar Prescripción</h3>
-                <span class="dm-modal-subtitle">@(_aprobandoPresc.Paciente?.NombreCompleto) — @_aprobandoPresc.PeriodDate.ToString("MMMM yyyy")</span>
+                <span class="dm-modal-subtitle">@PacienteDisplay.Mask(_aprobandoPresc.Paciente?.NombreCompleto) — @_aprobandoPresc.PeriodDate.ToString("MMMM yyyy")</span>
             </div>
 
             <div class="dm-modal-body">

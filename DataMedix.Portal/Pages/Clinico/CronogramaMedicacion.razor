@@ -350,8 +350,8 @@
                                 ? (p.TotalHierro * _precioHierro / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
                                 : "0";
                             <div class="crono-barra-row">
-                                <div class="crono-barra-nombre" title="@p.Nombre · @p.Cedula">
-                                    @TruncateNombre(p.Nombre, 22)
+                                <div class="crono-barra-nombre" title="@PacienteDisplay.Mask(p.Nombre) · @p.Cedula">
+                                    @PacienteDisplay.Mask(p.Nombre, 22)
                                 </div>
                                 <div class="crono-barra-wrap">
                                     @if (p.EpoCosto > 0)
@@ -444,7 +444,7 @@
                         }
                         <tr class="crono-row @(crono.Ausente ? "crono-row-ausente" : "")">
                             <td class="crono-td-fixed crono-td-paciente">
-                                @crono.Paciente.NombreCompleto
+                                @PacienteDisplay.Mask(crono.Paciente.NombreCompleto)
                             </td>
                             <td class="crono-td-fixed crono-td-cedula">
                                 @crono.Paciente.Identificacion

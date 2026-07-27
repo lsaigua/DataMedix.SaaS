@@ -28,7 +28,7 @@
         @if (_resultado.Exitoso)
         {
             <strong>✓ Resultados guardados</strong>
-            <span>— @_resultado.NombrePaciente · @NombreMes(_resultado.PeriodoMes) @_resultado.PeriodoAnio</span>
+            <span>— @PacienteDisplay.Mask(_resultado.NombrePaciente) · @NombreMes(_resultado.PeriodoMes) @_resultado.PeriodoAnio</span>
             @if (_resultado.PrescripcionBloqueada)
             {
                 <span class="im-toast-warn"> · La prescripción ya fue aprobada; no se regeneró.</span>
@@ -67,7 +67,7 @@
                         @foreach (var p in _resultadosBusqueda)
                         {
                             <button class="im-search-item" @onclick="() => SeleccionarPaciente(p)">
-                                <div class="im-si-nombre">@p.NombreCompleto</div>
+                                <div class="im-si-nombre">@PacienteDisplay.Mask(p.NombreCompleto)</div>
                                 <div class="im-si-ident">@p.Identificacion</div>
                             </button>
                         }
@@ -83,7 +83,7 @@
                 <div class="im-paciente-sel">
                     <div class="im-ps-avatar">@_pacienteSeleccionado.PrimerNombre[0]</div>
                     <div class="im-ps-info">
-                        <div class="im-ps-nombre">@_pacienteSeleccionado.NombreCompleto</div>
+                        <div class="im-ps-nombre">@PacienteDisplay.Mask(_pacienteSeleccionado.NombreCompleto)</div>
                         <div class="im-ps-ident">@_pacienteSeleccionado.Identificacion</div>
                         @if (!string.IsNullOrEmpty(_pacienteSeleccionado.PlanSalud))
                         {

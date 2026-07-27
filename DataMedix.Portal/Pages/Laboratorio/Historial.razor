@@ -213,7 +213,7 @@
                                 <td class="hr-td-fixed hr-td-cedula">
                                     <code class="hr-ident">@fila.Identificacion</code>
                                 </td>
-                                <td class="hr-td-fixed hr-td-nombre">@fila.Nombre</td>
+                                <td class="hr-td-fixed hr-td-nombre">@PacienteDisplay.Mask(fila.Nombre)</td>
                                 @foreach (var col in _columnasVisibles)
                                 {
                                     @if (fila.Celdas.TryGetValue(col.Key, out var celda))
@@ -360,7 +360,7 @@
                         {
                             <tr class="@(r.EsPatologico ? "hr-row-pato" : "")">
                                 <td><code class="hr-ident">@r.Paciente.Identificacion</code></td>
-                                <td><span class="hr-pac-nombre">@r.Paciente.NombreCompleto</span></td>
+                                <td><span class="hr-pac-nombre">@PacienteDisplay.Mask(r.Paciente.NombreCompleto)</span></td>
                                 <td>
                                     <div class="hr-param-cell">
                                         <span class="hr-param-nombre">@(r.ParametroClinico?.Nombre ?? r.ParametroRaw ?? "—")</span>
