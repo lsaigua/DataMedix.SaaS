@@ -26,3 +26,18 @@ window.initCronoScrollSync = function () {
     mirror.onscroll = function () { wrap.scrollLeft = mirror.scrollLeft; };
     wrap.onscroll   = function () { mirror.scrollLeft = wrap.scrollLeft; };
 };
+
+// Preferencias de UI del usuario (paneles colapsados, etc.).
+// localStorage puede lanzar en modo privado o con cookies bloqueadas: se degrada
+// silenciosamente al valor por defecto en lugar de romper la página.
+window.dmPrefs = {
+    getBool: function (key, fallback) {
+        try {
+            const v = localStorage.getItem(key);
+            return v === null ? fallback : v === 'true';
+        } catch (e) { return fallback; }
+    },
+    setBool: function (key, value) {
+        try { localStorage.setItem(key, value ? 'true' : 'false'); } catch (e) { }
+    }
+};
