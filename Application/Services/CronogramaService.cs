@@ -28,8 +28,8 @@ namespace DataMedix.Application.Services
     ///   12000 → 3 días (4000 c/u)
     ///   18000 → 3 días (6000 c/u)
     ///
-    /// Distribución Hierro: 200 mg por sesión, primera sesión de cada semana,
-    /// hasta agotar el total mensual (HierroMgMes).
+    /// Distribución Hierro: HierroMgMes ÷ 3 sesiones/semana (redondeado a entero),
+    /// aplicado a CADA sesión del turno. Ej: 600 mg → 200 mg por sesión en MJS.
     /// </summary>
     public class CronogramaService
     {
@@ -37,17 +37,26 @@ namespace DataMedix.Application.Services
         private readonly IConfiguracionMedicamentoRepository _configRepo;
         private readonly IPrescripcionRepository _prescripcionRepo;
         private readonly ISnapshotMensualRepository _snapshotRepo;
+        private readonly IHierroSchedulerService _hierroScheduler;
+        private readonly IAplicacionHierroRepository _aplicacionHierroRepo;
+        private readonly IEventoDosisPendienteRepository _eventoPendienteRepo;
 
         public CronogramaService(
             ICronogramaRepository repo,
             IConfiguracionMedicamentoRepository configRepo,
             IPrescripcionRepository prescripcionRepo,
-            ISnapshotMensualRepository snapshotRepo)
+            ISnapshotMensualRepository snapshotRepo,
+            IHierroSchedulerService hierroScheduler,
+            IAplicacionHierroRepository aplicacionHierroRepo,
+            IEventoDosisPendienteRepository eventoPendienteRepo)
         {
             _repo = repo;
             _configRepo = configRepo;
             _prescripcionRepo = prescripcionRepo;
             _snapshotRepo = snapshotRepo;
+            _hierroScheduler = hierroScheduler;
+            _aplicacionHierroRepo = aplicacionHierroRepo;
+            _eventoPendienteRepo = eventoPendienteRepo;
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -69,7 +78,7 @@ namespace DataMedix.Application.Services
         //   7. 1 lectura final: recargar cronogramas con Dias para mostrar en pantalla
         // ──────────────────────────────────────────────────────────────────────
         public async Task<List<CronogramaMedicamento>> GenerarOActualizarMesAsync(
-            Guid tenantId, int anio, int mes, Guid? usuarioId = null)
+            Guid tenantId, int anio, int mes, Guid? usuarioId = null, DateTime? fechaInicioFlex = null)
         {
             var periodoActual  = new DateTime(anio, mes, 1);
             var periodoAnterior = periodoActual.AddMonths(-1);
@@ -77,11 +86,15 @@ namespace DataMedix.Application.Services
             // ── 1. Leer datos fuente ───────────────────────────────────────
             var prescripciones    = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoActual);
             var prescripcionesAnt = await _prescripcionRepo.GetByPeriodoBatchAsync(tenantId, periodoAnterior);
+            var finalesAct        = await _prescripcionRepo.GetFinalByPeriodoBatchAsync(tenantId, periodoActual);
+            var finalesAnt        = await _prescripcionRepo.GetFinalByPeriodoBatchAsync(tenantId, periodoAnterior);
             var snapshots         = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoActual,  tamano: 1000);
             var snapshotsAnt      = await _snapshotRepo.GetByPeriodoAsync(tenantId, periodoAnterior, tamano: 1000);
 
-            var mapaPresc   = prescripciones.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
-            var mapaPresAnt = prescripcionesAnt.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaPresc    = prescripciones.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaPresAnt  = prescripcionesAnt.GroupBy(p => p.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaFinalAct = finalesAct.GroupBy(f => f.PacienteId).ToDictionary(g => g.Key, g => g.First());
+            var mapaFinalAnt = finalesAnt.GroupBy(f => f.PacienteId).ToDictionary(g => g.Key, g => g.First());
             var mapaSnap    = snapshots.GroupBy(s => s.PacienteId).ToDictionary(g => g.Key, g => g.First());
             var mapaSnapAnt = snapshotsAnt.GroupBy(s => s.PacienteId).ToDictionary(g => g.Key, g => g.First());
 
@@ -104,36 +117,47 @@ namespace DataMedix.Application.Services
             {
                 mapaPresc.TryGetValue(pid, out var presc);
                 mapaPresAnt.TryGetValue(pid, out var prescAnt);
+                mapaFinalAct.TryGetValue(pid, out var finalAct);
+                mapaFinalAnt.TryGetValue(pid, out var finalAnt);
                 mapaSnap.TryGetValue(pid, out var snap);
                 mapaSnapAnt.TryGetValue(pid, out var snapAnt);
 
                 var prescVigente = presc ?? prescAnt;
+                var finalVigente = finalAct ?? finalAnt;
                 var planSalud    = snap?.PlanSalud ?? snapAnt?.PlanSalud;
+
+                // Dosis efectiva = calculada por reglas + ajuste médico (HojaEPO)
+                var (epoEfectivo, hierroEfectivo) = ComputarEfectivos(prescVigente, finalVigente);
+
+                var modoNuevo = fechaInicioFlex.HasValue ? ModoCronograma.Flexible : ModoCronograma.CalendarioMensual;
 
                 if (mapaExistentes.TryGetValue(pid, out var existente))
                 {
-                    // Actualizar campos en el objeto tracked; EF detecta cambios automáticamente
-                    if (!string.IsNullOrWhiteSpace(planSalud))   existente.PlanSalud    = planSalud;
-                    if (prescVigente?.EpoUiSemana.HasValue == true) existente.EpoUiSemana = prescVigente.EpoUiSemana;
-                    if (prescVigente?.HierroMgMes.HasValue == true) existente.HierroMgMes = prescVigente.HierroMgMes;
-                    existente.UpdatedAt = ahora;
-                    existente.UpdatedBy = usuarioId;
+                    if (!string.IsNullOrWhiteSpace(planSalud))  existente.PlanSalud      = planSalud;
+                    if (epoEfectivo.HasValue)                   existente.EpoUiSemana    = epoEfectivo;
+                    if (hierroEfectivo.HasValue)                existente.HierroMgMes    = hierroEfectivo;
+                    existente.Modo             = modoNuevo;
+                    existente.FechaInicioFlex  = fechaInicioFlex.HasValue ? fechaInicioFlex.Value.Date : null;
+                    existente.UpdatedAt        = ahora;
+                    existente.UpdatedBy        = usuarioId;
                     todosCronogramas.Add(existente);
                 }
                 else
                 {
                     var nuevo = new CronogramaMedicamento
                     {
-                        TenantId    = tenantId,
-                        PacienteId  = pid,
-                        PeriodoAnio = anio,
-                        PeriodoMes  = mes,
-                        PlanSalud   = planSalud,
-                        EpoUiSemana = prescVigente?.EpoUiSemana,
-                        HierroMgMes = prescVigente?.HierroMgMes,
-                        CreatedBy   = usuarioId,
-                        UpdatedAt   = ahora,
-                        UpdatedBy   = usuarioId
+                        TenantId         = tenantId,
+                        PacienteId       = pid,
+                        PeriodoAnio      = anio,
+                        PeriodoMes       = mes,
+                        PlanSalud        = planSalud,
+                        EpoUiSemana      = epoEfectivo,
+                        HierroMgMes      = hierroEfectivo,
+                        Modo             = modoNuevo,
+                        FechaInicioFlex  = fechaInicioFlex.HasValue ? fechaInicioFlex.Value.Date : null,
+                        CreatedBy        = usuarioId,
+                        UpdatedAt        = ahora,
+                        UpdatedBy        = usuarioId
                     };
                     paraInsertar.Add(nuevo);
                     todosCronogramas.Add(nuevo);
@@ -149,12 +173,28 @@ namespace DataMedix.Application.Services
 
             foreach (var crono in todosCronogramas)
             {
+                // Paciente ausente: borrar sus días existentes, no generar nuevos
+                if (crono.Ausente)
+                {
+                    if (crono.Dias.Any())
+                        cronogramaIdsConTurno.Add(crono.Id);
+                    continue;
+                }
+
                 if (string.IsNullOrWhiteSpace(crono.PlanSalud) ||
                     (!(crono.EpoUiSemana > 0) && !(crono.HierroMgMes > 0)))
                     continue;
 
                 cronogramaIdsConTurno.Add(crono.Id);
                 var nuevasDias = GenerarDias(crono);
+
+                // Calcular dosis inicial pendiente (primera semana parcial del cronograma)
+                var turnoGeneracion = ParsearTurno(crono.PlanSalud);
+                crono.EpoDosisPendienteUI = turnoGeneracion.HasValue
+                    ? CalcularDosisInicialPendiente(
+                        crono.EpoUiSemana, turnoGeneracion.Value,
+                        nuevasDias.Select(d => d.FechaSesion).ToList())
+                    : null;
 
                 // Preservar valores editados manualmente (crono.Dias viene del GetByPeriodoAsync anterior)
                 if (crono.Dias.Any())
@@ -183,8 +223,40 @@ namespace DataMedix.Application.Services
                 todasNuevasDias.AddRange(nuevasDias);
             }
 
+            // Persistir EpoDosisPendienteUI calculado en todos los headers (entidades tracked)
+            await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
+            // ── Eventos dosis pendiente (Fase 2) ──────────────────────────
+            var conPendiente = todosCronogramas
+                .Where(c => !c.Ausente && (c.EpoDosisPendienteUI ?? 0) > 0).ToList();
+            var sinPendienteIds = todosCronogramas
+                .Where(c => c.Ausente || (c.EpoDosisPendienteUI ?? 0) <= 0)
+                .Select(c => c.Id).ToList();
+
+            foreach (var crono in conPendiente)
+            {
+                var sesionesDelCrono = todasNuevasDias
+                    .Where(d => d.CronogramaId == crono.Id)
+                    .Select(d => d.FechaSesion).OrderBy(d => d).ToList();
+                var fechaComp = CalcularFechaCompensatoria(sesionesDelCrono);
+                if (fechaComp.HasValue)
+                    await _eventoPendienteRepo.UpsertAsync(new EventoDosisPendiente
+                    {
+                        TenantId        = crono.TenantId,
+                        CronogramaId    = crono.Id,
+                        PacienteId      = crono.PacienteId,
+                        FechaProgramada = fechaComp.Value,
+                        DosisUI         = crono.EpoDosisPendienteUI!.Value
+                    });
+            }
+            if (sinPendienteIds.Count > 0)
+                await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(sinPendienteIds);
+
             // ── 6. Reemplazar dias en lote (DELETE + INSERT, 2 queries) ───
             await _repo.BatchReplaceDiasAsync(cronogramaIdsConTurno, todasNuevasDias);
+
+            // ── 6b. Regenerar aplicaciones de Hierro IV (DELETE + INSERT) ─
+            await RegenerarAplicacionesHierroAsync(todosCronogramas, cronogramaIdsConTurno, usuarioId);
 
             // ── 7. Recargar con Dias y Paciente para la UI (1 query) ──────
             return await _repo.GetByPeriodoAsync(tenantId, anio, mes);
@@ -241,12 +313,17 @@ namespace DataMedix.Application.Services
             var snapshot = await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo)
                 ?? await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo.AddMonths(-1));
 
+            var final = await _prescripcionRepo.GetFinalByPacienteYPeriodoAsync(tenantId, pacienteId, periodo)
+                ?? await _prescripcionRepo.GetFinalByPacienteYPeriodoAsync(tenantId, pacienteId, periodo.AddMonths(-1));
+
+            var (epoEfectivo, hierroEfectivo) = ComputarEfectivos(prescripcion, final);
+
             var datos = new DatosPacienteParaCronograma(
                 PacienteId: pacienteId,
                 NombreCompleto: snapshot?.Paciente?.NombreCompleto ?? "",
                 PlanSalud: snapshot?.PlanSalud,
-                EpoUiSemana: prescripcion?.EpoUiSemana,
-                HierroMgMes: prescripcion?.HierroMgMes);
+                EpoUiSemana: epoEfectivo,
+                HierroMgMes: hierroEfectivo);
 
             return await GenerarPorPacienteConDatosAsync(tenantId, datos, anio, mes, usuarioId);
         }
@@ -310,10 +387,40 @@ namespace DataMedix.Application.Services
             // Persiste la actualización del PlanSalud (entidad tracked, 1 SaveChanges)
             await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
 
-            if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
+            if (!crono.Ausente &&
+                !string.IsNullOrWhiteSpace(crono.PlanSalud) &&
                 (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
             {
                 var nuevasDias = GenerarDias(crono);
+
+                // Actualizar dosis pendiente con el nuevo turno
+                var turnoActualizado = ParsearTurno(crono.PlanSalud);
+                crono.EpoDosisPendienteUI = turnoActualizado.HasValue
+                    ? CalcularDosisInicialPendiente(
+                        crono.EpoUiSemana, turnoActualizado.Value,
+                        nuevasDias.Select(d => d.FechaSesion).ToList())
+                    : null;
+                await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
+                // Actualizar evento de dosis pendiente (Fase 2)
+                if ((crono.EpoDosisPendienteUI ?? 0) > 0)
+                {
+                    var fechaComp = CalcularFechaCompensatoria(
+                        nuevasDias.Select(d => d.FechaSesion).ToList());
+                    if (fechaComp.HasValue)
+                        await _eventoPendienteRepo.UpsertAsync(new EventoDosisPendiente
+                        {
+                            TenantId        = crono.TenantId,
+                            CronogramaId    = crono.Id,
+                            PacienteId      = crono.PacienteId,
+                            FechaProgramada = fechaComp.Value,
+                            DosisUI         = crono.EpoDosisPendienteUI!.Value
+                        });
+                }
+                else
+                {
+                    await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
+                }
 
                 // Preservar valores editados manualmente
                 var manuales = crono.Dias
@@ -329,9 +436,91 @@ namespace DataMedix.Application.Services
                 }
 
                 await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
+                await RegenerarAplicacionesHierroAsync(
+                    new[] { crono }, new[] { cronogramaId }, usuarioId);
             }
 
             return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // MARCAR / DESMARCAR AUSENTE
+        // ──────────────────────────────────────────────────────────────────────
+        public async Task<CronogramaMedicamento> MarcarAusenteAsync(
+            Guid tenantId, Guid cronogramaId, bool ausente, Guid? usuarioId = null)
+        {
+            var crono = await _repo.GetConDiasAsync(tenantId, cronogramaId);
+            if (crono == null) throw new InvalidOperationException("Cronograma no encontrado");
+
+            crono.Ausente = ausente;
+            crono.UpdatedAt = DateTime.UtcNow;
+            crono.UpdatedBy = usuarioId;
+
+            await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
+            if (ausente)
+            {
+                // Al marcar ausente: limpiar dosis pendiente y eliminar días
+                crono.EpoDosisPendienteUI = null;
+                await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+                await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, new List<CronogramaDia>());
+                await _aplicacionHierroRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
+                await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
+            }
+            else if (!string.IsNullOrWhiteSpace(crono.PlanSalud) &&
+                     (crono.EpoUiSemana > 0 || crono.HierroMgMes > 0))
+            {
+                // Reactivar: recalcular dosis pendiente + regenerar días y aplicaciones
+                var nuevasDias = GenerarDias(crono);
+                var turnoReact = ParsearTurno(crono.PlanSalud);
+                crono.EpoDosisPendienteUI = turnoReact.HasValue
+                    ? CalcularDosisInicialPendiente(
+                        crono.EpoUiSemana, turnoReact.Value,
+                        nuevasDias.Select(d => d.FechaSesion).ToList())
+                    : null;
+                await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
+
+                // Actualizar evento de dosis pendiente (Fase 2)
+                if ((crono.EpoDosisPendienteUI ?? 0) > 0)
+                {
+                    var fechaComp = CalcularFechaCompensatoria(
+                        nuevasDias.Select(d => d.FechaSesion).ToList());
+                    if (fechaComp.HasValue)
+                        await _eventoPendienteRepo.UpsertAsync(new EventoDosisPendiente
+                        {
+                            TenantId        = crono.TenantId,
+                            CronogramaId    = crono.Id,
+                            PacienteId      = crono.PacienteId,
+                            FechaProgramada = fechaComp.Value,
+                            DosisUI         = crono.EpoDosisPendienteUI!.Value
+                        });
+                }
+                else
+                {
+                    await _eventoPendienteRepo.DeleteByCronogramaIdsAsync(new[] { cronogramaId });
+                }
+
+                await _repo.BatchReplaceDiasAsync(new List<Guid> { cronogramaId }, nuevasDias);
+                await RegenerarAplicacionesHierroAsync(
+                    new[] { crono }, new[] { cronogramaId }, usuarioId);
+            }
+
+            return await _repo.GetConDiasAsync(tenantId, cronogramaId) ?? crono;
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // ACTUALIZAR SALA
+        // ──────────────────────────────────────────────────────────────────────
+        public async Task ActualizarSalaAsync(
+            Guid tenantId, Guid cronogramaId, string? sala, Guid? usuarioId = null)
+        {
+            var crono = await _repo.GetConDiasAsync(tenantId, cronogramaId);
+            if (crono == null) throw new InvalidOperationException("Cronograma no encontrado");
+
+            crono.Sala      = string.IsNullOrWhiteSpace(sala) ? null : sala.Trim();
+            crono.UpdatedAt = DateTime.UtcNow;
+            crono.UpdatedBy = usuarioId;
+            await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -373,9 +562,14 @@ namespace DataMedix.Application.Services
             if (turno == null)
                 return new List<CronogramaDia>();
 
-            var fechasSesion = ObtenerFechasSesion(cronograma.PeriodoAnio, cronograma.PeriodoMes, turno.Value);
+            var fechasSesion = ObtenerFechasSesion(
+                cronograma.PeriodoAnio, cronograma.PeriodoMes, turno.Value, cronograma.FechaInicioFlex);
             var dosisEpoPorDia = DistribuirEpo(cronograma.EpoUiSemana, turno.Value, fechasSesion);
-            var dosisHierroPorDia = DistribuirHierro(cronograma.HierroMgMes, fechasSesion);
+            var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(cronograma.HierroMgMes, fechasSesion);
+            decimal dosisAplicacion = fechasHierro.Count > 0
+                ? Math.Round((cronograma.HierroMgMes ?? 0) / fechasHierro.Count, 0)
+                : 0;
+            var dosisHierroPorDia = fechasHierro.ToDictionary(f => f, _ => dosisAplicacion);
 
             return fechasSesion.Select(fecha => new CronogramaDia
             {
@@ -391,6 +585,33 @@ namespace DataMedix.Application.Services
         // HELPERS INTERNOS
         // ──────────────────────────────────────────────────────────────────────
 
+        // Dosis efectiva = calculada por reglas (PrescripcionSugerida) +
+        // ajuste médico (PrescripcionFinal), replicando HojaEpoCeldaDto.EpoEfectivo/HierroEfectivo.
+        private static (decimal? epo, decimal? hierro) ComputarEfectivos(
+            PrescripcionSugerida? sugerida, PrescripcionFinal? final)
+        {
+            var epoCalc    = sugerida?.EpoUiSemana;
+            var hierroCalc = sugerida?.HierroMgMes;
+
+            decimal? epoAj = null, hierroAj = null;
+            if (final != null)
+            {
+                if (decimal.TryParse(final.EpoDosis,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var ev))
+                    epoAj = ev;
+                if (decimal.TryParse(final.HierroDosis,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var hv))
+                    hierroAj = hv;
+            }
+
+            return (
+                (epoCalc.HasValue || epoAj.HasValue) ? (epoCalc ?? 0) + (epoAj ?? 0) : null,
+                (hierroCalc.HasValue || hierroAj.HasValue) ? (hierroCalc ?? 0) + (hierroAj ?? 0) : null
+            );
+        }
+
         private static TipoTurno? ParsearTurno(string? planSalud)
         {
             if (string.IsNullOrWhiteSpace(planSalud)) return null;
@@ -400,14 +621,17 @@ namespace DataMedix.Application.Services
             return null;
         }
 
-        private static List<DateTime> ObtenerFechasSesion(int anio, int mes, TipoTurno turno)
+        // fechaInicioFlex: si se provee, define el rango [fechaInicioFlex, fechaInicioFlex + 1 mes).
+        // Si es null se usa el rango clásico [1ro del mes, fin del mes].
+        private static List<DateTime> ObtenerFechasSesion(int anio, int mes, TipoTurno turno,
+            DateTime? fechaInicioFlex = null)
         {
             var diasSemana = turno == TipoTurno.LMV
                 ? new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday }
                 : new[] { DayOfWeek.Tuesday, DayOfWeek.Thursday, DayOfWeek.Saturday };
 
-            var inicio = new DateTime(anio, mes, 1);
-            var fin = inicio.AddMonths(1);
+            var inicio = fechaInicioFlex.HasValue ? fechaInicioFlex.Value.Date : new DateTime(anio, mes, 1);
+            var fin    = inicio.AddMonths(1);   // exclusivo: genera [inicio, fin)
             var fechas = new List<DateTime>();
 
             for (var d = inicio; d < fin; d = d.AddDays(1))
@@ -428,27 +652,33 @@ namespace DataMedix.Application.Services
 
             foreach (var semana in semanas)
             {
-                if (semana.Count == 0) continue;
+                var n = semana.Count;
+                if (n == 0) continue;
 
-                // Índice del día central según turno (LMV=Mié=índice 1, MJS=Jue=índice 1)
-                var (dosis1, dosis2, dosis3) = CalcularDosisEpoSemanal(ui);
+                var (d1, d2, d3) = CalcularDosisEpoSemanal(ui);
 
-                if (dosis3 > 0 && semana.Count >= 3)
+                if (d1 == 0 && d2 > 0 && d3 == 0)
                 {
-                    resultado[semana[0]] = dosis1;
-                    resultado[semana[1]] = dosis2;
-                    resultado[semana[2]] = dosis3;
+                    // Solo día central (2000 UI/sem): usar el día del medio si hay 3, sino el disponible
+                    resultado[n >= 2 ? semana[1] : semana[0]] = d2;
                 }
-                else if (dosis1 > 0 && dosis3 == 0 && semana.Count >= 1)
+                else if (n >= 3 && d3 > 0)
                 {
-                    // Solo día central
-                    var centro = semana.Count >= 2 ? semana[1] : semana[0];
-                    resultado[centro] = dosis2 > 0 ? dosis2 : dosis1;
+                    // Semana completa con plan de 3 días
+                    resultado[semana[0]] = d1;
+                    if (d2 > 0) resultado[semana[1]] = d2;
+                    resultado[semana[2]] = d3;
                 }
-                else if (semana.Count >= 2)
+                else if (n >= 2)
                 {
-                    resultado[semana[0]] = dosis1;
-                    resultado[semana[^1]] = dosis3 > 0 ? dosis3 : dosis2;
+                    // Semana parcial con 2 días: primer y último slot del plan
+                    resultado[semana[0]] = d1;
+                    resultado[semana[^1]] = d3 > 0 ? d3 : d2;
+                }
+                else
+                {
+                    // Semana parcial con 1 día (inicio o fin de mes): dosis del primer slot
+                    resultado[semana[0]] = d1 > 0 ? d1 : d2;
                 }
             }
 
@@ -488,27 +718,42 @@ namespace DataMedix.Application.Services
             }
         }
 
-        private static Dictionary<DateTime, decimal> DistribuirHierro(
-            decimal? hierroMgMes, List<DateTime> fechasSesion)
+        private async Task RegenerarAplicacionesHierroAsync(
+            IEnumerable<CronogramaMedicamento> cronogramas,
+            IEnumerable<Guid> cronogramaIdsConTurno,
+            Guid? usuarioId)
         {
-            var resultado = new Dictionary<DateTime, decimal>();
-            if (!hierroMgMes.HasValue || hierroMgMes <= 0) return resultado;
+            var nuevasAplicaciones = new List<AplicacionHierro>();
 
-            const decimal dosisPorSesion = 200m;
-            var semanas = AgruparPorSemana(fechasSesion);
-            decimal restante = hierroMgMes.Value;
-
-            foreach (var semana in semanas)
+            foreach (var crono in cronogramas)
             {
-                if (restante <= 0) break;
-                if (semana.Count == 0) continue;
+                if (crono.Ausente || !(crono.HierroMgMes > 0)) continue;
+                var turno = ParsearTurno(crono.PlanSalud);
+                if (turno == null) continue;
 
-                var dosis = Math.Min(dosisPorSesion, restante);
-                resultado[semana[0]] = dosis;
-                restante -= dosis;
+                var fechasSesion = ObtenerFechasSesion(
+                    crono.PeriodoAnio, crono.PeriodoMes, turno.Value, crono.FechaInicioFlex);
+                var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(crono.HierroMgMes, fechasSesion);
+                decimal dosisAplicacion = fechasHierro.Count > 0
+                    ? Math.Round((crono.HierroMgMes ?? 0) / fechasHierro.Count, 0)
+                    : 0;
+
+                foreach (var fecha in fechasHierro)
+                {
+                    nuevasAplicaciones.Add(new AplicacionHierro
+                    {
+                        TenantId         = crono.TenantId,
+                        PacienteId       = crono.PacienteId,
+                        CronogramaId     = crono.Id,
+                        FechaProgramada  = fecha,
+                        DosisMg          = dosisAplicacion,
+                        Estado           = EstadoAplicacionHierro.Pendiente,
+                        CreatedBy        = usuarioId
+                    });
+                }
             }
 
-            return resultado;
+            await _aplicacionHierroRepo.BatchReplaceAsync(cronogramaIdsConTurno, nuevasAplicaciones);
         }
 
         private static List<List<DateTime>> AgruparPorSemana(List<DateTime> fechas)
@@ -532,6 +777,54 @@ namespace DataMedix.Application.Services
             }
             if (semanaActual.Count > 0) grupos.Add(semanaActual);
             return grupos;
+        }
+
+        /// <summary>
+        /// Calcula la dosis de EPO (UI) que quedó pendiente porque el cronograma
+        /// inició después del primer día de turno de la primera semana.
+        /// Solo aplica a la primera semana parcial; semanas posteriores se gestionan
+        /// con la lógica normal de distribución.
+        /// </summary>
+        private static decimal CalcularDosisInicialPendiente(
+            decimal? epoUiSemana, TipoTurno turno, List<DateTime> fechasSesion)
+        {
+            if (!epoUiSemana.HasValue || epoUiSemana <= 0 || fechasSesion.Count == 0) return 0;
+
+            var semanas = AgruparPorSemana(fechasSesion);
+            if (semanas.Count == 0) return 0;
+
+            var primeraSemana = semanas[0];
+            // Semana completa: ninguna dosis quedó pendiente
+            if (primeraSemana.Count >= 3) return 0;
+
+            var ui = (int)Math.Round(epoUiSemana.Value);
+            var (d1, d2, d3) = CalcularDosisEpoSemanal(ui);
+            var dosisSemanale = d1 + d2 + d3;
+
+            // Replicar exactamente la rama que DistribuirEpo aplicaría a esta semana parcial
+            int n = primeraSemana.Count;
+            decimal distribuidoPrimeraSemana;
+            if (d1 == 0 && d2 > 0 && d3 == 0)
+            {
+                // Solo dosis central (2000 UI/sem): siempre se coloca
+                distribuidoPrimeraSemana = d2;
+            }
+            else if (n >= 2)
+            {
+                distribuidoPrimeraSemana = d1 + (d3 > 0 ? d3 : d2);
+            }
+            else // n == 1
+            {
+                distribuidoPrimeraSemana = d1 > 0 ? d1 : d2;
+            }
+
+            return Math.Max(0, dosisSemanale - distribuidoPrimeraSemana);
+        }
+
+        private static DateTime? CalcularFechaCompensatoria(List<DateTime> fechasSesion)
+        {
+            var semanas = AgruparPorSemana(fechasSesion);
+            return semanas.Count >= 2 ? semanas[1][0] : (DateTime?)null;
         }
 
         private static int ISOWeek(DateTime d) =>
@@ -560,5 +853,7 @@ namespace DataMedix.Application.Services
         public decimal CostoTotal => CostoEpo + CostoHierro;
         public decimal PrecioEpoPorUI { get; set; }
         public decimal PrecioHierroPorMg { get; set; }
+        public int TotalPacientes { get; set; }
+        public int TotalSesiones { get; set; }
     }
 }

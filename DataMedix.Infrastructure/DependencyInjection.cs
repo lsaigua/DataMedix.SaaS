@@ -47,6 +47,10 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IReglaClinicaRepository, ReglaClinicaRepository>();
             services.AddScoped<ICronogramaRepository, CronogramaRepository>();
             services.AddScoped<IConfiguracionMedicamentoRepository, ConfiguracionMedicamentoRepository>();
+            services.AddScoped<IAplicacionHierroRepository, AplicacionHierroRepository>();
+            services.AddScoped<IHierroSchedulerService, HierroSchedulerService>();
+            services.AddScoped<IPrecioEpoDosisRepository, PrecioEpoDosisRepository>();
+            services.AddScoped<IEventoDosisPendienteRepository, EventoDosisPendienteRepository>();
             services.AddScoped<IReporteService, ReporteService>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IExcelReader, ExcelReader>();
@@ -126,6 +130,78 @@ namespace DataMedix.Infrastructure
                     await db.ReglasClinicas.AddRangeAsync(reglasNuevas);
                     await db.SaveChangesAsync();
                 }
+
+                // 4. Columnas ausente/motivo_ausencia en cronograma_medicamento (idempotente)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE cronograma_medicamento
+                        ADD COLUMN IF NOT EXISTS ausente          BOOLEAN  NOT NULL DEFAULT FALSE,
+                        ADD COLUMN IF NOT EXISTS motivo_ausencia  TEXT,
+                        ADD COLUMN IF NOT EXISTS sala             VARCHAR(20),
+                        ADD COLUMN IF NOT EXISTS modo             SMALLINT NOT NULL DEFAULT 0,
+                        ADD COLUMN IF NOT EXISTS fecha_inicio_flex DATE;
+                ");
+
+                // 5. Tabla aplicacion_hierro — registro individual por aplicación Fe IV (idempotente)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS aplicacion_hierro (
+                        id                UUID         NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+                        tenant_id         UUID         NOT NULL,
+                        paciente_id       UUID         NOT NULL,
+                        cronograma_id     UUID         NOT NULL
+                            REFERENCES cronograma_medicamento(id) ON DELETE CASCADE,
+                        fecha_programada  DATE         NOT NULL,
+                        dosis_mg          DECIMAL(10,2) NOT NULL DEFAULT 100,
+                        estado            VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE',
+                        observaciones     TEXT,
+                        created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        updated_at        TIMESTAMPTZ,
+                        created_by        UUID,
+                        updated_by        UUID
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_aplicacion_hierro_cronograma
+                        ON aplicacion_hierro (tenant_id, cronograma_id, fecha_programada);
+                ");
+
+                // 7. Columna epo_dosis_pendiente_ui en cronograma_medicamento (idempotente)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE cronograma_medicamento
+                        ADD COLUMN IF NOT EXISTS epo_dosis_pendiente_ui DECIMAL(10,2) NULL;
+                ");
+
+                // 8. Tabla evento_dosis_pendiente — evento formal de dosis compensatoria (Fase 2)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS evento_dosis_pendiente (
+                        id                UUID          NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+                        tenant_id         UUID          NOT NULL,
+                        cronograma_id     UUID          NOT NULL
+                            REFERENCES cronograma_medicamento(id) ON DELETE CASCADE,
+                        paciente_id       UUID          NOT NULL,
+                        fecha_programada  DATE          NOT NULL,
+                        dosis_ui          DECIMAL(10,2) NOT NULL,
+                        estado            VARCHAR(20)   NOT NULL DEFAULT 'PROGRAMADA',
+                        observaciones     TEXT,
+                        created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                        updated_at        TIMESTAMPTZ,
+                        updated_by        UUID
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS ix_evento_dosis_pendiente_crono
+                        ON evento_dosis_pendiente (tenant_id, cronograma_id);
+                ");
+
+                // 6. Tabla precio_epo_dosis — precio por dosis administrada de EPO (extensible sin código)
+                await db.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS precio_epo_dosis (
+                        id          UUID          NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+                        tenant_id   UUID          NOT NULL,
+                        dosis_ui    DECIMAL(10,2) NOT NULL,
+                        precio      DECIMAL(12,4) NOT NULL DEFAULT 0,
+                        activo      BOOLEAN       NOT NULL DEFAULT TRUE,
+                        created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                        updated_at  TIMESTAMPTZ
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS ix_precio_epo_dosis_tenant_dosis
+                        ON precio_epo_dosis (tenant_id, dosis_ui);
+                ");
             }
             finally
             {

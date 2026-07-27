@@ -23,4 +23,24 @@ namespace DataMedix.Application.Interfaces
         Task<ConfiguracionMedicamento?> GetByMedicamentoAsync(Guid tenantId, string medicamento);
         Task UpsertAsync(ConfiguracionMedicamento config);
     }
+
+    /// <summary>Precios de EPO por dosis administrada; extensible sin cambio de código.</summary>
+    public interface IPrecioEpoDosisRepository
+    {
+        Task<List<PrecioEpoDosis>> GetByTenantAsync(Guid tenantId);
+        Task UpsertManyAsync(List<PrecioEpoDosis> precios);
+    }
+
+    /// <summary>
+    /// Eventos formales de dosis pendiente (Fase 2). Registra fecha sugerida,
+    /// dosis UI y estado (Programada / Aplicada / Suspendida).
+    /// </summary>
+    public interface IEventoDosisPendienteRepository
+    {
+        Task<EventoDosisPendiente?> GetByCronogramaAsync(Guid tenantId, Guid cronogramaId);
+        Task<List<EventoDosisPendiente>> GetByPeriodoAsync(Guid tenantId, int anio, int mes);
+        Task UpsertAsync(EventoDosisPendiente evento);
+        Task DeleteByCronogramaIdsAsync(IEnumerable<Guid> cronogramaIds);
+        Task ActualizarEstadoAsync(Guid id, string estado, Guid? usuarioId);
+    }
 }

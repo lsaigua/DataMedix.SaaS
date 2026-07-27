@@ -601,7 +601,7 @@
       <div class="sub">Manual de Usuario</div>
     </div>
   </div>
-  <div class="toc-version">v1.0 · Mayo 2026</div>
+  <div class="toc-version">v2.0 · Julio 2026</div>
 
   <div class="toc-section-title">Contenido</div>
   <a href="#sec-intro">1. Introducción</a>
@@ -613,16 +613,26 @@
   <a href="#sec-importar" class="sub">4.1 Cargar Resultados</a>
   <a href="#sec-historial" class="sub">4.2 Historial Clínico</a>
   <a href="#sec-crudos" class="sub">4.3 Resultados Crudos</a>
+  <a href="#sec-manual" class="sub">4.4 Ingreso Manual</a>
   <a href="#sec-clinico">5. Módulo Clínico</a>
   <a href="#sec-pacientes" class="sub">5.1 Pacientes</a>
   <a href="#sec-prescripciones" class="sub">5.2 Prescripciones</a>
-  <a href="#sec-reglas" class="sub">5.3 Reglas Clínicas</a>
+  <a href="#sec-hoja-epo" class="sub">5.3 Prescripción Sugerida</a>
+  <a href="#sec-reglas" class="sub">5.4 Reglas Clínicas</a>
+  <a href="#sec-cronograma" class="sub">5.5 Cronograma Medicación</a>
+  <a href="#sec-crono-grilla" class="sub" style="padding-left:2.75rem">Grilla y edición inline</a>
+  <a href="#sec-crono-epo" class="sub" style="padding-left:2.75rem">Distribución EPO</a>
+  <a href="#sec-crono-pendiente" class="sub" style="padding-left:2.75rem">Dosis Inicial Pendiente</a>
+  <a href="#sec-crono-resumen" class="sub" style="padding-left:2.75rem">Resumen y costos</a>
+  <a href="#sec-calidad">5.6 Calidad Clínica KDOQI</a>
   <a href="#sec-admin">6. Administración</a>
   <a href="#sec-lotes" class="sub">6.1 Lotes de Carga</a>
   <a href="#sec-reportes" class="sub">6.2 Reportes</a>
   <a href="#sec-usuarios" class="sub">6.3 Gestión de Usuarios</a>
   <a href="#sec-configuracion" class="sub">6.4 Configuración</a>
   <a href="#sec-auditoria" class="sub">6.5 Auditoría</a>
+  <a href="#sec-rangos" class="sub">6.6 Rangos de Prescripción</a>
+  <a href="#sec-depuracion" class="sub">6.7 Depuración de Datos</a>
   <a href="#sec-seguridad">7. Seguridad</a>
   <a href="#sec-troubleshooting">8. Solución de Problemas</a>
   <a href="#sec-glosario">9. Glosario</a>
@@ -641,8 +651,8 @@
       <h1>Manual de Usuario<br><span>DataMedix</span></h1>
       <p class="subtitle">Guía completa de uso del sistema — desde el inicio de sesión hasta la administración avanzada del tenant.</p>
       <div class="cover-meta">
-        <div class="cover-meta-item"><span class="label">Versión</span><span class="value">1.0.0</span></div>
-        <div class="cover-meta-item"><span class="label">Fecha</span><span class="value">Mayo 2026</span></div>
+        <div class="cover-meta-item"><span class="label">Versión</span><span class="value">2.0.0</span></div>
+        <div class="cover-meta-item"><span class="label">Fecha</span><span class="value">Julio 2026</span></div>
         <div class="cover-meta-item"><span class="label">Audiencia</span><span class="value">Todos los usuarios</span></div>
         <div class="cover-meta-item"><span class="label">Clasificación</span><span class="value">Confidencial</span></div>
       </div>
@@ -1007,6 +1017,52 @@
     </div>
   </div>
 
+  <h3 id="sec-manual">4.4 Ingreso Manual de Resultados</h3>
+  <p>Permite registrar resultados de laboratorio de forma individual, sin necesidad de cargar un archivo Excel. Útil cuando se reciben resultados aislados (exámenes urgentes, correcciones puntuales) que no justifican una importación masiva.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>Ruta:</strong> Menú lateral → <em>Laboratorio</em> → <strong>Ingreso Manual</strong> (<code>/laboratorio/manual</code>).
+      Disponible para roles <span class="badge badge-blue">MÉDICO</span>, <span class="badge badge-red">ADMIN</span> y <span class="badge badge-purple">SUPERADMIN</span>.
+    </div>
+  </div>
+
+  <ol class="steps">
+    <li>
+      <div class="step-content">
+        <div class="step-title">Seleccione el paciente</div>
+        <div class="step-desc">Busque al paciente por nombre o número de identificación en el campo de búsqueda. Debe existir previamente en el sistema.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Elija el tipo de examen y la fecha</div>
+        <div class="step-desc">Seleccione el parámetro de laboratorio del listado (p. ej. Hemoglobina, Ferritina) y la fecha de toma de muestra.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Ingrese el valor numérico</div>
+        <div class="step-desc">Escriba el resultado y su unidad. El sistema validará el rango de referencia según las reglas clínicas activas y mostrará una advertencia si está fuera de rango.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Confirme el registro</div>
+        <div class="step-desc">Haga clic en <strong>Guardar</strong>. El resultado queda disponible de inmediato en el historial clínico del paciente y genera un evento de auditoría tipo <span class="badge badge-green">CREATE</span>.</div>
+      </div>
+    </li>
+  </ol>
+
+  <div class="callout warning">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <strong>Sin lote asociado</strong>
+      Los resultados ingresados manualmente no crean un "Lote de Carga". Son directamente válidos y no requieren aprobación adicional. Asegúrese de que los datos sean correctos antes de guardar.
+    </div>
+  </div>
+
   <!-- ═══════════════════════════════════════════
        5. MÓDULO CLÍNICO
   ═══════════════════════════════════════════ -->
@@ -1025,7 +1081,57 @@
   <h3 id="sec-prescripciones">5.2 Prescripciones</h3>
   <p>Registro y consulta de prescripciones médicas vinculadas a pacientes. Cada prescripción queda registrada con fecha, médico responsable y medicamentos.</p>
 
-  <h3 id="sec-reglas">5.3 Reglas Clínicas</h3>
+  <h3 id="sec-hoja-epo">5.3 Prescripción Sugerida (Hoja EPO)</h3>
+  <p>El módulo de <strong>Prescripción Sugerida</strong> procesa los últimos resultados de laboratorio de cada paciente y, aplicando el motor de reglas clínicas activo, calcula automáticamente la dosis recomendada de EPO (Eritropoyetina) y Hierro IV para el período siguiente. El médico revisa la sugerencia y la acepta o ajusta antes de confirmar la prescripción.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>Ruta:</strong> Menú lateral → <em>Clínico</em> → <strong>Prescripción Sugerida</strong> (<code>/hoja-epo</code>).
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Columna</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Paciente</strong></td><td>Nombre e identificación del paciente</td></tr>
+      <tr><td><strong>Hb actual</strong></td><td>Última hemoglobina registrada (g/dL)</td></tr>
+      <tr><td><strong>EPO sugerida</strong></td><td>Dosis de EPO calculada por el motor de reglas (UI/semana)</td></tr>
+      <tr><td><strong>Fe sugerido</strong></td><td>Dosis de Hierro IV sugerida (mg/sesión)</td></tr>
+      <tr><td><strong>Motivo</strong></td><td>Regla que disparó la sugerencia (p. ej. "Hb &lt; 10 → aumentar EPO 25%")</td></tr>
+      <tr><td><strong>Acción</strong></td><td>Confirmar o editar la dosis antes de guardar la prescripción</td></tr>
+    </tbody>
+  </table>
+
+  <ol class="steps">
+    <li>
+      <div class="step-content">
+        <div class="step-title">Acceda a Prescripción Sugerida</div>
+        <div class="step-desc">El sistema genera la lista de sugerencias automáticamente basándose en el último resultado de laboratorio disponible de cada paciente activo.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Revise cada sugerencia</div>
+        <div class="step-desc">Para cada paciente verá la dosis sugerida y el motivo clínico. Si está de acuerdo, haga clic en <strong>Confirmar</strong>. Si desea ajustar, edite la dosis antes de confirmar.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Confirme y genere la prescripción</div>
+        <div class="step-desc">Al confirmar, se crea la prescripción vinculada al paciente. Puede descargar la hoja EPO en formato Excel para el área de farmacia.</div>
+      </div>
+    </li>
+  </ol>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      Las sugerencias son un <em>punto de partida clínico</em>, no prescripciones automáticas. El médico siempre tiene la última palabra. Si no hay resultado de laboratorio reciente (&gt; 30 días), la sugerencia aparecerá marcada como <span class="badge badge-amber">Sin dato reciente</span>.
+    </div>
+  </div>
+
+  <h3 id="sec-reglas">5.4 Reglas Clínicas</h3>
   <p>Las reglas clínicas son criterios automáticos que el sistema aplica al importar resultados para detectar valores fuera de rango y generar alertas. DataMedix incluye <strong>26 reglas preconfiguradas</strong> para los parámetros de laboratorio más comunes.</p>
 
   <table>
@@ -1041,6 +1147,226 @@
     <div class="callout-body">
       <strong>Cambios con precaución</strong>
       Modificar umbrales de reglas clínicas puede afectar la generación de alertas. Valide cualquier cambio con el responsable clínico antes de guardarlo.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       5.5 CRONOGRAMA DE MEDICACIÓN
+  ═══════════════════════════════════════════ -->
+  <h3 id="sec-cronograma">5.5 Cronograma de Medicación</h3>
+  <p>El <strong>Cronograma de Medicación</strong> es el módulo central de planificación y seguimiento de dosis de EPO (Eritropoyetina) e Hierro IV para los pacientes en terapia de hemodiálisis. Organiza las sesiones de diálisis del mes en una grilla tipo calendario, calcula automáticamente la distribución de dosis según las prescripciones activas y permite registrar el estado de administración de cada dosis.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>Ruta:</strong> Menú lateral → <em>Clínico</em> → <strong>Cronograma Medicación</strong> (<code>/cronograma-medicacion</code>).
+      Disponible para roles <span class="badge badge-blue">MÉDICO</span>, <span class="badge badge-red">ADMIN</span> y <span class="badge badge-purple">SUPERADMIN</span>.
+    </div>
+  </div>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;" id="sec-crono-grilla">Modos de cronograma y navegación</h4>
+
+  <table>
+    <thead><tr><th>Modo</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Cronograma Mensual</strong></td>
+        <td>Genera automáticamente las sesiones del mes completo según el turno del paciente (LMV = Lunes/Miércoles/Viernes; MJS = Martes/Jueves/Sábado). Es el modo principal de uso.</td>
+      </tr>
+      <tr>
+        <td><strong>Cronograma Flexible</strong></td>
+        <td>Permite definir manualmente las fechas de sesión cuando el paciente no tiene un turno fijo. Útil para tratamientos periódicos o pacientes con horario variable.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>La navegación se hace por <strong>mes y año</strong> con botones ← → en la cabecera. Al cambiar de mes el sistema regenera el cronograma automáticamente con las prescripciones vigentes.</p>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;">Filtros disponibles</h4>
+  <table>
+    <thead><tr><th>Filtro</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Turno</strong></td><td>Filtra por turno de diálisis: Todos, LMV (Lunes/Miércoles/Viernes) o MJS (Martes/Jueves/Sábado)</td></tr>
+      <tr><td><strong>Sala</strong></td><td>Filtra por sala de hemodiálisis cuando el centro tiene múltiples salas</td></tr>
+      <tr><td><strong>Día específico</strong></td><td>Muestra sólo las sesiones del día seleccionado dentro del mes (útil para revisión diaria)</td></tr>
+      <tr><td><strong>Rango de fechas</strong></td><td>Muestra las sesiones entre una fecha Desde y una fecha Hasta. Desactiva la vista de Dosis Inicial Pendiente.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      La columna <strong>Dosis Inicial Pendiente</strong> y el panel de <em>EPO Pendiente</em> sólo se muestran en la vista de mes completo (sin filtro de rango de fechas ni filtro de día específico).
+    </div>
+  </div>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;">Grilla de sesiones y edición inline</h4>
+  <p>La grilla muestra una fila por paciente y una columna por fecha de sesión del mes. Cada celda indica la dosis programada para esa sesión.</p>
+
+  <table>
+    <thead><tr><th>Elemento en celda</th><th>Significado</th></tr></thead>
+    <tbody>
+      <tr><td>Valor en UI (ej. <strong>2.000</strong>)</td><td>Dosis de EPO programada para esa sesión (unidades internacionales)</td></tr>
+      <tr><td>Valor en mg (ej. <strong>100 mg</strong>)</td><td>Dosis de Hierro IV programada</td></tr>
+      <tr><td><span style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:0.1rem 0.4rem;font-size:0.75rem;color:#15803d;font-family:monospace;">✓</span></td><td>Dosis administrada (marcada)</td></tr>
+      <tr><td>— (guión)</td><td>Sin dosis programada para esa fecha</td></tr>
+      <tr><td>Celda sombreada gris</td><td>Paciente marcado como <strong>Ausente</strong> ese día</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>Edición inline:</strong> haga clic sobre cualquier celda con dosis para editar el valor directamente. Los cambios se confirman al presionar <kbd>Enter</kbd> o al hacer clic fuera de la celda. El sistema recalcula el total de la fila automáticamente.</p>
+
+  <p><strong>Editar sala y turno:</strong> en la columna de nombre del paciente, haga clic en el ícono de lápiz para abrir el editor de turno y sala. El cambio afecta a todos los meses futuros.</p>
+
+  <p><strong>Marcar ausente:</strong> en la columna de acciones, use el botón de ausencia para marcar que el paciente no asistió a la sesión del día. Esto elimina las dosis programadas de esa fecha y suprime la dosis inicial pendiente si corresponde.</p>
+
+  <!-- ─── DISTRIBUCIÓN EPO ─── -->
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;" id="sec-crono-epo">Reglas de distribución de EPO</h4>
+  <p>El sistema distribuye automáticamente la dosis semanal de EPO entre las sesiones de cada semana ISO según las siguientes reglas predefinidas:</p>
+
+  <table>
+    <thead><tr><th>Dosis semanal</th><th>Distribución</th></tr></thead>
+    <tbody>
+      <tr><td><strong>2.000 UI</strong></td><td>Una dosis de 2.000 UI en la sesión central de la semana (miércoles o jueves)</td></tr>
+      <tr><td><strong>4.000 UI</strong></td><td>2.000 UI en la primera sesión + 2.000 UI en la última sesión de la semana</td></tr>
+      <tr><td><strong>6.000 UI</strong></td><td>2.000 UI en cada una de las tres sesiones de la semana</td></tr>
+      <tr><td><strong>8.000 UI</strong></td><td>4.000 UI en la primera sesión + 4.000 UI en la última sesión de la semana</td></tr>
+      <tr><td><strong>12.000 UI</strong></td><td>4.000 UI en cada una de las tres sesiones de la semana</td></tr>
+      <tr><td><strong>18.000 UI</strong></td><td>6.000 UI en cada una de las tres sesiones de la semana</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      La distribución se recalcula automáticamente al cambiar la dosis prescrita o al regenerar el mes. Si el paciente tiene menos de 3 sesiones en una semana (p. ej. feriados), el sistema aplica las reglas disponibles para las sesiones existentes.
+    </div>
+  </div>
+
+  <!-- ─── DOSIS INICIAL PENDIENTE ─── -->
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;" id="sec-crono-pendiente">Dosis Inicial Pendiente (EPO)</h4>
+  <p>Cuando un paciente inicia tratamiento con EPO a mitad de mes, la primera semana puede quedar sin dosis porque el cronograma ya fue generado. El sistema crea automáticamente un <strong>Evento de Dosis Pendiente</strong> para registrar esta dosis compensatoria.</p>
+
+  <table>
+    <thead><tr><th>Elemento</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Badge naranja (UI)</strong></td>
+        <td>Aparece en la columna fija <em>"Pend. UI Init."</em> mostrando la dosis pendiente en unidades internacionales</td>
+      </tr>
+      <tr>
+        <td><strong>Fecha sugerida (dd/MM)</strong></td>
+        <td>Primera sesión de la semana ISO 2 del mes — fecha recomendada para administrar la dosis compensatoria</td>
+      </tr>
+      <tr>
+        <td><strong>Botón "Aplicar"</strong></td>
+        <td>Marca la dosis pendiente como <span class="badge badge-green">Aplicada</span>. Al aplicarla, se contabiliza en los totales y en el Resumen de Costos</td>
+      </tr>
+      <tr>
+        <td><strong>Badge verde "✓ Aplicada"</strong></td>
+        <td>Confirma visualmente que la dosis fue administrada. El badge cambia de naranja a verde</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warning">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <strong>No se contabiliza hasta ser aplicada</strong>
+      La dosis pendiente <em>no suma</em> al total de UI del paciente ni al resumen de costos hasta que sea marcada como <strong>Aplicada</strong>. Esto garantiza que sólo se facturan dosis realmente administradas.
+    </div>
+  </div>
+
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;">Flujo para administrar una dosis pendiente</h4>
+  <ol class="steps">
+    <li>
+      <div class="step-content">
+        <div class="step-title">Identifique la fila con badge naranja</div>
+        <div class="step-desc">En la columna "Pend. UI Init." verá el badge naranja con el valor de la dosis (p. ej. <strong>2.000</strong>) y debajo la fecha sugerida (p. ej. <strong>08/07</strong>).</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Administre la dosis al paciente en la fecha indicada</div>
+        <div class="step-desc">La fecha sugerida es la primera sesión de la segunda semana del mes. Puede administrarla en otra fecha si clínicamente corresponde.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-content">
+        <div class="step-title">Haga clic en "Aplicar"</div>
+        <div class="step-desc">El badge cambia a verde "✓ Aplicada" y la dosis se suma al total de la fila y al Resumen de Costos. No es necesario recargar la página.</div>
+      </div>
+    </li>
+  </ol>
+
+  <!-- ─── RESUMEN Y COSTOS ─── -->
+  <h4 style="font-size:0.9rem;font-weight:700;color:#0f172a;margin:1.25rem 0 0.5rem;" id="sec-crono-resumen">Resumen de Costos y Paneles analíticos</h4>
+  <p>Al final de la grilla, el cronograma muestra tres paneles analíticos con información agregada del mes:</p>
+
+  <table>
+    <thead><tr><th>Panel</th><th>Contenido</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Resumen de Costos</strong></td>
+        <td>Total de UI de EPO administradas, total de mg de Hierro IV, costo estimado del mes y totales por sala. Solo incluye dosis <em>aplicadas</em>.</td>
+      </tr>
+      <tr>
+        <td><strong>EPO Administrada (por dosis)</strong></td>
+        <td>Tabla de desglose: por cada dosis prescrita (2.000, 4.000, 6.000 UI…) muestra cantidad de pacientes, total UI administradas, precio unitario y costo. Incluye dosis pendientes <em>Aplicadas</em>.</td>
+      </tr>
+      <tr>
+        <td><strong>EPO Pendiente (no administrada)</strong></td>
+        <td>Misma estructura que el panel anterior pero para dosis pendientes <em>no aplicadas</em>. Permite cuadrar la diferencia entre lo prescrito y lo administrado.</td>
+      </tr>
+      <tr>
+        <td><strong>Top 20 pacientes</strong></td>
+        <td>Ranking de los 20 pacientes con mayor costo acumulado de EPO + Hierro en el mes.</td>
+      </tr>
+      <tr>
+        <td><strong>Precios vigentes</strong></td>
+        <td>Tabla de referencia con el precio por UI de EPO y por mg de Hierro IV configurado para el tenant.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p><strong>Exportar a Excel:</strong> el botón <span style="background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border-radius:6px;padding:0.2rem 0.6rem;font-size:0.75rem;font-weight:700;">Excel</span> en la cabecera descarga la grilla completa del mes en formato .xlsx, incluyendo todos los pacientes filtrados y los totales por columna.</p>
+
+  <div class="callout success">
+    <span class="callout-icon">✅</span>
+    <div class="callout-body">
+      <strong>Cuadre entre paneles</strong>
+      La suma del panel <em>EPO Administrada</em> más el panel <em>EPO Pendiente</em> debe igualar el total de EPO prescrita para el mes. Si no coincide, revise si algún paciente fue marcado como ausente o si hay dosis sin configurar.
+    </div>
+  </div>
+
+  <!-- ─── KDOQI ─── -->
+  <h3 id="sec-calidad">5.6 Calidad Clínica KDOQI</h3>
+  <p>El módulo de <strong>Calidad Clínica KDOQI</strong> proporciona un dashboard analítico con los indicadores de calidad de la diálisis según las guías internacionales KDOQI (Kidney Disease Outcomes Quality Initiative). Permite al equipo clínico monitorear en tiempo real el cumplimiento de los objetivos terapéuticos por paciente y por cohorte.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>Ruta:</strong> Menú lateral → <em>Clínico</em> → <strong>Calidad Clínica KDOQI</strong> (<code>/clinico/dashboard-calidad</code>).
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Indicador KDOQI</th><th>Objetivo</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Hemoglobina (Hb)</strong></td><td>10 – 12 g/dL</td><td>Porcentaje de pacientes en rango objetivo</td></tr>
+      <tr><td><strong>Ferritina</strong></td><td>200 – 800 ng/mL</td><td>Estado de reservas de hierro</td></tr>
+      <tr><td><strong>Saturación de Transferrina (TSAT)</strong></td><td>20 – 50 %</td><td>Indicador de disponibilidad de hierro funcional</td></tr>
+      <tr><td><strong>Kt/V</strong></td><td>≥ 1.2</td><td>Adecuación de la diálisis</td></tr>
+      <tr><td><strong>Albúmina</strong></td><td>≥ 3.5 g/dL</td><td>Estado nutricional del paciente</td></tr>
+    </tbody>
+  </table>
+
+  <p>Cada indicador muestra: porcentaje de pacientes en meta, tendencia del último trimestre y lista de pacientes fuera de rango con su último valor registrado.</p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      Use los filtros de <strong>período</strong> y <strong>sala</strong> para segmentar el análisis por turno o por mes y comparar la evolución del programa de diálisis a lo largo del tiempo.
     </div>
   </div>
 
@@ -1395,6 +1721,77 @@
     </div>
   </div>
 
+  <!-- ─── RANGOS DE PRESCRIPCIÓN ─── -->
+  <h3 id="sec-rangos">6.6 Rangos de Prescripción</h3>
+  <p>Permite configurar los rangos clínicos de referencia para las prescripciones de EPO y Hierro IV. Estos rangos son usados por el motor de reglas para validar y sugerir dosis en el módulo de Prescripción Sugerida.</p>
+
+  <div class="callout danger">
+    <span class="callout-icon">🔒</span>
+    <div class="callout-body">
+      <strong>Acceso restringido — ADMIN / SUPERADMIN</strong>
+      Ruta: <code>/admin/rangos-prescriba</code>. Modificar estos rangos afecta directamente las sugerencias clínicas generadas por el sistema. Solo deben modificarlos el médico responsable junto con el administrador del sistema.
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Parámetro</strong></td><td>Indicador de laboratorio al que aplica el rango (p. ej. Hemoglobina, Ferritina)</td></tr>
+      <tr><td><strong>Valor mínimo</strong></td><td>Umbral inferior; valores por debajo pueden disparar aumento de dosis</td></tr>
+      <tr><td><strong>Valor máximo</strong></td><td>Umbral superior; valores por encima pueden disparar reducción de dosis</td></tr>
+      <tr><td><strong>Unidad</strong></td><td>Unidad de medida del parámetro (g/dL, ng/mL, %…)</td></tr>
+      <tr><td><strong>Estado</strong></td><td><span class="badge badge-green">Activo</span> / <span class="badge badge-gray">Inactivo</span> — si está inactivo, el motor de reglas ignora este rango</td></tr>
+    </tbody>
+  </table>
+
+  <ol class="steps">
+    <li><div class="step-content"><div class="step-title">Seleccione el parámetro a modificar</div><div class="step-desc">Haga clic sobre la fila del parámetro en la tabla de rangos.</div></div></li>
+    <li><div class="step-content"><div class="step-title">Edite los valores mínimo y máximo</div><div class="step-desc">Ingrese los nuevos umbrales numéricos. Deben ser congruentes con las guías clínicas vigentes (KDOQI, guías locales).</div></div></li>
+    <li><div class="step-content"><div class="step-title">Guarde los cambios</div><div class="step-desc">Los cambios surten efecto en la próxima generación de sugerencias. Las prescripciones ya confirmadas no se modifican retroactivamente.</div></div></li>
+  </ol>
+
+  <!-- ─── DEPURACIÓN DE DATOS ─── -->
+  <h3 id="sec-depuracion">6.7 Depuración de Datos</h3>
+
+  <div class="callout danger">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <strong>Zona de peligro — Solo ADMIN / SUPERADMIN</strong>
+      Ruta: <code>/admin/depuracion</code>. Las operaciones de esta sección son <strong>irreversibles</strong>. Eliminar datos de esta pantalla no puede deshacerse. Proceda únicamente bajo instrucción explícita del responsable del sistema.
+    </div>
+  </div>
+
+  <p>El módulo de Depuración permite eliminar datos que han quedado huérfanos, duplicados o incorrectos y que no pueden corregirse desde los módulos normales de la plataforma. Es la <em>herramienta de último recurso</em> para el saneamiento de la base de datos del tenant.</p>
+
+  <table>
+    <thead><tr><th>Operación</th><th>Qué elimina</th><th>Cuándo usarla</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Eliminar lote de carga</strong></td>
+        <td>Todos los resultados crudos e historial asociados a un lote de importación</td>
+        <td>Cuando un lote fue importado con datos incorrectos y debe rehacerse</td>
+      </tr>
+      <tr>
+        <td><strong>Eliminar paciente</strong></td>
+        <td>El paciente y todos sus datos clínicos (historial, prescripciones, cronogramas)</td>
+        <td>Cuando un paciente fue creado por error duplicado</td>
+      </tr>
+      <tr>
+        <td><strong>Limpiar cronograma del mes</strong></td>
+        <td>Todas las entradas de cronograma de medicación de un mes específico</td>
+        <td>Cuando el mes fue generado con parámetros incorrectos y debe regenerarse desde cero</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout danger">
+    <span class="callout-icon">🚫</span>
+    <div class="callout-body">
+      <strong>Confirmación doble requerida</strong>
+      Todas las operaciones de depuración requieren escribir el texto de confirmación <strong>"CONFIRMAR ELIMINACIÓN"</strong> antes de ejecutarse. Esta medida existe para prevenir eliminaciones accidentales.
+    </div>
+  </div>
+
   <!-- ═══════════════════════════════════════════
        7. SEGURIDAD
   ═══════════════════════════════════════════ -->
@@ -1505,13 +1902,26 @@
       <tr><td><strong>SignalR</strong></td><td>Tecnología de comunicación en tiempo real usada por Blazor Server para actualizar la UI sin recargar la página.</td></tr>
       <tr><td><strong>HTTPS</strong></td><td>Protocolo seguro de transferencia de datos. Toda la comunicación con DataMedix está cifrada mediante TLS.</td></tr>
       <tr><td><strong>BCrypt</strong></td><td>Algoritmo de hash seguro utilizado para almacenar contraseñas. Nunca se guarda la contraseña en texto plano.</td></tr>
+      <tr><td><strong>EPO</strong></td><td>Eritropoyetina — medicamento inyectable que estimula la producción de glóbulos rojos. Se prescribe en unidades internacionales (UI) semanales.</td></tr>
+      <tr><td><strong>Hierro IV</strong></td><td>Hierro por vía intravenosa administrado durante la sesión de hemodiálisis. Se mide en miligramos (mg) por sesión.</td></tr>
+      <tr><td><strong>Dosis Inicial Pendiente</strong></td><td>Dosis de EPO que corresponde a la primera semana del mes pero no se pudo administrar porque el paciente inició tratamiento después de la generación del cronograma.</td></tr>
+      <tr><td><strong>Fecha Sugerida (FechaProgramada)</strong></td><td>Primera sesión de la semana ISO 2 del mes — fecha recomendada por el sistema para administrar la dosis inicial pendiente.</td></tr>
+      <tr><td><strong>Turno LMV</strong></td><td>Turno de hemodiálisis en días Lunes, Miércoles y Viernes.</td></tr>
+      <tr><td><strong>Turno MJS</strong></td><td>Turno de hemodiálisis en días Martes, Jueves y Sábado.</td></tr>
+      <tr><td><strong>Cronograma Mensual</strong></td><td>Modo de cronograma que genera automáticamente todas las sesiones del mes según el turno fijo del paciente.</td></tr>
+      <tr><td><strong>Cronograma Flexible</strong></td><td>Modo de cronograma con fechas de sesión definidas manualmente, sin turno fijo.</td></tr>
+      <tr><td><strong>KDOQI</strong></td><td>Kidney Disease Outcomes Quality Initiative — guías internacionales de calidad para el tratamiento de la enfermedad renal crónica y la hemodiálisis.</td></tr>
+      <tr><td><strong>Kt/V</strong></td><td>Indicador de adecuación de la diálisis. Kt/V ≥ 1.2 es el objetivo mínimo según guías KDOQI.</td></tr>
+      <tr><td><strong>TSAT</strong></td><td>Saturación de Transferrina — porcentaje de transferrina unida a hierro. Valor objetivo: 20–50 % según KDOQI.</td></tr>
+      <tr><td><strong>Rango de prescripción</strong></td><td>Umbrales mínimo y máximo configurados en el sistema para validar y sugerir dosis de EPO e Hierro IV.</td></tr>
+      <tr><td><strong>Depuración de datos</strong></td><td>Proceso administrativo de eliminación controlada e irreversible de registros incorrectos o duplicados. Solo disponible para ADMIN/SUPERADMIN.</td></tr>
     </tbody>
   </table>
 
   <div class="divider"></div>
 
   <div style="text-align:center;color:#94a3b8;font-size:0.8rem;padding-bottom:1rem;">
-    <p><strong>DataMedix Plataforma Clínica</strong> · Manual de Usuario v1.0 · Mayo 2026</p>
+    <p><strong>DataMedix Plataforma Clínica</strong> · Manual de Usuario v2.0 · Julio 2026</p>
     <p>Documento de uso interno. Distribución restringida al personal autorizado.</p>
     <a href="#top" class="back-to-top">↑ Volver al inicio</a>
   </div>

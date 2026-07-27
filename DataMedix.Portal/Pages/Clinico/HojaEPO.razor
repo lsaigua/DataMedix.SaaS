@@ -201,8 +201,8 @@ else
                         </td>
                         <td class="epo-td epo-col-sticky epo-col-nombre">
                             <div class="epo-paciente-cell">
-                                <div class="epo-avatar">@(row.NombrePaciente.FirstOrDefault())</div>
-                                <span class="epo-nombre">@row.NombrePaciente</span>
+                                <div class="epo-avatar">@PacienteDisplay.Inicial(row.NombrePaciente)</div>
+                                <span class="epo-nombre">@PacienteDisplay.Mask(row.NombrePaciente)</span>
                             </div>
                         </td>
                         <td class="epo-td epo-td-center epo-td-sm">
@@ -254,7 +254,8 @@ else
                                     <input type="text"
                                            list="epo-dosis-list"
                                            class="epo-cell-input epo-cell-input-aj"
-                                           @bind="_tempAjusteEpo"
+                                           value="@_tempAjusteEpo"
+                                           @oninput="e => _tempAjusteEpo = e.Value?.ToString()"
                                            placeholder="UI/sem"
                                            @onkeydown="e => OnEditKeyDown(e, row, mes)"
                                            autocomplete="off" />
@@ -293,7 +294,8 @@ else
                                     <input type="text"
                                            list="hierro-dosis-list"
                                            class="epo-cell-input epo-cell-input-aj"
-                                           @bind="_tempAjusteHierro"
+                                           value="@_tempAjusteHierro"
+                                           @oninput="e => _tempAjusteHierro = e.Value?.ToString()"
                                            placeholder="mg/mes"
                                            @onkeydown="e => OnEditKeyDown(e, row, mes)"
                                            autocomplete="off" />
@@ -793,7 +795,7 @@ else
             celda.AjusteHierro = string.IsNullOrWhiteSpace(_tempAjusteHierro) ? null : _tempAjusteHierro!.Trim();
 
             _editKey             = null;
-            _mensajeGuardado     = $"Ajuste guardado — {row.NombrePaciente} {mes:MMM yyyy}";
+            _mensajeGuardado     = $"Ajuste guardado — {PacienteDisplay.Mask(row.NombrePaciente)} {mes:MMM yyyy}";
             _mensajeGuardadoOk   = true;
 
             // Ocultar el toast automáticamente
