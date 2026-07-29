@@ -88,9 +88,9 @@
         <div class="crono-config-panel">
             <div class="crono-config-title">Configuración de Precios</div>
             <div class="crono-config-epo-section">
-                <div class="crono-config-epo-label">EPO — precio por dosis administrada:</div>
+                <div class="crono-config-epo-label">EPO — precio por aplicación (dólares):</div>
                 <table class="crono-config-epo-table">
-                    <thead><tr><th>Dosis UI</th><th>Precio</th></tr></thead>
+                    <thead><tr><th>Dosis UI</th><th>Precio por aplicación</th></tr></thead>
                     <tbody>
                         @foreach (var dosis in _dosisEpoConfig)
                         {
@@ -98,20 +98,34 @@
                             <tr>
                                 <td>@localDosis.DosisUI.ToString("N0") UI</td>
                                 <td>
-                                    <input type="number" step="0.0001" min="0" class="crono-config-input"
-                                           value="@localDosis.Precio"
-                                           @onchange="e => localDosis.Precio = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                                    <div class="crono-config-money">
+                                        <span class="crono-config-money-sign">$</span>
+                                        <input type="number" step="0.01" min="0" class="crono-config-input"
+                                               value="@Inv(localDosis.Precio)"
+                                               @onchange="e => localDosis.Precio = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                                    </div>
                                 </td>
                             </tr>
                         }
                     </tbody>
                 </table>
+                <p class="crono-config-hint">
+                    Cada aplicación cuesta este valor completo:
+                    @if (_dosisEpoConfig.Count > 0)
+                    {
+                        var ej = _dosisEpoConfig[0];
+                        <text>10 aplicaciones de @ej.DosisUI.ToString("N0") UI = $ @((ej.Precio * 10).ToString("N2")).</text>
+                    }
+                </p>
             </div>
             <div class="crono-config-row">
                 <label>Hierro (precio por mg):</label>
-                <input type="number" step="0.01" min="0" class="crono-config-input"
-                       value="@_precioHierro"
-                       @onchange="e => _precioHierro = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                <div class="crono-config-money">
+                    <span class="crono-config-money-sign">$</span>
+                    <input type="number" step="0.01" min="0" class="crono-config-input"
+                           value="@Inv(_precioHierro)"
+                           @onchange="e => _precioHierro = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                </div>
             </div>
             <div class="crono-config-actions">
                 <button class="crono-btn crono-btn-primary" @onclick="GuardarPreciosAsync">Guardar</button>
@@ -207,7 +221,7 @@
                             <th>Dosis UI</th>
                             <th>Aplicaciones</th>
                             <th>Total UI</th>
-                            @if (hayCostos) { <th>Precio</th><th>Costo</th> }
+                            @if (hayCostos) { <th title="Precio de una aplicación">Precio x aplic.</th><th>Costo</th> }
                         </tr>
                     </thead>
                     <tbody>
@@ -219,7 +233,7 @@
                                 <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
                                 @if (hayCostos)
                                 {
-                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N4")</td>
+                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N2")</td>
                                     <td class="crono-desglose-epo-costo">$ @fila.Costo.ToString("N2")</td>
                                 }
                             </tr>
@@ -285,7 +299,7 @@
                             <th>Dosis UI</th>
                             <th>Pacientes</th>
                             <th>Total UI</th>
-                            @if (hayCostosPend) { <th>Precio</th><th>Costo potencial</th> }
+                            @if (hayCostosPend) { <th title="Precio de una aplicación">Precio x aplic.</th><th>Costo potencial</th> }
                         </tr>
                     </thead>
                     <tbody>
@@ -297,7 +311,7 @@
                                 <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
                                 @if (hayCostosPend)
                                 {
-                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N4")</td>
+                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N2")</td>
                                     <td class="crono-desglose-epo-costo crono-pend-costo-val">$ @fila.Costo.ToString("N2")</td>
                                 }
                             </tr>
@@ -490,8 +504,7 @@
                             .ToList();
                         decimal totalEpo = diasFiltrados.Sum(d => d.EpoDosisuI ?? 0);
                         decimal totalHierro = diasFiltrados.Sum(d => d.HierroDosismg ?? 0);
-                        decimal epoRowCosto = diasFiltrados.Sum(d =>
-                            (d.EpoDosisuI ?? 0) * _preciosEpo.GetValueOrDefault(d.EpoDosisuI ?? 0, 0));
+                        decimal epoRowCosto = diasFiltrados.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI));
                         // Solo sumar pendiente al total del row si ya fue marcada Aplicada
                         bool vistaCompleta = !TieneFiltroFecha && _filtroDia == 0;
                         if (vistaCompleta && crono.EpoDosisPendienteUI > 0 &&
@@ -745,8 +758,7 @@
                 var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0) +
                           (evAplic ? (c.EpoDosisPendienteUI ?? 0) : 0);
                 var fe  = c.Dias.Sum(d => d.HierroDosismg ?? 0);
-                var epoCosto = c.Dias.Sum(d =>
-                    (d.EpoDosisuI ?? 0) * _preciosEpo.GetValueOrDefault(d.EpoDosisuI ?? 0, 0))
+                var epoCosto = c.Dias.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI))
                     + (evAplic ? CostoPendienteEpo(c) : 0);
                 return new CostoPaciente(
                     c.Paciente.NombreCompleto,
@@ -814,12 +826,12 @@
                 totalHierroMg += feUI;
                 if (epoUI > 0)
                 {
-                    var precio   = _preciosEpo.GetValueOrDefault(epoUI, 0);
-                    var costoDia = epoUI * precio;
-                    costoEpo += costoDia;
+                    // Una sesión = una aplicación: cuesta el precio completo de la dosis
+                    var precio = _preciosEpo.GetValueOrDefault(epoUI, 0);
+                    costoEpo += precio;
                     if (!aplsPorDosis.TryGetValue(epoUI, out var acc))
                         acc = (0, 0, 0);
-                    aplsPorDosis[epoUI] = (acc.Apps + 1, acc.TotalUI + epoUI, acc.Costo + costoDia);
+                    aplsPorDosis[epoUI] = (acc.Apps + 1, acc.TotalUI + epoUI, acc.Costo + precio);
                 }
                 costoHierro += feUI * _precioHierro;
             }
@@ -898,6 +910,17 @@
             18000 => 6000m,
             _     => 0m
         };
+
+    /// <summary>
+    /// Costo de UNA aplicación de EPO. El precio configurado es por dosis
+    /// administrada (ej. 2,000 UI = $2.80 por aplicación), no por unidad
+    /// internacional, así que no se multiplica por las UI.
+    /// </summary>
+    private decimal PrecioAplicacionEpo(decimal? dosisUI)
+    {
+        var d = dosisUI ?? 0;
+        return d > 0 ? _preciosEpo.GetValueOrDefault(d, 0) : 0;
+    }
 
     private decimal CostoPendienteEpo(CronogramaMedicamento crono)
     {
@@ -1441,8 +1464,21 @@
         _filtroFechaHasta = null;
     }
 
-    private static decimal? ParseDecimal(string? s) =>
-        decimal.TryParse(s, out var v) ? v : null;
+    // Los input type=number siempre envían el valor con punto decimal, sin importar
+    // el idioma del navegador. Se parsea en invariante y se acepta la coma como
+    // separador decimal por si el valor llega escrito o pegado a mano.
+    private static decimal? ParseDecimal(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var estilo = System.Globalization.NumberStyles.Float;
+
+        if (decimal.TryParse(s, estilo, inv, out var v)) return v;
+        return decimal.TryParse(s.Replace(',', '.'), estilo, inv, out v) ? v : null;
+    }
+
+    private static string Inv(decimal v) =>
+        v.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }
 
 <style>
@@ -1575,6 +1611,17 @@
     .crono-config-epo-table td { padding: 0.2rem 0.6rem; text-align: left; }
     .crono-config-epo-table th { color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
     .crono-config-epo-table td:first-child { color: #1e293b; min-width: 80px; }
+
+    /* Campo monetario: el "$" delante evita leer 2,8000 como dos mil ochocientos */
+    .crono-config-money { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .crono-config-money-sign { color: #64748b; font-weight: 700; font-size: 0.82rem; }
+    .crono-config-money .crono-config-input { width: 92px; text-align: right; }
+    .crono-config-hint {
+        margin: 0.15rem 0 0;
+        font-size: 0.72rem;
+        color: #64748b;
+        font-style: italic;
+    }
 
     /* Resumen costos */
     .crono-resumen {
