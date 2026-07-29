@@ -40,6 +40,7 @@ namespace DataMedix.Application.Services
         private readonly IHierroSchedulerService _hierroScheduler;
         private readonly IAplicacionHierroRepository _aplicacionHierroRepo;
         private readonly IEventoDosisPendienteRepository _eventoPendienteRepo;
+        private readonly IPrecioEpoDosisRepository _precioEpoRepo;
 
         public CronogramaService(
             ICronogramaRepository repo,
@@ -48,7 +49,8 @@ namespace DataMedix.Application.Services
             ISnapshotMensualRepository snapshotRepo,
             IHierroSchedulerService hierroScheduler,
             IAplicacionHierroRepository aplicacionHierroRepo,
-            IEventoDosisPendienteRepository eventoPendienteRepo)
+            IEventoDosisPendienteRepository eventoPendienteRepo,
+            IPrecioEpoDosisRepository precioEpoRepo)
         {
             _repo = repo;
             _configRepo = configRepo;
@@ -57,6 +59,7 @@ namespace DataMedix.Application.Services
             _hierroScheduler = hierroScheduler;
             _aplicacionHierroRepo = aplicacionHierroRepo;
             _eventoPendienteRepo = eventoPendienteRepo;
+            _precioEpoRepo = precioEpoRepo;
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -530,25 +533,30 @@ namespace DataMedix.Application.Services
             Guid tenantId, int anio, int mes)
         {
             var cronogramas = await _repo.GetByPeriodoAsync(tenantId, anio, mes);
-            var confEpo = await _configRepo.GetByMedicamentoAsync(tenantId, "EPO");
             var confHierro = await _configRepo.GetByMedicamentoAsync(tenantId, "HIERRO");
+            var preciosEpo = (await _precioEpoRepo.GetByTenantAsync(tenantId))
+                .ToDictionary(p => p.DosisUI, p => p.Precio);
 
-            decimal totalEpoUi = 0, totalHierroMg = 0;
+            decimal totalEpoUi = 0, totalHierroMg = 0, costoEpo = 0;
 
             foreach (var c in cronogramas)
                 foreach (var d in c.Dias)
                 {
-                    totalEpoUi += d.EpoDosisuI ?? 0;
+                    var epoUi = d.EpoDosisuI ?? 0;
+                    totalEpoUi += epoUi;
                     totalHierroMg += d.HierroDosismg ?? 0;
+
+                    // El precio de EPO es por aplicación, no por UI
+                    if (epoUi > 0 && preciosEpo.TryGetValue(epoUi, out var precio))
+                        costoEpo += precio;
                 }
 
             return new ResumenCostos
             {
                 TotalEpoUI = totalEpoUi,
                 TotalHierroMg = totalHierroMg,
-                CostoEpo = totalEpoUi * (confEpo?.PrecioUnitario ?? 0),
+                CostoEpo = costoEpo,
                 CostoHierro = totalHierroMg * (confHierro?.PrecioUnitario ?? 0),
-                PrecioEpoPorUI = confEpo?.PrecioUnitario ?? 0,
                 PrecioHierroPorMg = confHierro?.PrecioUnitario ?? 0
             };
         }
@@ -851,7 +859,6 @@ namespace DataMedix.Application.Services
         public decimal CostoEpo { get; set; }
         public decimal CostoHierro { get; set; }
         public decimal CostoTotal => CostoEpo + CostoHierro;
-        public decimal PrecioEpoPorUI { get; set; }
         public decimal PrecioHierroPorMg { get; set; }
         public int TotalPacientes { get; set; }
         public int TotalSesiones { get; set; }
