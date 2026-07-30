@@ -26,6 +26,12 @@ namespace DataMedix.Domain.Entities
         /// <summary>Nombre del plan de servicio para facturación.</summary>
         public string? PlanNombre { get; set; }
 
+        // ── Tarifas del plan (agregado en migración 007) ──────────────────────
+        /// <summary>Cargo fijo mensual del plan.</summary>
+        public decimal TarifaBase { get; set; }
+        /// <summary>Cargo por cada paciente procesado en el mes.</summary>
+        public decimal TarifaPaciente { get; set; }
+
         public ICollection<Usuario> Usuarios { get; set; } = new List<Usuario>();
         public ICollection<Paciente> Pacientes { get; set; } = new List<Paciente>();
     }

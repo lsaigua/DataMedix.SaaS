@@ -59,6 +59,8 @@ namespace DataMedix.Infrastructure.Persistence
 
         // Facturación / uso (base central — accesible para super admin)
         public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
+        public DbSet<FacturacionPeriodo> FacturacionPeriodos => Set<FacturacionPeriodo>();
+        public DbSet<FacturacionPeriodoDetalle> FacturacionPeriodoDetalles => Set<FacturacionPeriodoDetalle>();
 
         // DataProtection (persistir claves en DB para sobrevivir reinicios en Railway)
         public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -93,6 +95,8 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(t => t.IsolationMode).HasColumnName("isolation_mode").HasMaxLength(20).HasDefaultValue("shared");
                 e.Property(t => t.ConnectionStringRef).HasColumnName("connection_string_ref").HasMaxLength(200);
                 e.Property(t => t.PlanNombre).HasColumnName("plan_nombre").HasMaxLength(100);
+                e.Property(t => t.TarifaBase).HasColumnName("tarifa_base").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(t => t.TarifaPaciente).HasColumnName("tarifa_paciente").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
                 e.HasIndex(t => t.Subdomain).IsUnique();
             });
 
@@ -630,6 +634,58 @@ namespace DataMedix.Infrastructure.Persistence
             });
 
             // ========================
+            // FACTURACION PERIODO
+            // ========================
+            m.Entity<FacturacionPeriodo>(e =>
+            {
+                e.ToTable("facturacion_periodo");
+                e.HasKey(f => f.Id);
+                e.Property(f => f.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(f => f.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(f => f.PeriodoAnio).HasColumnName("periodo_anio").IsRequired();
+                e.Property(f => f.PeriodoMes).HasColumnName("periodo_mes").IsRequired();
+                e.Property(f => f.PlanNombre).HasColumnName("plan_nombre").HasMaxLength(100);
+                e.Property(f => f.TarifaBase).HasColumnName("tarifa_base").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(f => f.TarifaPaciente).HasColumnName("tarifa_paciente").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(f => f.PacientesFacturados).HasColumnName("pacientes_facturados").HasDefaultValue(0);
+                e.Property(f => f.Total).HasColumnName("total").HasColumnType("decimal(14,2)").HasDefaultValue(0m);
+                e.Property(f => f.Estado).HasColumnName("estado").HasMaxLength(20).HasDefaultValue(EstadoFacturacion.Abierto);
+                e.Property(f => f.CerradoAt).HasColumnName("cerrado_at");
+                e.Property(f => f.CerradoPor).HasColumnName("cerrado_por");
+                e.Property(f => f.Observaciones).HasColumnName("observaciones").HasMaxLength(500);
+                e.Property(f => f.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(f => f.UpdatedAt).HasColumnName("updated_at");
+                e.Ignore(f => f.PeriodDate);
+                e.Ignore(f => f.EstaCerrado);
+                e.HasIndex(f => new { f.TenantId, f.PeriodoAnio, f.PeriodoMes }).IsUnique();
+                e.HasMany(f => f.Detalles)
+                 .WithOne(d => d.Periodo)
+                 .HasForeignKey(d => d.FacturacionPeriodoId)
+                 .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            m.Entity<FacturacionPeriodoDetalle>(e =>
+            {
+                e.ToTable("facturacion_periodo_detalle");
+                e.HasKey(d => d.Id);
+                e.Property(d => d.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(d => d.FacturacionPeriodoId).HasColumnName("facturacion_periodo_id").IsRequired();
+                e.Property(d => d.TenantId).HasColumnName("tenant_id").IsRequired();
+                // Sin FK a paciente a propósito: el detalle sobrevive a la depuración
+                e.Property(d => d.PacienteId).HasColumnName("paciente_id").IsRequired();
+                e.Property(d => d.Identificacion).HasColumnName("identificacion").HasMaxLength(50);
+                e.Property(d => d.NombreCompleto).HasColumnName("nombre_completo").HasMaxLength(300);
+                e.Property(d => d.TuvoLaboratorio).HasColumnName("tuvo_laboratorio").HasDefaultValue(false);
+                e.Property(d => d.TuvoSnapshot).HasColumnName("tuvo_snapshot").HasDefaultValue(false);
+                e.Property(d => d.TuvoPrescripcion).HasColumnName("tuvo_prescripcion").HasDefaultValue(false);
+                e.Property(d => d.TuvoCronograma).HasColumnName("tuvo_cronograma").HasDefaultValue(false);
+                e.Property(d => d.EstadoPaciente).HasColumnName("estado_paciente").HasMaxLength(20).HasDefaultValue(EstadoPacienteFacturado.Activo);
+                e.Property(d => d.TarifaAplicada).HasColumnName("tarifa_aplicada").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(d => d.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.HasIndex(d => new { d.FacturacionPeriodoId, d.PacienteId }).IsUnique();
+            });
+
+            // ========================
             // CRONOGRAMA AUDITORIA
             // ========================
             m.Entity<CronogramaAuditoria>(e =>
@@ -791,6 +847,10 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(e => !_tenantCtx.IsResolved || e.TenantId == _tenantCtx.TenantId);
             m.Entity<AuditoriaLog>()
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == _tenantCtx.TenantId);
+            m.Entity<FacturacionPeriodo>()
+             .HasQueryFilter(f => !_tenantCtx.IsResolved || f.TenantId == _tenantCtx.TenantId);
+            m.Entity<FacturacionPeriodoDetalle>()
+             .HasQueryFilter(d => !_tenantCtx.IsResolved || d.TenantId == _tenantCtx.TenantId);
             m.Entity<UsuarioRol>()
              .HasQueryFilter(ur => !_tenantCtx.IsResolved || ur.TenantId == null || ur.TenantId == _tenantCtx.TenantId);
 

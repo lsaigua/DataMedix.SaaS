@@ -14,6 +14,13 @@ namespace DataMedix.Application.Interfaces
         /// <param name="eventType">Identificador del evento (ej. "prescription_suggested").</param>
         /// <param name="metadata">Datos adicionales serializados como JSON (pacienteId, periodo, etc.).</param>
         Task RecordAsync(string eventType, object? metadata = null);
+
+        /// <summary>
+        /// Registra muchos eventos del mismo tipo en una sola conexión.
+        /// Necesario para procesos por lote: un evento por paciente con
+        /// RecordAsync abriría una conexión por paciente.
+        /// </summary>
+        Task RecordManyAsync(string eventType, IEnumerable<object> metadatas);
     }
 
     /// <summary>Constantes de tipos de eventos para evitar magic strings.</summary>

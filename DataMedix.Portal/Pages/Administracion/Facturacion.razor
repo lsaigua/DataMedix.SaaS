@@ -1,0 +1,752 @@
+@page "/facturacion"
+@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs
+
+@inject AuthenticationStateProvider AuthState
+@inject IFacturacionService FacturacionService
+@inject GlobalToastService Toast
+
+<PageTitle>Facturación | DataMedix</PageTitle>
+
+<div class="fac-page">
+
+    <!-- ═══ HEADER ═══════════════════════════════════════════════════════════ -->
+    <div class="fac-header">
+        <div class="fac-header-left">
+            <h1 class="fac-title">Facturación</h1>
+            <p class="fac-subtitle">
+                Consumo mensual por paciente procesado · @NombreMes(_mes) @_anio
+            </p>
+        </div>
+        <div class="fac-header-actions">
+            <select class="fac-select" @bind="_mes" @bind:after="CargarAsync">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    <option value="@m">@NombreMes(m)</option>
+                }
+            </select>
+            <select class="fac-select" @bind="_anio" @bind:after="CargarAsync">
+                @for (int a = DateTime.Today.Year + 1; a >= DateTime.Today.Year - 3; a--)
+                {
+                    <option value="@a">@a</option>
+                }
+            </select>
+            <button class="fac-btn fac-btn-ghost" @onclick="CargarAsync" disabled="@_cargando">
+                @if (_cargando)
+                {
+                    <span class="fac-spinner"></span>
+                }
+                Recalcular
+            </button>
+            @if (_periodo is { EstaCerrado: false, PacientesFacturados: > 0 })
+            {
+                <button class="fac-btn fac-btn-primary" @onclick="() => _confirmarCierre = true"
+                        disabled="@_procesando">
+                    Cerrar período
+                </button>
+            }
+            else if (_periodo is { EstaCerrado: true })
+            {
+                <button class="fac-btn fac-btn-warn" @onclick="() => _confirmarReapertura = true"
+                        disabled="@_procesando">
+                    Reabrir
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="fac-error">@_error</div>
+    }
+
+    @if (_cargando && _periodo == null)
+    {
+        <div class="fac-loading">
+            <div class="fac-spinner-lg"></div>
+            <p>Calculando consumo del período&hellip;</p>
+        </div>
+    }
+    else if (_periodo != null)
+    {
+        var p = _periodo;
+
+        <!-- ═══ ESTADO DEL PERÍODO ═══════════════════════════════════════════ -->
+        <div class="fac-estado @(p.EstaCerrado ? "fac-estado-cerrado" : "fac-estado-abierto")">
+            @if (p.EstaCerrado)
+            {
+                <strong>Período cerrado</strong>
+                <span>
+                    Congelado el @p.CerradoAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm").
+                    Este detalle ya no cambia, aunque después se depuren datos o se den de baja pacientes.
+                </span>
+            }
+            else
+            {
+                <strong>Período abierto</strong>
+                <span>
+                    Los valores se recalculan en vivo. Al cerrarlo quedan congelados y
+                    se guarda una copia de cada paciente facturado.
+                </span>
+            }
+        </div>
+
+        <!-- ═══ RESUMEN DE COBRO ═════════════════════════════════════════════ -->
+        <div class="fac-resumen">
+            <div class="fac-resumen-item">
+                <span class="fac-resumen-label">Plan</span>
+                <span class="fac-resumen-value fac-plan">@(string.IsNullOrWhiteSpace(p.PlanNombre) ? "—" : p.PlanNombre)</span>
+            </div>
+            <div class="fac-resumen-item">
+                <span class="fac-resumen-label">Cargo base</span>
+                <span class="fac-resumen-value">$ @p.TarifaBase.ToString("N2")</span>
+            </div>
+            <div class="fac-resumen-item">
+                <span class="fac-resumen-label">Pacientes facturados</span>
+                <span class="fac-resumen-value">@p.PacientesFacturados.ToString("N0")</span>
+            </div>
+            <div class="fac-resumen-item">
+                <span class="fac-resumen-label">Tarifa x paciente</span>
+                <span class="fac-resumen-value">$ @p.TarifaPaciente.ToString("N2")</span>
+            </div>
+            <div class="fac-resumen-item">
+                <span class="fac-resumen-label">Consumo</span>
+                <span class="fac-resumen-value fac-cost">$ @p.CostoPacientes.ToString("N2")</span>
+            </div>
+            <div class="fac-resumen-item fac-resumen-total">
+                <span class="fac-resumen-label">TOTAL</span>
+                <span class="fac-resumen-value">$ @p.Total.ToString("N2")</span>
+            </div>
+        </div>
+
+        @if (p.TarifaBase == 0 && p.TarifaPaciente == 0)
+        {
+            <div class="fac-aviso">
+                Este tenant no tiene tarifas configuradas, por eso el total es cero.
+                Se definen en <code>tenant.tarifa_base</code> y <code>tenant.tarifa_paciente</code>.
+            </div>
+        }
+
+        @if (p.PacientesFacturados == 0)
+        {
+            <div class="fac-empty">
+                <h3>Sin actividad en @p.NombrePeriodo</h3>
+                <p>Ningún paciente tuvo carga de laboratorio, snapshot, prescripción ni cronograma en este período.</p>
+            </div>
+        }
+        else
+        {
+            <!-- ═══ FILTROS POR ESTADO ═══════════════════════════════════════ -->
+            <div class="fac-filtros">
+                <div class="fac-filtros-grupo">
+                    <span class="fac-filtros-label">Estado del paciente:</span>
+                    @foreach (var f in _filtrosEstado)
+                    {
+                        var local = f;
+                        <button class="fac-seg-btn @(_filtroEstado == local.Val ? "fac-seg-active" : "")"
+                                @onclick="() => _filtroEstado = local.Val">
+                            @local.Label
+                            <span class="fac-seg-num">@ConteoEstado(local.Val)</span>
+                        </button>
+                    }
+                </div>
+                <div class="fac-filtros-right">
+                    <input type="text" class="fac-busqueda" placeholder="Buscar cédula o nombre..."
+                           @bind="_busqueda" @bind:event="oninput" />
+                </div>
+            </div>
+
+            <!-- ═══ DETALLE POR PACIENTE ═════════════════════════════════════ -->
+            <div class="fac-tabla-wrap">
+                <table class="fac-tabla">
+                    <thead>
+                        <tr>
+                            <th>Cédula</th>
+                            <th>Paciente</th>
+                            <th>Actividad facturable</th>
+                            <th class="fac-th-center">Estado</th>
+                            <th class="fac-th-right">Tarifa</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pac in PacientesFiltrados)
+                        {
+                            <tr class="@FilaClase(pac.EstadoPaciente)">
+                                <td><code class="fac-ident">@(pac.Identificacion ?? "—")</code></td>
+                                <td class="fac-td-nombre">
+                                    @if (string.IsNullOrWhiteSpace(pac.NombreCompleto))
+                                    {
+                                        <span class="fac-sin-nombre">Paciente eliminado del padrón</span>
+                                    }
+                                    else
+                                    {
+                                        @PacienteDisplay.Mask(pac.NombreCompleto)
+                                    }
+                                </td>
+                                <td class="fac-td-origen">@pac.Origenes</td>
+                                <td class="fac-th-center">
+                                    <span class="fac-badge @BadgeClase(pac.EstadoPaciente)">
+                                        @EtiquetaEstado(pac.EstadoPaciente)
+                                    </span>
+                                </td>
+                                <td class="fac-th-right fac-td-tarifa">$ @pac.TarifaAplicada.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" class="fac-tfoot-label">
+                                @PacientesFiltrados.Count() de @p.PacientesFacturados paciente(s)
+                            </td>
+                            <td class="fac-th-right fac-tfoot-val">
+                                $ @PacientesFiltrados.Sum(x => x.TarifaAplicada).ToString("N2")
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+
+        <!-- ═══ HISTÓRICO DE PERÍODOS ════════════════════════════════════════ -->
+        @if (_historico.Count > 0)
+        {
+            <div class="fac-historico">
+                <h2 class="fac-historico-title">Períodos registrados</h2>
+                <table class="fac-tabla fac-tabla-hist">
+                    <thead>
+                        <tr>
+                            <th>Período</th>
+                            <th class="fac-th-center">Estado</th>
+                            <th class="fac-th-right">Pacientes</th>
+                            <th class="fac-th-right">Total</th>
+                            <th class="fac-th-right">Cerrado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var h in _historico)
+                        {
+                            var hLocal = h;
+                            <tr class="fac-hist-row @(h.Anio == _anio && h.Mes == _mes ? "fac-hist-actual" : "")"
+                                @onclick="() => IrAPeriodoAsync(hLocal.Anio, hLocal.Mes)">
+                                <td>@NombreMes(h.Mes) @h.Anio</td>
+                                <td class="fac-th-center">
+                                    <span class="fac-badge @(h.Estado == "CERRADO" ? "fac-badge-cerrado" : "fac-badge-abierto")">
+                                        @h.Estado
+                                    </span>
+                                </td>
+                                <td class="fac-th-right">@h.PacientesFacturados.ToString("N0")</td>
+                                <td class="fac-th-right fac-td-tarifa">$ @h.Total.ToString("N2")</td>
+                                <td class="fac-th-right fac-td-fecha">
+                                    @(h.CerradoAt?.ToLocalTime().ToString("dd/MM/yyyy") ?? "—")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+<!-- ═══ MODAL: confirmar cierre ══════════════════════════════════════════════ -->
+@if (_confirmarCierre && _periodo != null)
+{
+    <div class="fac-overlay" @onclick="() => _confirmarCierre = false">
+        <div class="fac-modal" @onclick:stopPropagation="true">
+            <h2 class="fac-modal-title">Cerrar @_periodo.NombrePeriodo</h2>
+            <p class="fac-modal-text">
+                Se congelarán <strong>@_periodo.PacientesFacturados paciente(s)</strong> por un total de
+                <strong>$ @_periodo.Total.ToString("N2")</strong>.
+            </p>
+            <p class="fac-modal-text fac-modal-hint">
+                A partir de ese momento el detalle no cambia: depurar datos o dar de baja
+                pacientes ya no afectará esta factura.
+            </p>
+            <div class="fac-modal-actions">
+                <button class="fac-btn fac-btn-ghost" @onclick="() => _confirmarCierre = false">Cancelar</button>
+                <button class="fac-btn fac-btn-primary" @onclick="CerrarPeriodoAsync" disabled="@_procesando">
+                    @if (_procesando)
+                    {
+                        <span class="fac-spinner"></span>
+                    }
+                    Confirmar cierre
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ═══ MODAL: confirmar reapertura ══════════════════════════════════════════ -->
+@if (_confirmarReapertura && _periodo != null)
+{
+    <div class="fac-overlay" @onclick="() => _confirmarReapertura = false">
+        <div class="fac-modal" @onclick:stopPropagation="true">
+            <h2 class="fac-modal-title">Reabrir @_periodo.NombrePeriodo</h2>
+            <p class="fac-modal-text">
+                El período volverá a calcularse en vivo y el detalle congelado se
+                reemplazará al cerrarlo de nuevo.
+            </p>
+            <p class="fac-modal-text fac-modal-hint">
+                Si ya facturó este período a la clínica, el monto podría cambiar.
+                Úselo solo para corregir un error. Queda registrado en auditoría.
+            </p>
+            <div class="fac-modal-actions">
+                <button class="fac-btn fac-btn-ghost" @onclick="() => _confirmarReapertura = false">Cancelar</button>
+                <button class="fac-btn fac-btn-warn" @onclick="ReabrirPeriodoAsync" disabled="@_procesando">
+                    Confirmar reapertura
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private int _anio = DateTime.Today.Year;
+    private int _mes  = DateTime.Today.Month;
+
+    private Guid _tenantId;
+    private Guid _usuarioId;
+
+    private FacturacionPeriodoDto? _periodo;
+    private List<FacturacionResumenDto> _historico = new();
+
+    private bool _cargando;
+    private bool _procesando;
+    private bool _confirmarCierre;
+    private bool _confirmarReapertura;
+    private string? _error;
+
+    private string _filtroEstado = "TODOS";
+    private string _busqueda = "";
+
+    private readonly (string Val, string Label)[] _filtrosEstado =
+    {
+        ("TODOS",     "Todos"),
+        ("ACTIVO",    "Activos"),
+        ("BAJA",      "Dados de baja"),
+        ("ELIMINADO", "Eliminados")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _tenantId  = Guid.TryParse(auth.User.FindFirst("tenant_id")?.Value, out var t) ? t : Guid.Empty;
+        _usuarioId = Guid.TryParse(auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var u) ? u : Guid.Empty;
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (_tenantId == Guid.Empty) { _error = "No se pudo resolver el tenant de la sesión."; return; }
+
+        _cargando = true;
+        _error    = null;
+        StateHasChanged();
+
+        try
+        {
+            _periodo   = await FacturacionService.ObtenerPeriodoAsync(_tenantId, _anio, _mes);
+            _historico = await FacturacionService.ListarPeriodosAsync(_tenantId);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al calcular la facturación: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task IrAPeriodoAsync(int anio, int mes)
+    {
+        _anio = anio;
+        _mes  = mes;
+        await CargarAsync();
+    }
+
+    private async Task CerrarPeriodoAsync()
+    {
+        _procesando = true;
+        try
+        {
+            _periodo = await FacturacionService.CerrarPeriodoAsync(_tenantId, _anio, _mes, _usuarioId);
+            _historico = await FacturacionService.ListarPeriodosAsync(_tenantId);
+            _confirmarCierre = false;
+            Toast.ShowSuccess($"Período {_periodo.NombrePeriodo} cerrado — {_periodo.PacientesFacturados} paciente(s)");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al cerrar el período: {ex.Message}";
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    private async Task ReabrirPeriodoAsync()
+    {
+        _procesando = true;
+        try
+        {
+            await FacturacionService.ReabrirPeriodoAsync(_tenantId, _anio, _mes, _usuarioId);
+            _confirmarReapertura = false;
+            await CargarAsync();
+            Toast.ShowSuccess("Período reabierto");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al reabrir el período: {ex.Message}";
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    private IEnumerable<FacturacionPacienteDto> PacientesFiltrados
+    {
+        get
+        {
+            if (_periodo == null) return Enumerable.Empty<FacturacionPacienteDto>();
+
+            var q = _periodo.Pacientes.AsEnumerable();
+
+            if (_filtroEstado != "TODOS")
+                q = q.Where(p => p.EstadoPaciente == _filtroEstado);
+
+            if (!string.IsNullOrWhiteSpace(_busqueda))
+            {
+                var b = _busqueda.Trim();
+                q = q.Where(p =>
+                    (p.Identificacion?.Contains(b, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.NombreCompleto?.Contains(b, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            return q;
+        }
+    }
+
+    private int ConteoEstado(string estado) => _periodo == null ? 0
+        : estado == "TODOS" ? _periodo.PacientesFacturados
+        : _periodo.Pacientes.Count(p => p.EstadoPaciente == estado);
+
+    private static string EtiquetaEstado(string e) => e switch
+    {
+        "ACTIVO"    => "Activo",
+        "BAJA"      => "Dado de baja",
+        "ELIMINADO" => "Eliminado",
+        _           => e
+    };
+
+    private static string BadgeClase(string e) => e switch
+    {
+        "ACTIVO"    => "fac-badge-activo",
+        "BAJA"      => "fac-badge-baja",
+        "ELIMINADO" => "fac-badge-eliminado",
+        _           => ""
+    };
+
+    private static string FilaClase(string e) => e switch
+    {
+        "BAJA"      => "fac-row-baja",
+        "ELIMINADO" => "fac-row-eliminado",
+        _           => ""
+    };
+
+    private static string NombreMes(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+}
+
+<style>
+    .fac-page { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    /* Header */
+    .fac-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .fac-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 0.2rem; }
+    .fac-subtitle { font-size: 0.85rem; color: #64748b; margin: 0; }
+    .fac-header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+    .fac-select {
+        padding: 0.45rem 0.7rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: #1e293b;
+        background: white;
+    }
+    .fac-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: none;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .fac-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .fac-btn-primary { background: #0ea5e9; color: white; }
+    .fac-btn-primary:hover:not(:disabled) { background: #0284c7; }
+    .fac-btn-warn { background: #f59e0b; color: white; }
+    .fac-btn-warn:hover:not(:disabled) { background: #d97706; }
+    .fac-btn-ghost { background: #f1f5f9; color: #475569; }
+    .fac-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
+
+    /* Estado del período */
+    .fac-estado {
+        display: flex;
+        align-items: baseline;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        padding: 0.7rem 1rem;
+        border-radius: 10px;
+        font-size: 0.82rem;
+        border-left: 4px solid;
+    }
+    .fac-estado strong { font-size: 0.85rem; }
+    .fac-estado-abierto { background: #f0f9ff; border-color: #0ea5e9; color: #0c4a6e; }
+    .fac-estado-cerrado { background: #f0fdf4; border-color: #16a34a; color: #14532d; }
+
+    /* Resumen */
+    .fac-resumen {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 2rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.9rem 1.25rem;
+    }
+    .fac-resumen-item { display: flex; flex-direction: column; gap: 0.15rem; }
+    .fac-resumen-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .fac-resumen-value { font-size: 1rem; font-weight: 800; color: #0f172a; }
+    .fac-plan { font-size: 0.9rem; color: #7c3aed; }
+    .fac-cost { color: #0ea5e9; }
+    .fac-resumen-total { margin-left: auto; }
+    .fac-resumen-total .fac-resumen-value { color: #7c3aed; font-size: 1.2rem; }
+
+    .fac-aviso {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 0.7rem 1rem;
+        font-size: 0.8rem;
+        color: #9a3412;
+    }
+    .fac-aviso code { background: #ffedd5; padding: 0 0.25rem; border-radius: 4px; }
+
+    .fac-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        color: #991b1b;
+    }
+
+    /* Filtros */
+    .fac-filtros {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .fac-filtros-grupo { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .fac-filtros-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .fac-filtros-right { margin-left: auto; }
+    .fac-seg-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.32rem 0.7rem;
+        border: 1px solid #e2e8f0;
+        background: white;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .fac-seg-btn:hover { background: #f1f5f9; }
+    .fac-seg-active { background: #0f172a; border-color: #0f172a; color: white; }
+    .fac-seg-num {
+        background: rgba(100, 116, 139, 0.16);
+        border-radius: 999px;
+        padding: 0 0.4rem;
+        font-size: 0.7rem;
+    }
+    .fac-seg-active .fac-seg-num { background: rgba(255, 255, 255, 0.22); }
+
+    .fac-busqueda {
+        padding: 0.45rem 0.75rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        min-width: 230px;
+    }
+
+    /* Tabla */
+    .fac-tabla-wrap {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: auto;
+        max-height: 60vh;
+    }
+    .fac-tabla { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    .fac-tabla thead th {
+        position: sticky;
+        top: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.5rem 0.9rem;
+        text-align: left;
+        z-index: 1;
+    }
+    .fac-tabla tbody td {
+        padding: 0.42rem 0.9rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #1e293b;
+    }
+    .fac-tabla tbody tr:hover td { background: #f8fafc; }
+    .fac-th-center { text-align: center !important; }
+    .fac-th-right  { text-align: right !important; }
+    .fac-ident { font-size: 0.78rem; color: #475569; background: #f1f5f9; padding: 0.1rem 0.4rem; border-radius: 4px; }
+    .fac-td-nombre { font-weight: 600; }
+    .fac-td-origen { font-size: 0.76rem; color: #64748b; }
+    .fac-td-tarifa { font-weight: 700; color: #0ea5e9; }
+    .fac-td-fecha  { font-size: 0.78rem; color: #64748b; }
+    .fac-sin-nombre { color: #94a3b8; font-style: italic; font-weight: 400; }
+
+    .fac-row-baja td      { background: #fffbeb; }
+    .fac-row-eliminado td { background: #fef2f2; }
+
+    .fac-tabla tfoot td {
+        background: #0f172a;
+        color: #e2e8f0;
+        font-weight: 700;
+        padding: 0.45rem 0.9rem;
+        position: sticky;
+        bottom: 0;
+    }
+    .fac-tfoot-label { color: #94a3b8; font-size: 0.72rem; }
+    .fac-tfoot-val   { color: #38bdf8; }
+
+    .fac-badge {
+        display: inline-block;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .fac-badge-activo    { background: #dcfce7; color: #166534; }
+    .fac-badge-baja      { background: #fef3c7; color: #92400e; }
+    .fac-badge-eliminado { background: #fee2e2; color: #991b1b; }
+    .fac-badge-cerrado   { background: #dcfce7; color: #166534; }
+    .fac-badge-abierto   { background: #e0f2fe; color: #075985; }
+
+    /* Histórico */
+    .fac-historico {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        background: white;
+    }
+    .fac-historico-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 0.75rem;
+    }
+    .fac-tabla-hist thead th { background: #f1f5f9; color: #475569; }
+    .fac-hist-row { cursor: pointer; }
+    .fac-hist-actual td { background: #f0f9ff !important; font-weight: 700; }
+
+    /* Estados vacíos y carga */
+    .fac-empty {
+        text-align: center;
+        padding: 2.5rem 1rem;
+        color: #94a3b8;
+    }
+    .fac-empty h3 { color: #475569; font-size: 1rem; margin: 0 0 0.35rem; }
+    .fac-empty p { margin: 0; font-size: 0.85rem; }
+
+    .fac-loading { text-align: center; padding: 3rem 1rem; color: #64748b; }
+    .fac-spinner, .fac-spinner-lg {
+        display: inline-block;
+        border-radius: 50%;
+        animation: fac-spin 0.7s linear infinite;
+    }
+    .fac-spinner {
+        width: 13px; height: 13px;
+        border: 2px solid rgba(255,255,255,0.35);
+        border-top-color: currentColor;
+    }
+    .fac-spinner-lg {
+        width: 34px; height: 34px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #0ea5e9;
+        margin-bottom: 0.75rem;
+    }
+    @@keyframes fac-spin { to { transform: rotate(360deg); } }
+
+    /* Modales */
+    .fac-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+    .fac-modal {
+        background: white;
+        border-radius: 14px;
+        padding: 1.5rem;
+        max-width: 460px;
+        width: 100%;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+    }
+    .fac-modal-title { font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 0 0 0.75rem; }
+    .fac-modal-text { font-size: 0.85rem; color: #334155; margin: 0 0 0.6rem; line-height: 1.5; }
+    .fac-modal-hint { font-size: 0.78rem; color: #64748b; }
+    .fac-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.1rem; }
+</style>
