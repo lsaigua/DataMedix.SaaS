@@ -1,0 +1,657 @@
+@page "/admin/clientes"
+@attribute [Authorize(Policy = "perm:tenants.gestionar")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs
+
+@inject AuthenticationStateProvider AuthState
+@inject ITenantAdminService TenantAdmin
+@inject GlobalToastService Toast
+@inject NavigationManager Nav
+
+<PageTitle>Clientes | DataMedix</PageTitle>
+
+<div class="cl-page">
+
+    <div class="cl-header">
+        <div>
+            <h1 class="cl-title">Clientes</h1>
+            <p class="cl-subtitle">
+                Clínicas, laboratorios y farmacias que usan DataMedix.
+                Cada uno opera aislado del resto con su propio subdominio.
+            </p>
+        </div>
+        <div class="cl-header-actions">
+            <label class="cl-toggle">
+                <input type="checkbox" checked="@_verInactivos"
+                       @onchange="e => { _verInactivos = e.Value is true; }" />
+                Ver inactivos
+            </label>
+            <button class="cl-btn cl-btn-primary" @onclick="AbrirNuevo">+ Nuevo cliente</button>
+        </div>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="cl-error">@_error</div>
+    }
+
+    @if (_cargando)
+    {
+        <div class="cl-loading">
+            <div class="cl-spinner-lg"></div>
+            <p>Cargando clientes&hellip;</p>
+        </div>
+    }
+    else if (Visibles.Count == 0)
+    {
+        <div class="cl-empty">
+            <h3>Sin clientes registrados</h3>
+            <p>Cree el primero con el botón «Nuevo cliente».</p>
+        </div>
+    }
+    else
+    {
+        <div class="cl-grid">
+            @foreach (var c in Visibles)
+            {
+                var local = c;
+                <div class="cl-card @(local.Activo ? "" : "cl-card-inactivo")">
+                    <div class="cl-card-head">
+                        <div>
+                            <div class="cl-card-nombre">@local.Nombre</div>
+                            <div class="cl-card-sub">@local.Subdomain</div>
+                        </div>
+                        <span class="cl-badge @(local.Activo ? "cl-badge-activo" : "cl-badge-inactivo")">
+                            @(local.Activo ? "Activo" : "Inactivo")
+                        </span>
+                    </div>
+
+                    <div class="cl-card-datos">
+                        @if (!string.IsNullOrWhiteSpace(local.PlanNombre))
+                        {
+                            <span class="cl-chip cl-chip-plan">@local.PlanNombre</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(local.Ciudad))
+                        {
+                            <span class="cl-chip">@local.Ciudad</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(local.Ruc))
+                        {
+                            <span class="cl-chip">RUC @local.Ruc</span>
+                        }
+                    </div>
+
+                    <div class="cl-metricas">
+                        <div>
+                            <span class="cl-metrica-num">@local.Usuarios</span>
+                            <span class="cl-metrica-lbl">usuarios</span>
+                        </div>
+                        <div>
+                            <span class="cl-metrica-num">@local.Pacientes.ToString("N0")</span>
+                            <span class="cl-metrica-lbl">pacientes</span>
+                        </div>
+                        <div>
+                            <span class="cl-metrica-num">
+                                @(local.UltimaActividad?.ToLocalTime().ToString("dd/MM/yy") ?? "—")
+                            </span>
+                            <span class="cl-metrica-lbl">últ. carga</span>
+                        </div>
+                    </div>
+
+                    <div class="cl-card-acciones">
+                        <button class="cl-btn cl-btn-ghost cl-btn-sm" @onclick="() => AbrirEdicion(local)">
+                            Editar
+                        </button>
+                        <a class="cl-btn cl-btn-ghost cl-btn-sm" href="/admin/tarifas">Tarifas</a>
+                        @if (local.Activo)
+                        {
+                            <button class="cl-btn cl-btn-warn cl-btn-sm"
+                                    @onclick="() => _confirmarEstado = local">
+                                Desactivar
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="cl-btn cl-btn-ok cl-btn-sm"
+                                    @onclick="() => CambiarEstadoAsync(local, true)">
+                                Reactivar
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- ═══ MODAL: alta / edición ══════════════════════════════════════════════ -->
+@if (_form != null)
+{
+    <div class="cl-overlay" @onclick="Cerrar">
+        <div class="cl-modal" @onclick:stopPropagation="true">
+            <div class="cl-modal-head">
+                <h2 class="cl-modal-title">
+                    @(_form.EsNuevo ? "Nuevo cliente" : $"Editar {_form.Nombre}")
+                </h2>
+                <button class="cl-modal-close" @onclick="Cerrar" aria-label="Cerrar">&times;</button>
+            </div>
+
+            <div class="cl-modal-body">
+                @if (_modalError != null)
+                {
+                    <div class="cl-error">@_modalError</div>
+                }
+
+                <h3 class="cl-seccion">Datos del centro</h3>
+                <div class="cl-grid-form">
+                    <div class="cl-campo cl-campo-ancho">
+                        <label class="cl-label">Nombre <span class="cl-req">*</span></label>
+                        <input class="cl-input" @bind="_form.Nombre"
+                               placeholder="Ej: Centro de Diálisis San Rafael" />
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">Subdominio <span class="cl-req">*</span></label>
+                        <input class="cl-input" @bind="_form.Subdomain" placeholder="sanrafael" />
+                        <span class="cl-hint">Acceso: @(string.IsNullOrWhiteSpace(_form.Subdomain) ? "…" : _form.Subdomain.Trim().ToLowerInvariant()).datamedix.com</span>
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">Código</label>
+                        <input class="cl-input" @bind="_form.Codigo" placeholder="Se genera del subdominio" />
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">RUC / NIT</label>
+                        <input class="cl-input" @bind="_form.Ruc" />
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">Plan</label>
+                        <input class="cl-input" @bind="_form.PlanNombre" placeholder="Ej: Profesional" />
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">Email de contacto</label>
+                        <input class="cl-input" type="email" @bind="_form.EmailContacto" />
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">Teléfono</label>
+                        <input class="cl-input" @bind="_form.Telefono" />
+                    </div>
+                    <div class="cl-campo cl-campo-ancho">
+                        <label class="cl-label">Dirección</label>
+                        <input class="cl-input" @bind="_form.Direccion" />
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">Ciudad</label>
+                        <input class="cl-input" @bind="_form.Ciudad" />
+                    </div>
+                    <div class="cl-campo">
+                        <label class="cl-label">País</label>
+                        <input class="cl-input" @bind="_form.Pais" />
+                    </div>
+                </div>
+
+                @if (_form.EsNuevo)
+                {
+                    <h3 class="cl-seccion">Administrador inicial</h3>
+                    <p class="cl-seccion-desc">
+                        Sin este usuario nadie podría entrar al cliente recién creado.
+                        Recibirá el rol <strong>ADMIN</strong> y desde ahí podrá dar de alta
+                        al resto del equipo y ajustar los permisos de cada rol.
+                    </p>
+                    <div class="cl-grid-form">
+                        <div class="cl-campo">
+                            <label class="cl-label">Nombre <span class="cl-req">*</span></label>
+                            <input class="cl-input" @bind="_admin.PrimerNombre" />
+                        </div>
+                        <div class="cl-campo">
+                            <label class="cl-label">Apellido <span class="cl-req">*</span></label>
+                            <input class="cl-input" @bind="_admin.PrimerApellido" />
+                        </div>
+                        <div class="cl-campo">
+                            <label class="cl-label">Identificación <span class="cl-req">*</span></label>
+                            <input class="cl-input" @bind="_admin.Identificacion" />
+                        </div>
+                        <div class="cl-campo">
+                            <label class="cl-label">Correo <span class="cl-req">*</span></label>
+                            <input class="cl-input" type="email" @bind="_admin.Email" />
+                        </div>
+                        <div class="cl-campo cl-campo-ancho">
+                            <label class="cl-label">Contraseña inicial <span class="cl-req">*</span></label>
+                            <input class="cl-input" type="password" @bind="_admin.Password"
+                                   placeholder="Mínimo 6 caracteres" />
+                            <span class="cl-hint">Comuníquela por un canal seguro y pida que la cambie al primer ingreso.</span>
+                        </div>
+                    </div>
+
+                    <div class="cl-nota">
+                        Al crear el cliente se cargan los tramos de precio por defecto
+                        (1–100 → $3.50, 101–300 → $2.80, 301+ → $2.20) y el modelo
+                        <strong>base + por paciente</strong>. Ajústelos en
+                        <a href="/admin/tarifas">Tarifas y Planes</a> si el contrato es distinto.
+                    </div>
+                }
+            </div>
+
+            <div class="cl-modal-foot">
+                <button class="cl-btn cl-btn-ghost" @onclick="Cerrar">Cancelar</button>
+                <button class="cl-btn cl-btn-primary" @onclick="GuardarAsync" disabled="@_guardando">
+                    @if (_guardando)
+                    {
+                        <span class="cl-spinner"></span>
+                    }
+                    @(_form.EsNuevo ? "Crear cliente" : "Guardar cambios")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ═══ MODAL: confirmar desactivación ═════════════════════════════════════ -->
+@if (_confirmarEstado != null)
+{
+    <div class="cl-overlay" @onclick="() => _confirmarEstado = null">
+        <div class="cl-modal cl-modal-sm" @onclick:stopPropagation="true">
+            <div class="cl-modal-head">
+                <h2 class="cl-modal-title">Desactivar @_confirmarEstado.Nombre</h2>
+            </div>
+            <div class="cl-modal-body">
+                <p class="cl-texto">
+                    Sus usuarios dejarán de poder ingresar al sistema.
+                </p>
+                <p class="cl-texto cl-texto-hint">
+                    No se elimina nada: los datos clínicos, el padrón de pacientes y el
+                    histórico de facturación se conservan íntegros, y puede reactivarlo
+                    en cualquier momento.
+                </p>
+            </div>
+            <div class="cl-modal-foot">
+                <button class="cl-btn cl-btn-ghost" @onclick="() => _confirmarEstado = null">Cancelar</button>
+                <button class="cl-btn cl-btn-warn"
+                        @onclick="() => CambiarEstadoAsync(_confirmarEstado, false)">
+                    Desactivar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Guid _usuarioId;
+
+    private List<TenantAdminDto> _clientes = new();
+    private TenantAdminDto? _form;
+    private AdminInicialDto _admin = new();
+    private TenantAdminDto? _confirmarEstado;
+
+    private bool _cargando = true;
+    private bool _guardando;
+    private bool _verInactivos = true;
+    private string? _error;
+    private string? _modalError;
+
+    private List<TenantAdminDto> Visibles =>
+        _verInactivos ? _clientes : _clientes.Where(c => c.Activo).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _usuarioId = Guid.TryParse(auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var u) ? u : Guid.Empty;
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _error    = null;
+
+        try
+        {
+            _clientes = await TenantAdmin.ListarAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al cargar los clientes: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirNuevo()
+    {
+        _form = new TenantAdminDto { Pais = "Ecuador", Activo = true };
+        _admin = new AdminInicialDto();
+        _modalError = null;
+    }
+
+    private void AbrirEdicion(TenantAdminDto c)
+    {
+        // Copia local: cancelar no debe dejar la tarjeta editada a medias
+        _form = new TenantAdminDto
+        {
+            Id            = c.Id,
+            Codigo        = c.Codigo,
+            Nombre        = c.Nombre,
+            Subdomain     = c.Subdomain,
+            Ruc           = c.Ruc,
+            EmailContacto = c.EmailContacto,
+            Telefono      = c.Telefono,
+            Direccion     = c.Direccion,
+            Ciudad        = c.Ciudad,
+            Pais          = c.Pais,
+            PlanNombre    = c.PlanNombre,
+            Activo        = c.Activo
+        };
+        _modalError = null;
+    }
+
+    private void Cerrar()
+    {
+        _form = null;
+        _modalError = null;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_form is null) return;
+
+        _guardando  = true;
+        _modalError = null;
+
+        try
+        {
+            if (_form.EsNuevo)
+            {
+                await TenantAdmin.CrearAsync(_form, _admin, _usuarioId);
+                Toast.ShowSuccess($"Cliente «{_form.Nombre}» creado con su administrador inicial");
+            }
+            else
+            {
+                await TenantAdmin.ActualizarAsync(_form, _usuarioId);
+                Toast.ShowSuccess("Cambios guardados");
+            }
+
+            Cerrar();
+            await CargarAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ex.Message.Contains("unique") || ex.Message.Contains("duplicate")
+                ? "Ya existe un registro con ese correo o subdominio."
+                : ex.Message;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task CambiarEstadoAsync(TenantAdminDto c, bool activo)
+    {
+        if (c.Id is null) return;
+
+        try
+        {
+            await TenantAdmin.CambiarEstadoAsync(c.Id.Value, activo, _usuarioId);
+            _confirmarEstado = null;
+            await CargarAsync();
+            Toast.ShowSuccess(activo ? $"{c.Nombre} reactivado" : $"{c.Nombre} desactivado");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al cambiar el estado: {ex.Message}";
+            _confirmarEstado = null;
+        }
+    }
+}
+
+<style>
+    .cl-page { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+    .cl-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .cl-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .cl-subtitle { font-size: 0.85rem; color: #64748b; margin: 0; max-width: 620px; line-height: 1.5; }
+    .cl-header-actions { display: flex; align-items: center; gap: 0.75rem; }
+    .cl-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.8rem;
+        color: #475569;
+        cursor: pointer;
+    }
+
+    /* Tarjetas de cliente */
+    .cl-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 0.9rem;
+    }
+    .cl-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1rem 1.1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        transition: box-shadow 0.15s;
+    }
+    .cl-card:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); }
+    .cl-card-inactivo { opacity: 0.65; background: #f8fafc; }
+    .cl-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.6rem; }
+    .cl-card-nombre { font-size: 0.95rem; font-weight: 800; color: #0f172a; }
+    .cl-card-sub { font-size: 0.75rem; color: #94a3b8; }
+
+    .cl-card-datos { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .cl-chip {
+        background: #f1f5f9;
+        color: #475569;
+        border-radius: 999px;
+        padding: 0.1rem 0.55rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .cl-chip-plan { background: #ede9fe; color: #6d28d9; }
+
+    .cl-metricas {
+        display: flex;
+        gap: 1.2rem;
+        border-top: 1px solid #f1f5f9;
+        border-bottom: 1px solid #f1f5f9;
+        padding: 0.55rem 0;
+    }
+    .cl-metricas > div { display: flex; flex-direction: column; }
+    .cl-metrica-num { font-size: 0.95rem; font-weight: 800; color: #0f172a; }
+    .cl-metrica-lbl {
+        font-size: 0.63rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+    }
+
+    .cl-card-acciones { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+
+    .cl-badge {
+        border-radius: 999px;
+        padding: 0.1rem 0.55rem;
+        font-size: 0.66rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .cl-badge-activo   { background: #dcfce7; color: #166534; }
+    .cl-badge-inactivo { background: #fee2e2; color: #991b1b; }
+
+    /* Botones */
+    .cl-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: none;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s;
+    }
+    .cl-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .cl-btn-sm { padding: 0.33rem 0.7rem; font-size: 0.78rem; }
+    .cl-btn-primary { background: #0ea5e9; color: white; }
+    .cl-btn-primary:hover:not(:disabled) { background: #0284c7; }
+    .cl-btn-ghost { background: #f1f5f9; color: #475569; }
+    .cl-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
+    .cl-btn-warn { background: #f59e0b; color: white; }
+    .cl-btn-warn:hover:not(:disabled) { background: #d97706; }
+    .cl-btn-ok { background: #16a34a; color: white; }
+    .cl-btn-ok:hover:not(:disabled) { background: #15803d; }
+
+    /* Modal */
+    .cl-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1.5rem;
+    }
+    .cl-modal {
+        background: white;
+        border-radius: 14px;
+        width: 100%;
+        max-width: 720px;
+        max-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+    }
+    .cl-modal-sm { max-width: 440px; }
+    .cl-modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.3rem;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        flex: none;
+    }
+    .cl-modal-title { font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 0; }
+    .cl-modal-close {
+        border: none;
+        background: transparent;
+        color: #94a3b8;
+        font-size: 1.6rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 0.25rem;
+        border-radius: 8px;
+    }
+    .cl-modal-close:hover { background: #e2e8f0; color: #0f172a; }
+    .cl-modal-body { padding: 1.1rem 1.3rem; overflow-y: auto; }
+    .cl-modal-foot {
+        padding: 0.8rem 1.3rem;
+        border-top: 1px solid #e2e8f0;
+        background: #f8fafc;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        flex: none;
+    }
+
+    .cl-seccion {
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 0.4rem 0 0.6rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .cl-seccion-desc { font-size: 0.8rem; color: #64748b; margin: 0 0 0.8rem; line-height: 1.5; }
+
+    .cl-grid-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 0.7rem;
+        margin-bottom: 1rem;
+    }
+    .cl-campo { display: flex; flex-direction: column; gap: 0.25rem; }
+    .cl-campo-ancho { grid-column: 1 / -1; }
+    .cl-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .cl-req { color: #dc2626; }
+    .cl-input {
+        padding: 0.45rem 0.65rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 7px;
+        font-size: 0.85rem;
+        color: #1e293b;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .cl-input:focus { outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 2px rgba(14,165,233,0.15); }
+    .cl-hint { font-size: 0.71rem; color: #94a3b8; }
+
+    .cl-nota {
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        border-left: 4px solid #0ea5e9;
+        border-radius: 8px;
+        padding: 0.65rem 0.9rem;
+        font-size: 0.78rem;
+        color: #0c4a6e;
+        line-height: 1.5;
+    }
+    .cl-texto { font-size: 0.86rem; color: #334155; margin: 0 0 0.5rem; line-height: 1.5; }
+    .cl-texto-hint { font-size: 0.79rem; color: #64748b; margin: 0; }
+
+    .cl-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 0.7rem 1rem;
+        font-size: 0.83rem;
+        color: #991b1b;
+        margin-bottom: 0.8rem;
+    }
+    .cl-empty { text-align: center; padding: 3rem 1rem; color: #94a3b8; }
+    .cl-empty h3 { color: #475569; font-size: 1rem; margin: 0 0 0.35rem; }
+    .cl-empty p { margin: 0; font-size: 0.85rem; }
+
+    .cl-loading { text-align: center; padding: 3rem 1rem; color: #64748b; }
+    .cl-spinner, .cl-spinner-lg {
+        display: inline-block;
+        border-radius: 50%;
+        animation: cl-spin 0.7s linear infinite;
+    }
+    .cl-spinner {
+        width: 13px; height: 13px;
+        border: 2px solid rgba(255,255,255,0.35);
+        border-top-color: currentColor;
+    }
+    .cl-spinner-lg {
+        width: 34px; height: 34px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #0ea5e9;
+        margin-bottom: 0.75rem;
+    }
+    @@keyframes cl-spin { to { transform: rotate(360deg); } }
+</style>

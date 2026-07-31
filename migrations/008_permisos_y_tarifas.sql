@@ -83,6 +83,7 @@ INSERT INTO permiso (codigo, nombre, descripcion, grupo, ruta, orden, solo_super
     ('depuracion.ejecutar',   'Depuración de datos',        'Eliminar datos de un período',                 'Administración', '/admin/depuracion',         140, false),
     ('facturacion.ver',       'Facturación',                'Consultar el consumo y costo mensual',         'Administración', '/facturacion',              150, false),
     ('facturacion.cerrar',    'Cerrar período',             'Congelar la facturación de un mes',            'Administración', NULL,                        151, false),
+    ('tenants.gestionar',     'Clientes',                   'Alta y edición de clínicas y laboratorios',    'Plataforma',     '/admin/clientes',           199, true),
     ('tarifas.configurar',    'Tarifas y planes',           'Definir el modelo de cobro de cada cliente',   'Plataforma',     '/admin/tarifas',            200, true),
     ('facturacion.global',    'Facturación consolidada',    'Ver la facturación de todos los clientes',     'Plataforma',     '/admin/facturacion-global', 201, true)
 ON CONFLICT (codigo) DO UPDATE SET

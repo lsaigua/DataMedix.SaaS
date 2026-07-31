@@ -59,6 +59,7 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IFacturacionService, FacturacionService>();
             services.AddScoped<IPermisoService, PermisoService>();
             services.AddScoped<ITarifaService, TarifaService>();
+            services.AddScoped<ITenantAdminService, TenantAdminService>();
             services.AddScoped<IEntradaManualService, EntradaManualService>();
             services.AddScoped<IUsageMeter, UsageMeter>();
 

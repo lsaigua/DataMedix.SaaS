@@ -83,6 +83,7 @@ namespace DataMedix.Domain.Entities
         public const string FacturacionCerrar     = "facturacion.cerrar";
 
         // Plataforma — dueño del SaaS
+        public const string TenantsGestionar      = "tenants.gestionar";
         public const string TarifasConfigurar     = "tarifas.configurar";
         public const string FacturacionGlobal     = "facturacion.global";
 

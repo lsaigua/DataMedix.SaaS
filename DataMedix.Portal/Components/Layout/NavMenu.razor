@@ -293,9 +293,22 @@
 
         @* Consola del proveedor del SaaS: los permisos de plataforma están
            marcados solo_superadmin, así que ningún tenant puede concedérselos. *@
-        @if (AlgunPermiso(Permisos.TarifasConfigurar, Permisos.FacturacionGlobal))
+        @if (AlgunPermiso(Permisos.TenantsGestionar, Permisos.TarifasConfigurar, Permisos.FacturacionGlobal))
         {
                 <div class="dm-nav-section">PLATAFORMA</div>
+        }
+        @if (Puede(Permisos.TenantsGestionar))
+        {
+                <NavLink href="/admin/clientes" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 21h18M5 21V7l7-4 7 4v14"/>
+                            <path d="M9 21v-6h6v6"/><path d="M9 11h.01M15 11h.01"/>
+                        </svg>
+                    </span>
+                    Clientes
+                </NavLink>
         }
         @if (Puede(Permisos.TarifasConfigurar))
         {
