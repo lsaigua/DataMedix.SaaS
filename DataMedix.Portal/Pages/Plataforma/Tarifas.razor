@@ -1,0 +1,770 @@
+@page "/admin/tarifas"
+@attribute [Authorize(Policy = "perm:tarifas.configurar")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using System.Globalization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs
+@using DataMedix.Domain.Entities
+
+@inject AuthenticationStateProvider AuthState
+@inject ITarifaService TarifaService
+@inject GlobalToastService Toast
+
+<PageTitle>Tarifas y Planes | DataMedix</PageTitle>
+
+<div class="tf-page">
+
+    <div class="tf-header">
+        <div>
+            <h1 class="tf-title">Tarifas y Planes</h1>
+            <p class="tf-subtitle">
+                Modelo de cobro de cada cliente. Define lo que DataMedix factura
+                mensualmente y lo que el cliente ve en su pantalla de Facturación.
+            </p>
+        </div>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="tf-error">@_error</div>
+    }
+
+    @if (_cargando)
+    {
+        <div class="tf-loading">
+            <div class="tf-spinner-lg"></div>
+            <p>Cargando clientes&hellip;</p>
+        </div>
+    }
+    else
+    {
+        <div class="tf-layout">
+
+            <!-- ═══ LISTA DE CLIENTES ════════════════════════════════════════ -->
+            <aside class="tf-lista">
+                <div class="tf-lista-header">Clientes (@_tenants.Count)</div>
+                @foreach (var t in _tenants)
+                {
+                    var local = t;
+                    <button class="tf-cliente @(_editando?.TenantId == local.TenantId ? "tf-cliente-activo" : "")"
+                            @onclick="() => Seleccionar(local)">
+                        <span class="tf-cliente-nombre">@(local.TenantNombre ?? local.Subdomain)</span>
+                        <span class="tf-cliente-meta">
+                            <span class="tf-badge-modelo">@ModeloCobro.Etiqueta(local.ModeloCobro)</span>
+                            @if (!local.Activo)
+                            {
+                                <span class="tf-badge-inactivo">Inactivo</span>
+                            }
+                        </span>
+                    </button>
+                }
+            </aside>
+
+            <!-- ═══ EDITOR ═══════════════════════════════════════════════════ -->
+            <section class="tf-editor">
+                @if (_editando is null)
+                {
+                    <div class="tf-empty">
+                        <h3>Seleccione un cliente</h3>
+                        <p>Elija una clínica o laboratorio de la lista para configurar su cobro.</p>
+                    </div>
+                }
+                else
+                {
+                    var e = _editando;
+
+                    <div class="tf-editor-header">
+                        <div>
+                            <h2 class="tf-editor-title">@(e.TenantNombre ?? e.Subdomain)</h2>
+                            <p class="tf-editor-sub">@e.Subdomain</p>
+                        </div>
+                        <button class="tf-btn tf-btn-primary" @onclick="GuardarAsync" disabled="@_guardando">
+                            @if (_guardando)
+                            {
+                                <span class="tf-spinner"></span>
+                            }
+                            Guardar
+                        </button>
+                    </div>
+
+                    <!-- Modelo de cobro -->
+                    <div class="tf-card">
+                        <h3 class="tf-card-title">Modelo de cobro</h3>
+                        <div class="tf-modelos">
+                            @foreach (var m in ModeloCobro.Todos)
+                            {
+                                var modelo = m;
+                                <label class="tf-modelo @(e.ModeloCobro == modelo ? "tf-modelo-activo" : "")">
+                                    <input type="radio" name="modelo" checked="@(e.ModeloCobro == modelo)"
+                                           @onchange="() => e.ModeloCobro = modelo" />
+                                    <span class="tf-modelo-nombre">@ModeloCobro.Etiqueta(modelo)</span>
+                                    <span class="tf-modelo-desc">@ModeloCobro.Descripcion(modelo)</span>
+                                </label>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Valores del plan -->
+                    <div class="tf-card">
+                        <h3 class="tf-card-title">Valores del plan</h3>
+                        <div class="tf-grid">
+                            <div class="tf-campo">
+                                <label class="tf-label">Nombre del plan</label>
+                                <input type="text" class="tf-input" @bind="e.PlanNombre"
+                                       placeholder="Ej: Profesional" />
+                            </div>
+                            <div class="tf-campo">
+                                <label class="tf-label">Moneda</label>
+                                <input type="text" class="tf-input tf-input-sm" @bind="e.Moneda" maxlength="10" />
+                            </div>
+                            <div class="tf-campo">
+                                <label class="tf-label">
+                                    Cargo base mensual
+                                    @if (e.ModeloCobro == ModeloCobro.PorPaciente)
+                                    {
+                                        <span class="tf-label-off">no aplica en este modelo</span>
+                                    }
+                                </label>
+                                <div class="tf-money">
+                                    <span class="tf-money-sign">$</span>
+                                    <input type="text" inputmode="decimal" class="tf-input tf-input-sm"
+                                           disabled="@(e.ModeloCobro == ModeloCobro.PorPaciente)"
+                                           value="@Money(e.TarifaBase)"
+                                           @onchange="ev => e.TarifaBase = Parse(ev.Value?.ToString())" />
+                                </div>
+                            </div>
+                            <div class="tf-campo">
+                                <label class="tf-label">Soporte premium mensual</label>
+                                <div class="tf-money">
+                                    <span class="tf-money-sign">$</span>
+                                    <input type="text" inputmode="decimal" class="tf-input tf-input-sm"
+                                           value="@Money(e.TarifaSoporteMensual)"
+                                           @onchange="ev => e.TarifaSoporteMensual = Parse(ev.Value?.ToString())" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Precio por paciente -->
+                    @if (e.ModeloCobro != ModeloCobro.Suscripcion)
+                    {
+                        <div class="tf-card">
+                            <h3 class="tf-card-title">Precio por paciente según volumen</h3>
+                            <p class="tf-card-desc">
+                                Tarifa <strong>plana</strong> por tramo: si el mes cierra con 150 pacientes
+                                y el tramo 101–300 está a $2.80, los 150 se cobran a $2.80.
+                                No es escalonado acumulativo.
+                            </p>
+
+                            <table class="tf-tramos">
+                                <thead>
+                                    <tr>
+                                        <th>Desde</th>
+                                        <th>Hasta</th>
+                                        <th>Precio x paciente</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var tramo in e.Tramos.OrderBy(x => x.DesdePacientes).ToList())
+                                    {
+                                        var tr = tramo;
+                                        <tr>
+                                            <td>
+                                                <input type="number" min="1" class="tf-input tf-input-xs"
+                                                       value="@tr.DesdePacientes"
+                                                       @onchange="ev => tr.DesdePacientes = ParseInt(ev.Value?.ToString(), 1)" />
+                                            </td>
+                                            <td>
+                                                <input type="number" min="1" class="tf-input tf-input-xs"
+                                                       placeholder="Sin límite"
+                                                       value="@(tr.HastaPacientes?.ToString() ?? "")"
+                                                       @onchange="ev => tr.HastaPacientes = ParseIntNullable(ev.Value?.ToString())" />
+                                            </td>
+                                            <td>
+                                                <div class="tf-money">
+                                                    <span class="tf-money-sign">$</span>
+                                                    <input type="text" inputmode="decimal" class="tf-input tf-input-xs"
+                                                           value="@Money(tr.PrecioPaciente)"
+                                                           @onchange="ev => tr.PrecioPaciente = Parse(ev.Value?.ToString())" />
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <button class="tf-btn-icono" title="Eliminar tramo"
+                                                        @onclick="() => e.Tramos.Remove(tr)">&times;</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+
+                            <button class="tf-btn tf-btn-ghost tf-btn-sm" @onclick="AgregarTramo">
+                                + Agregar tramo
+                            </button>
+
+                            @if (e.Tramos.Count == 0)
+                            {
+                                <div class="tf-aviso">
+                                    Sin tramos definidos se usa un precio único por paciente:
+                                    <div class="tf-money" style="margin-top:0.4rem">
+                                        <span class="tf-money-sign">$</span>
+                                        <input type="text" inputmode="decimal" class="tf-input tf-input-sm"
+                                               value="@Money(e.TarifaPaciente)"
+                                               @onchange="ev => e.TarifaPaciente = Parse(ev.Value?.ToString())" />
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <!-- Simulador -->
+                    <div class="tf-card tf-simulador">
+                        <h3 class="tf-card-title">Simulación de cobro</h3>
+                        <div class="tf-sim-row">
+                            <label class="tf-label">Pacientes en el mes</label>
+                            <input type="number" min="0" class="tf-input tf-input-xs"
+                                   value="@_simPacientes"
+                                   @onchange="ev => _simPacientes = ParseInt(ev.Value?.ToString(), 0)" />
+                        </div>
+                        @{
+                            var sim = SimularCobro(e, _simPacientes);
+                        }
+                        <div class="tf-sim-desglose">
+                            <div><span>Cargo base</span><strong>$ @sim.TarifaBase.ToString("N2")</strong></div>
+                            <div>
+                                <span>@_simPacientes paciente(s) × $ @sim.PrecioPaciente.ToString("N2")</span>
+                                <strong>$ @sim.CostoPacientes.ToString("N2")</strong>
+                            </div>
+                            <div><span>Soporte premium</span><strong>$ @sim.CostoSoporte.ToString("N2")</strong></div>
+                            <div class="tf-sim-total">
+                                <span>TOTAL MENSUAL</span>
+                                <strong>@e.Moneda $ @sim.Total.ToString("N2")</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cargos únicos -->
+                    <div class="tf-card">
+                        <h3 class="tf-card-title">Cargos puntuales</h3>
+                        <p class="tf-card-desc">
+                            Implementación, migración de datos o personalizaciones.
+                            Se suman a la factura del período indicado.
+                        </p>
+
+                        @if (_cargos.Count > 0)
+                        {
+                            <table class="tf-cargos">
+                                <thead>
+                                    <tr>
+                                        <th>Concepto</th>
+                                        <th>Período</th>
+                                        <th class="tf-right">Monto</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var c in _cargos)
+                                    {
+                                        var cl = c;
+                                        <tr>
+                                            <td>@cl.Concepto</td>
+                                            <td>@NombreMes(cl.PeriodoMes) @cl.PeriodoAnio</td>
+                                            <td class="tf-right tf-monto">$ @cl.Monto.ToString("N2")</td>
+                                            <td>
+                                                <button class="tf-btn-icono" title="Eliminar cargo"
+                                                        @onclick="() => EliminarCargoAsync(cl)">&times;</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <p class="tf-vacio">Sin cargos registrados.</p>
+                        }
+
+                        <div class="tf-nuevo-cargo">
+                            <input type="text" class="tf-input" placeholder="Concepto (ej: Implementación inicial)"
+                                   @bind="_nuevoCargo.Concepto" />
+                            <div class="tf-money">
+                                <span class="tf-money-sign">$</span>
+                                <input type="text" inputmode="decimal" class="tf-input tf-input-xs"
+                                       value="@Money(_nuevoCargo.Monto)"
+                                       @onchange="ev => _nuevoCargo.Monto = Parse(ev.Value?.ToString())" />
+                            </div>
+                            <select class="tf-input tf-input-sm" @bind="_nuevoCargo.PeriodoMes">
+                                @for (int m = 1; m <= 12; m++) { <option value="@m">@NombreMes(m)</option> }
+                            </select>
+                            <select class="tf-input tf-input-xs" @bind="_nuevoCargo.PeriodoAnio">
+                                @for (int a = DateTime.Today.Year + 1; a >= DateTime.Today.Year - 2; a--)
+                                { <option value="@a">@a</option> }
+                            </select>
+                            <button class="tf-btn tf-btn-ghost tf-btn-sm" @onclick="AgregarCargoAsync">
+                                Agregar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="tf-card">
+                        <h3 class="tf-card-title">Notas internas</h3>
+                        <textarea class="tf-textarea" rows="3" @bind="e.Notas"
+                                  placeholder="Condiciones negociadas, descuentos, contacto de facturación..."></textarea>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private Guid _usuarioId;
+
+    private List<TarifaTenantDto> _tenants = new();
+    private TarifaTenantDto? _editando;
+    private List<CargoUnicoDto> _cargos = new();
+    private CargoUnicoDto _nuevoCargo = NuevoCargoVacio();
+
+    private int _simPacientes = 100;
+
+    private bool _cargando = true;
+    private bool _guardando;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _usuarioId = Guid.TryParse(auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var u) ? u : Guid.Empty;
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _error    = null;
+
+        try
+        {
+            _tenants = await TarifaService.ListarTenantsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al cargar los clientes: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task Seleccionar(TarifaTenantDto t)
+    {
+        // Copia local: si el usuario cancela, la lista no queda alterada
+        _editando = new TarifaTenantDto
+        {
+            TenantId             = t.TenantId,
+            TenantNombre         = t.TenantNombre,
+            Subdomain            = t.Subdomain,
+            Activo               = t.Activo,
+            PlanNombre           = t.PlanNombre,
+            ModeloCobro          = t.ModeloCobro,
+            TarifaBase           = t.TarifaBase,
+            TarifaPaciente       = t.TarifaPaciente,
+            TarifaSoporteMensual = t.TarifaSoporteMensual,
+            Moneda               = t.Moneda,
+            Notas                = t.Notas,
+            Tramos               = t.Tramos.Select(x => new TramoTarifaDto
+            {
+                Id             = x.Id,
+                DesdePacientes = x.DesdePacientes,
+                HastaPacientes = x.HastaPacientes,
+                PrecioPaciente = x.PrecioPaciente
+            }).ToList()
+        };
+
+        _nuevoCargo = NuevoCargoVacio();
+        _cargos = await TarifaService.ListarCargosAsync(t.TenantId);
+    }
+
+    private void AgregarTramo()
+    {
+        if (_editando is null) return;
+
+        var ultimo = _editando.Tramos.OrderBy(t => t.DesdePacientes).LastOrDefault();
+        var desde  = ultimo?.HastaPacientes is int h ? h + 1 : (ultimo?.DesdePacientes ?? 0) + 1;
+
+        _editando.Tramos.Add(new TramoTarifaDto
+        {
+            DesdePacientes = Math.Max(desde, 1),
+            HastaPacientes = null,
+            PrecioPaciente = ultimo?.PrecioPaciente ?? 0
+        });
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_editando is null) return;
+
+        _guardando = true;
+        _error     = null;
+
+        try
+        {
+            await TarifaService.GuardarAsync(_editando, _usuarioId);
+            await CargarAsync();
+            Toast.ShowSuccess($"Tarifas de {_editando.TenantNombre} actualizadas");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task AgregarCargoAsync()
+    {
+        if (_editando is null) return;
+
+        if (string.IsNullOrWhiteSpace(_nuevoCargo.Concepto))
+        {
+            _error = "El concepto del cargo es obligatorio.";
+            return;
+        }
+
+        try
+        {
+            await TarifaService.AgregarCargoAsync(_editando.TenantId, _nuevoCargo, _usuarioId);
+            _cargos = await TarifaService.ListarCargosAsync(_editando.TenantId);
+            _nuevoCargo = NuevoCargoVacio();
+            _error = null;
+            Toast.ShowSuccess("Cargo agregado");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al agregar el cargo: {ex.Message}";
+        }
+    }
+
+    private async Task EliminarCargoAsync(CargoUnicoDto cargo)
+    {
+        if (_editando is null || cargo.Id is null) return;
+
+        try
+        {
+            await TarifaService.EliminarCargoAsync(_editando.TenantId, cargo.Id.Value, _usuarioId);
+            _cargos = await TarifaService.ListarCargosAsync(_editando.TenantId);
+            Toast.ShowSuccess("Cargo eliminado");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al eliminar el cargo: {ex.Message}";
+        }
+    }
+
+    private static ResultadoCobro SimularCobro(TarifaTenantDto e, int pacientes)
+    {
+        var tramos = e.Tramos.Select(t => new TenantTarifaTramo
+        {
+            DesdePacientes = t.DesdePacientes,
+            HastaPacientes = t.HastaPacientes,
+            PrecioPaciente = t.PrecioPaciente
+        }).ToList();
+
+        return CalculadoraCobro.Calcular(
+            e.ModeloCobro, e.TarifaBase, e.TarifaPaciente,
+            e.TarifaSoporteMensual, tramos, pacientes, 0m);
+    }
+
+    private static CargoUnicoDto NuevoCargoVacio() => new()
+    {
+        PeriodoAnio = DateTime.Today.Year,
+        PeriodoMes  = DateTime.Today.Month
+    };
+
+    // Los input type=text de dinero se formatean y parsean en invariante para
+    // que 2.80 no se muestre ni se interprete como 2,8000 según el navegador.
+    private static string Money(decimal v) => v.ToString("0.00##", CultureInfo.InvariantCulture);
+
+    private static decimal Parse(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return 0m;
+        var inv = CultureInfo.InvariantCulture;
+        if (decimal.TryParse(s, NumberStyles.Float, inv, out var v)) return v;
+        return decimal.TryParse(s.Replace(',', '.'), NumberStyles.Float, inv, out v) ? v : 0m;
+    }
+
+    private static int ParseInt(string? s, int fallback) =>
+        int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    private static int? ParseIntNullable(string? s) =>
+        int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : null;
+
+    private static string NombreMes(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+}
+
+<style>
+    .tf-page { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+    .tf-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .tf-subtitle { font-size: 0.85rem; color: #64748b; margin: 0; max-width: 660px; line-height: 1.5; }
+
+    .tf-layout { display: grid; grid-template-columns: 260px 1fr; gap: 1rem; align-items: start; }
+    @@media (max-width: 900px) { .tf-layout { grid-template-columns: 1fr; } }
+
+    /* Lista de clientes */
+    .tf-lista {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        background: white;
+        position: sticky;
+        top: 1rem;
+    }
+    .tf-lista-header {
+        background: #0f172a;
+        color: #94a3b8;
+        font-size: 0.65rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 0.55rem 0.9rem;
+    }
+    .tf-cliente {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        width: 100%;
+        text-align: left;
+        border: none;
+        border-bottom: 1px solid #f1f5f9;
+        background: white;
+        padding: 0.6rem 0.9rem;
+        cursor: pointer;
+        transition: background 0.14s;
+    }
+    .tf-cliente:hover { background: #f8fafc; }
+    .tf-cliente-activo { background: #f0f9ff; border-left: 3px solid #0ea5e9; }
+    .tf-cliente-nombre { font-size: 0.85rem; font-weight: 700; color: #1e293b; }
+    .tf-cliente-meta { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .tf-badge-modelo {
+        background: #ede9fe;
+        color: #6d28d9;
+        border-radius: 999px;
+        padding: 0.05rem 0.45rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+    }
+    .tf-badge-inactivo {
+        background: #fee2e2;
+        color: #991b1b;
+        border-radius: 999px;
+        padding: 0.05rem 0.45rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+    }
+
+    /* Editor */
+    .tf-editor { display: flex; flex-direction: column; gap: 0.85rem; }
+    .tf-editor-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .tf-editor-title { font-size: 1.1rem; font-weight: 800; color: #0f172a; margin: 0; }
+    .tf-editor-sub { font-size: 0.78rem; color: #94a3b8; margin: 0; }
+
+    .tf-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+    }
+    .tf-card-title { font-size: 0.92rem; font-weight: 700; color: #1e293b; margin: 0 0 0.5rem; }
+    .tf-card-desc { font-size: 0.78rem; color: #64748b; margin: 0 0 0.8rem; line-height: 1.5; }
+
+    /* Modelos de cobro */
+    .tf-modelos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; }
+    .tf-modelo {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 0.7rem 0.85rem;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .tf-modelo:hover { border-color: #cbd5e1; background: #f8fafc; }
+    .tf-modelo-activo { border-color: #0ea5e9; background: #f0f9ff; }
+    .tf-modelo input { position: absolute; opacity: 0; }
+    .tf-modelo-nombre { font-size: 0.85rem; font-weight: 700; color: #0f172a; }
+    .tf-modelo-desc { font-size: 0.73rem; color: #64748b; line-height: 1.45; }
+
+    /* Campos */
+    .tf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem; }
+    .tf-campo { display: flex; flex-direction: column; gap: 0.3rem; }
+    .tf-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .tf-label-off { text-transform: none; font-weight: 500; color: #cbd5e1; margin-left: 0.3rem; }
+    .tf-input {
+        padding: 0.42rem 0.6rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 7px;
+        font-size: 0.83rem;
+        color: #1e293b;
+        background: white;
+        width: 100%;
+    }
+    .tf-input:disabled { background: #f1f5f9; color: #94a3b8; }
+    .tf-input-sm { max-width: 130px; }
+    .tf-input-xs { max-width: 100px; text-align: right; }
+    .tf-textarea {
+        width: 100%;
+        padding: 0.5rem 0.7rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.83rem;
+        font-family: inherit;
+        color: #1e293b;
+        resize: vertical;
+    }
+    .tf-money { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .tf-money-sign { color: #64748b; font-weight: 700; font-size: 0.82rem; }
+
+    /* Tramos y cargos */
+    .tf-tramos, .tf-cargos { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 0.6rem; }
+    .tf-tramos th, .tf-cargos th {
+        text-align: left;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.3rem 0.5rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .tf-tramos td, .tf-cargos td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #f1f5f9; }
+    .tf-right { text-align: right; }
+    .tf-monto { font-weight: 700; color: #0ea5e9; }
+    .tf-vacio { font-size: 0.8rem; color: #94a3b8; font-style: italic; margin: 0 0 0.6rem; }
+
+    .tf-btn-icono {
+        border: none;
+        background: transparent;
+        color: #cbd5e1;
+        font-size: 1.15rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 0.3rem;
+        border-radius: 5px;
+    }
+    .tf-btn-icono:hover { background: #fef2f2; color: #dc2626; }
+
+    .tf-nuevo-cargo {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        align-items: center;
+        border-top: 1px dashed #e2e8f0;
+        padding-top: 0.7rem;
+    }
+    .tf-nuevo-cargo .tf-input { flex: 1; min-width: 150px; }
+
+    .tf-aviso {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 0.6rem 0.85rem;
+        font-size: 0.78rem;
+        color: #9a3412;
+        margin-top: 0.6rem;
+    }
+
+    /* Simulador */
+    .tf-simulador { background: #f8fafc; }
+    .tf-sim-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.7rem; }
+    .tf-sim-desglose { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.83rem; }
+    .tf-sim-desglose > div {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        color: #475569;
+        padding: 0.15rem 0;
+    }
+    .tf-sim-total {
+        border-top: 2px solid #cbd5e1;
+        margin-top: 0.3rem;
+        padding-top: 0.5rem !important;
+        font-weight: 800;
+        color: #0f172a !important;
+        font-size: 0.95rem;
+    }
+    .tf-sim-total strong { color: #7c3aed; }
+
+    /* Botones y estados */
+    .tf-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: none;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .tf-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .tf-btn-sm { padding: 0.35rem 0.75rem; font-size: 0.78rem; }
+    .tf-btn-primary { background: #0ea5e9; color: white; }
+    .tf-btn-primary:hover:not(:disabled) { background: #0284c7; }
+    .tf-btn-ghost { background: #f1f5f9; color: #475569; }
+    .tf-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
+
+    .tf-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        color: #991b1b;
+    }
+    .tf-empty { text-align: center; padding: 3rem 1rem; color: #94a3b8; }
+    .tf-empty h3 { color: #475569; font-size: 1rem; margin: 0 0 0.35rem; }
+    .tf-empty p { margin: 0; font-size: 0.85rem; }
+
+    .tf-loading { text-align: center; padding: 3rem 1rem; color: #64748b; }
+    .tf-spinner, .tf-spinner-lg {
+        display: inline-block;
+        border-radius: 50%;
+        animation: tf-spin 0.7s linear infinite;
+    }
+    .tf-spinner {
+        width: 13px; height: 13px;
+        border: 2px solid rgba(255,255,255,0.35);
+        border-top-color: currentColor;
+    }
+    .tf-spinner-lg {
+        width: 34px; height: 34px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #0ea5e9;
+        margin-bottom: 0.75rem;
+    }
+    @@keyframes tf-spin { to { transform: rotate(360deg); } }
+</style>

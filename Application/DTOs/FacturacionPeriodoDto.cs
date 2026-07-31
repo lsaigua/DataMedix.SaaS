@@ -10,16 +10,27 @@ namespace DataMedix.Application.DTOs
         public int Anio { get; set; }
         public int Mes { get; set; }
         public string? PlanNombre { get; set; }
+        public string ModeloCobro { get; set; } = "MIXTO";
         public decimal TarifaBase { get; set; }
         public decimal TarifaPaciente { get; set; }
+        public decimal CostoSoporte { get; set; }
+        public decimal CostoCargos { get; set; }
+        public string Moneda { get; set; } = "USD";
         public string Estado { get; set; } = "ABIERTO";
         public DateTime? CerradoAt { get; set; }
+
+        /// <summary>Detalle de los cargos puntuales incluidos en el período.</summary>
+        public List<CargoUnicoDto> Cargos { get; set; } = new();
 
         public List<FacturacionPacienteDto> Pacientes { get; set; } = new();
 
         public int PacientesFacturados => Pacientes.Count;
         public decimal CostoPacientes => PacientesFacturados * TarifaPaciente;
-        public decimal Total => TarifaBase + CostoPacientes;
+        public decimal Total => TarifaBase + CostoPacientes + CostoSoporte + CostoCargos;
+
+        /// <summary>True si el tenant no tiene ninguna tarifa configurada.</summary>
+        public bool SinTarifas =>
+            TarifaBase == 0 && TarifaPaciente == 0 && CostoSoporte == 0 && CostoCargos == 0;
 
         public bool EstaCerrado => Estado == "CERRADO";
         public string NombrePeriodo =>

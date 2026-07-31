@@ -4,7 +4,7 @@
 @using DataMedix.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:cronograma.ver")]
 @inject CronogramaService CronogramaService
 @inject IConfiguracionMedicamentoRepository ConfigRepo
 @inject ISnapshotMensualRepository SnapshotRepo

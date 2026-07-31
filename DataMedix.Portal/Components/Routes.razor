@@ -1,11 +1,20 @@
-﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 
 <CascadingAuthenticationState>
     <Router AppAssembly="@typeof(Program).Assembly">
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
-                <NotAuthorized>
-                    <RedirectToLogin />
+                <NotAuthorized Context="authState">
+                    @* Sin sesión → login. Con sesión pero sin permiso → aviso.
+                       Mandar al login a alguien ya autenticado provoca un bucle. *@
+                    @if (authState.User.Identity?.IsAuthenticated == true)
+                    {
+                        <AccesoDenegado />
+                    }
+                    else
+                    {
+                        <RedirectToLogin />
+                    }
                 </NotAuthorized>
             </AuthorizeRouteView>
 

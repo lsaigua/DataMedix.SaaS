@@ -1,0 +1,465 @@
+@page "/admin/roles-permisos"
+@attribute [Authorize(Policy = "perm:roles.gestionar")]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+
+@inject AuthenticationStateProvider AuthState
+@inject IPermisoService PermisoService
+@inject GlobalToastService Toast
+
+<PageTitle>Roles y Permisos | DataMedix</PageTitle>
+
+<div class="rp-page">
+
+    <div class="rp-header">
+        <div>
+            <h1 class="rp-title">Roles y Permisos</h1>
+            <p class="rp-subtitle">
+                Defina qué puede ver y hacer cada rol en este centro.
+                La configuración es propia de su organización y no afecta a otros clientes.
+            </p>
+        </div>
+        <div class="rp-header-actions">
+            @if (_hayCambios)
+            {
+                <span class="rp-dirty">Cambios sin guardar</span>
+            }
+            <button class="rp-btn rp-btn-ghost" @onclick="() => _confirmarRestaurar = true"
+                    disabled="@_guardando">
+                Restaurar por defecto
+            </button>
+            <button class="rp-btn rp-btn-primary" @onclick="GuardarAsync"
+                    disabled="@(_guardando || !_hayCambios)">
+                @if (_guardando)
+                {
+                    <span class="rp-spinner"></span>
+                }
+                Guardar cambios
+            </button>
+        </div>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="rp-error">@_error</div>
+    }
+
+    @if (_cargando)
+    {
+        <div class="rp-loading">
+            <div class="rp-spinner-lg"></div>
+            <p>Cargando permisos&hellip;</p>
+        </div>
+    }
+    else
+    {
+        <div class="rp-leyenda">
+            <strong>Cómo leerlo:</strong>
+            cada fila es una opción o acción de la aplicación y cada columna un rol.
+            Marque la casilla para conceder el acceso. Las filas sin ruta son
+            <em>acciones</em> dentro de una pantalla, no opciones del menú.
+        </div>
+
+        <div class="rp-tabla-wrap">
+            <table class="rp-tabla">
+                <thead>
+                    <tr>
+                        <th class="rp-th-permiso">Permiso</th>
+                        @foreach (var rol in _roles)
+                        {
+                            <th class="rp-th-rol">
+                                <span class="rp-rol-nombre">@rol.Nombre</span>
+                                <span class="rp-rol-conteo">@ConteoRol(rol.Id) permisos</span>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var grupo in _permisos.GroupBy(p => p.Grupo))
+                    {
+                        <tr class="rp-grupo-row">
+                            <td colspan="@(_roles.Count + 1)">@grupo.Key</td>
+                        </tr>
+
+                        @foreach (var permiso in grupo)
+                        {
+                            var permisoLocal = permiso;
+                            <tr>
+                                <td class="rp-td-permiso">
+                                    <div class="rp-permiso-nombre">
+                                        @permisoLocal.Nombre
+                                        @if (!permisoLocal.EsOpcionDeMenu)
+                                        {
+                                            <span class="rp-badge-accion">acción</span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(permisoLocal.Descripcion))
+                                    {
+                                        <div class="rp-permiso-desc">@permisoLocal.Descripcion</div>
+                                    }
+                                </td>
+                                @foreach (var rol in _roles)
+                                {
+                                    var rolLocal = rol;
+                                    var marcado  = Tiene(rolLocal.Id, permisoLocal.Codigo);
+                                    <td class="rp-td-check">
+                                        <label class="rp-check">
+                                            <input type="checkbox" checked="@marcado"
+                                                   @onchange="e => Alternar(rolLocal.Id, permisoLocal.Codigo, e)" />
+                                            <span class="rp-check-box"></span>
+                                        </label>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <p class="rp-nota">
+            El rol <strong>SUPERADMIN</strong> no aparece: pertenece al proveedor del
+            sistema y conserva acceso completo para poder darle soporte.
+        </p>
+    }
+</div>
+
+@if (_confirmarRestaurar)
+{
+    <div class="rp-overlay" @onclick="() => _confirmarRestaurar = false">
+        <div class="rp-modal" @onclick:stopPropagation="true">
+            <h2 class="rp-modal-title">Restaurar valores por defecto</h2>
+            <p class="rp-modal-text">
+                Se descartará toda la configuración de permisos de este centro y se
+                volverá a la asignación estándar por rol.
+            </p>
+            <div class="rp-modal-actions">
+                <button class="rp-btn rp-btn-ghost" @onclick="() => _confirmarRestaurar = false">Cancelar</button>
+                <button class="rp-btn rp-btn-danger" @onclick="RestaurarAsync" disabled="@_guardando">
+                    Restaurar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Guid _tenantId;
+    private Guid _usuarioId;
+
+    private List<Permiso> _permisos = new();
+    private List<Rol> _roles = new();
+    private Dictionary<Guid, HashSet<string>> _matriz = new();
+
+    private bool _cargando = true;
+    private bool _guardando;
+    private bool _hayCambios;
+    private bool _confirmarRestaurar;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _tenantId  = Guid.TryParse(auth.User.FindFirst("tenant_id")?.Value, out var t) ? t : Guid.Empty;
+        _usuarioId = Guid.TryParse(auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var u) ? u : Guid.Empty;
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _error    = null;
+
+        try
+        {
+            var catalogo = await PermisoService.GetCatalogoAsync();
+            // Los permisos de plataforma no se delegan a un tenant
+            _permisos = catalogo.Where(p => !p.SoloSuperadmin).ToList();
+            _roles    = await PermisoService.GetRolesAsync();
+
+            var actual = await PermisoService.GetMatrizAsync(_tenantId);
+
+            // Copia editable: la del servicio está en caché y es compartida
+            _matriz = _roles.ToDictionary(
+                r => r.Id,
+                r => new HashSet<string>(
+                    actual.GetValueOrDefault(r.Id) ?? new HashSet<string>(),
+                    StringComparer.OrdinalIgnoreCase));
+
+            _hayCambios = false;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al cargar los permisos: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private bool Tiene(Guid rolId, string codigo) =>
+        _matriz.TryGetValue(rolId, out var set) && set.Contains(codigo);
+
+    private void Alternar(Guid rolId, string codigo, ChangeEventArgs e)
+    {
+        if (!_matriz.TryGetValue(rolId, out var set))
+            _matriz[rolId] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (e.Value is true) set.Add(codigo);
+        else                 set.Remove(codigo);
+
+        _hayCambios = true;
+    }
+
+    private int ConteoRol(Guid rolId) =>
+        _matriz.TryGetValue(rolId, out var set) ? set.Count : 0;
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _error     = null;
+
+        try
+        {
+            await PermisoService.GuardarMatrizAsync(_tenantId, _matriz, _usuarioId);
+            _hayCambios = false;
+            Toast.ShowSuccess("Permisos actualizados. Los usuarios los verán al recargar la página.");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task RestaurarAsync()
+    {
+        _guardando = true;
+        try
+        {
+            await PermisoService.RestaurarPorDefectoAsync(_tenantId, _usuarioId);
+            _confirmarRestaurar = false;
+            await CargarAsync();
+            Toast.ShowSuccess("Permisos restaurados a los valores por defecto");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al restaurar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+}
+
+<style>
+    .rp-page { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    .rp-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .rp-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .rp-subtitle { font-size: 0.85rem; color: #64748b; margin: 0; max-width: 620px; line-height: 1.5; }
+    .rp-header-actions { display: flex; align-items: center; gap: 0.5rem; }
+    .rp-dirty {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #92400e;
+        background: #fef3c7;
+        border-radius: 999px;
+        padding: 0.2rem 0.6rem;
+    }
+
+    .rp-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: none;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .rp-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .rp-btn-primary { background: #0ea5e9; color: white; }
+    .rp-btn-primary:hover:not(:disabled) { background: #0284c7; }
+    .rp-btn-ghost { background: #f1f5f9; color: #475569; }
+    .rp-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
+    .rp-btn-danger { background: #dc2626; color: white; }
+    .rp-btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+    .rp-leyenda {
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        border-left: 4px solid #0ea5e9;
+        border-radius: 8px;
+        padding: 0.7rem 1rem;
+        font-size: 0.8rem;
+        color: #0c4a6e;
+        line-height: 1.5;
+    }
+    .rp-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        color: #991b1b;
+    }
+
+    .rp-tabla-wrap {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: auto;
+        max-height: 68vh;
+    }
+    .rp-tabla { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    .rp-tabla thead th {
+        position: sticky;
+        top: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 0.6rem 0.9rem;
+        text-align: center;
+        z-index: 2;
+    }
+    .rp-th-permiso {
+        text-align: left !important;
+        min-width: 300px;
+        position: sticky;
+        left: 0;
+        z-index: 3 !important;
+    }
+    .rp-th-rol { min-width: 118px; }
+    .rp-rol-nombre {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+    }
+    .rp-rol-conteo { display: block; font-size: 0.62rem; color: #94a3b8; font-weight: 500; }
+
+    .rp-grupo-row td {
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 0.68rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        padding: 0.35rem 0.9rem;
+        position: sticky;
+        left: 0;
+    }
+
+    .rp-tabla tbody td {
+        padding: 0.45rem 0.9rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #1e293b;
+    }
+    .rp-td-permiso {
+        position: sticky;
+        left: 0;
+        background: white;
+        z-index: 1;
+        border-right: 1px solid #e2e8f0;
+    }
+    .rp-tabla tbody tr:hover .rp-td-permiso { background: #f8fafc; }
+    .rp-permiso-nombre { font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
+    .rp-permiso-desc { font-size: 0.73rem; color: #94a3b8; margin-top: 0.1rem; }
+    .rp-badge-accion {
+        background: #ede9fe;
+        color: #6d28d9;
+        border-radius: 999px;
+        padding: 0.02rem 0.4rem;
+        font-size: 0.6rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .rp-td-check { text-align: center; }
+
+    /* Checkbox: área de clic grande, no solo la casilla nativa */
+    .rp-check { display: inline-flex; cursor: pointer; padding: 0.25rem; }
+    .rp-check input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .rp-check-box {
+        width: 18px;
+        height: 18px;
+        border: 2px solid #cbd5e1;
+        border-radius: 5px;
+        display: inline-block;
+        position: relative;
+        transition: all 0.14s;
+    }
+    .rp-check:hover .rp-check-box { border-color: #0ea5e9; }
+    .rp-check input:checked + .rp-check-box { background: #0ea5e9; border-color: #0ea5e9; }
+    .rp-check input:checked + .rp-check-box::after {
+        content: "";
+        position: absolute;
+        left: 5px; top: 1px;
+        width: 4px; height: 9px;
+        border: solid white;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+    .rp-check input:focus-visible + .rp-check-box {
+        outline: 2px solid #0ea5e9;
+        outline-offset: 2px;
+    }
+
+    .rp-nota { font-size: 0.76rem; color: #94a3b8; margin: 0; }
+
+    .rp-loading { text-align: center; padding: 3rem 1rem; color: #64748b; }
+    .rp-spinner, .rp-spinner-lg {
+        display: inline-block;
+        border-radius: 50%;
+        animation: rp-spin 0.7s linear infinite;
+    }
+    .rp-spinner {
+        width: 13px; height: 13px;
+        border: 2px solid rgba(255,255,255,0.35);
+        border-top-color: currentColor;
+    }
+    .rp-spinner-lg {
+        width: 34px; height: 34px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #0ea5e9;
+        margin-bottom: 0.75rem;
+    }
+    @@keyframes rp-spin { to { transform: rotate(360deg); } }
+
+    .rp-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+    .rp-modal {
+        background: white;
+        border-radius: 14px;
+        padding: 1.5rem;
+        max-width: 440px;
+        width: 100%;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+    }
+    .rp-modal-title { font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 0 0 0.7rem; }
+    .rp-modal-text { font-size: 0.85rem; color: #334155; margin: 0; line-height: 1.5; }
+    .rp-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.2rem; }
+</style>

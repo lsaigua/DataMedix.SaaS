@@ -1,9 +1,10 @@
 @page "/facturacion"
-@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@attribute [Authorize(Policy = "perm:facturacion.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @using DataMedix.Application.Interfaces
 @using DataMedix.Application.DTOs
+@using DataMedix.Domain.Entities
 
 @inject AuthenticationStateProvider AuthState
 @inject IFacturacionService FacturacionService
@@ -101,32 +102,68 @@
                 <span class="fac-resumen-value fac-plan">@(string.IsNullOrWhiteSpace(p.PlanNombre) ? "—" : p.PlanNombre)</span>
             </div>
             <div class="fac-resumen-item">
-                <span class="fac-resumen-label">Cargo base</span>
-                <span class="fac-resumen-value">$ @p.TarifaBase.ToString("N2")</span>
+                <span class="fac-resumen-label">Modelo</span>
+                <span class="fac-resumen-value fac-modelo">@ModeloCobro.Etiqueta(p.ModeloCobro)</span>
             </div>
+            @if (p.ModeloCobro != ModeloCobro.PorPaciente)
+            {
+                <div class="fac-resumen-item">
+                    <span class="fac-resumen-label">Cargo base</span>
+                    <span class="fac-resumen-value">@p.Moneda @p.TarifaBase.ToString("N2")</span>
+                </div>
+            }
             <div class="fac-resumen-item">
                 <span class="fac-resumen-label">Pacientes facturados</span>
                 <span class="fac-resumen-value">@p.PacientesFacturados.ToString("N0")</span>
             </div>
-            <div class="fac-resumen-item">
-                <span class="fac-resumen-label">Tarifa x paciente</span>
-                <span class="fac-resumen-value">$ @p.TarifaPaciente.ToString("N2")</span>
-            </div>
-            <div class="fac-resumen-item">
-                <span class="fac-resumen-label">Consumo</span>
-                <span class="fac-resumen-value fac-cost">$ @p.CostoPacientes.ToString("N2")</span>
-            </div>
+            @if (p.ModeloCobro != ModeloCobro.Suscripcion)
+            {
+                <div class="fac-resumen-item">
+                    <span class="fac-resumen-label">Tarifa x paciente</span>
+                    <span class="fac-resumen-value">@p.Moneda @p.TarifaPaciente.ToString("N2")</span>
+                </div>
+                <div class="fac-resumen-item">
+                    <span class="fac-resumen-label">Consumo</span>
+                    <span class="fac-resumen-value fac-cost">@p.Moneda @p.CostoPacientes.ToString("N2")</span>
+                </div>
+            }
+            @if (p.CostoSoporte > 0)
+            {
+                <div class="fac-resumen-item">
+                    <span class="fac-resumen-label">Soporte premium</span>
+                    <span class="fac-resumen-value">@p.Moneda @p.CostoSoporte.ToString("N2")</span>
+                </div>
+            }
+            @if (p.CostoCargos > 0)
+            {
+                <div class="fac-resumen-item">
+                    <span class="fac-resumen-label">Cargos puntuales</span>
+                    <span class="fac-resumen-value">@p.Moneda @p.CostoCargos.ToString("N2")</span>
+                </div>
+            }
             <div class="fac-resumen-item fac-resumen-total">
-                <span class="fac-resumen-label">TOTAL</span>
-                <span class="fac-resumen-value">$ @p.Total.ToString("N2")</span>
+                <span class="fac-resumen-label">TOTAL DEL MES</span>
+                <span class="fac-resumen-value">@p.Moneda @p.Total.ToString("N2")</span>
             </div>
         </div>
 
-        @if (p.TarifaBase == 0 && p.TarifaPaciente == 0)
+        @if (p.Cargos.Count > 0)
+        {
+            <div class="fac-cargos">
+                <span class="fac-cargos-label">Cargos incluidos:</span>
+                @foreach (var c in p.Cargos)
+                {
+                    <span class="fac-cargo-chip">@c.Concepto · @p.Moneda @c.Monto.ToString("N2")</span>
+                }
+            </div>
+        }
+
+        @if (p.SinTarifas)
         {
             <div class="fac-aviso">
-                Este tenant no tiene tarifas configuradas, por eso el total es cero.
-                Se definen en <code>tenant.tarifa_base</code> y <code>tenant.tarifa_paciente</code>.
+                Este centro aún no tiene tarifas configuradas, por eso el total es cero.
+                Las define DataMedix desde la consola de plataforma; contacte a su
+                proveedor si el valor no corresponde a su contrato.
             </div>
         }
 
@@ -546,7 +583,25 @@
     }
     .fac-resumen-value { font-size: 1rem; font-weight: 800; color: #0f172a; }
     .fac-plan { font-size: 0.9rem; color: #7c3aed; }
+    .fac-modelo { font-size: 0.85rem; color: #475569; }
     .fac-cost { color: #0ea5e9; }
+
+    .fac-cargos { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .fac-cargos-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .fac-cargo-chip {
+        background: #f1f5f9;
+        color: #475569;
+        border-radius: 999px;
+        padding: 0.12rem 0.6rem;
+        font-size: 0.73rem;
+        font-weight: 600;
+    }
     .fac-resumen-total { margin-left: auto; }
     .fac-resumen-total .fac-resumen-value { color: #7c3aed; font-size: 1.2rem; }
 

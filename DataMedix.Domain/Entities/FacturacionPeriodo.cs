@@ -14,9 +14,14 @@ namespace DataMedix.Domain.Entities
 
         /// <summary>Plan comercial copiado del tenant al momento del cierre.</summary>
         public string? PlanNombre { get; set; }
+        /// <summary>Modelo vigente al cerrar. Se copia para poder reconstruir la factura.</summary>
+        public string ModeloCobro { get; set; } = Entities.ModeloCobro.Mixto;
         public decimal TarifaBase { get; set; }
         public decimal TarifaPaciente { get; set; }
         public int PacientesFacturados { get; set; }
+        public decimal CostoSoporte { get; set; }
+        public decimal CostoCargos { get; set; }
+        public string Moneda { get; set; } = "USD";
         public decimal Total { get; set; }
 
         public string Estado { get; set; } = EstadoFacturacion.Abierto;

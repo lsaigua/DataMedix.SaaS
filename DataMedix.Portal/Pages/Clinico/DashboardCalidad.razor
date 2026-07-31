@@ -3,7 +3,7 @@
 @using DataMedix.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:calidad.ver")]
 @inject ISnapshotMensualRepository SnapshotRepo
 @inject AuthenticationStateProvider AuthProvider
 @inject GlobalLoadingService Loading

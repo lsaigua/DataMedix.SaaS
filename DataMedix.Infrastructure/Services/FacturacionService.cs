@@ -71,9 +71,13 @@ namespace DataMedix.Infrastructure.Services
             };
 
             periodo.PlanNombre          = calculo.PlanNombre;
+            periodo.ModeloCobro         = calculo.ModeloCobro;
             periodo.TarifaBase          = calculo.TarifaBase;
             periodo.TarifaPaciente      = calculo.TarifaPaciente;
             periodo.PacientesFacturados = calculo.PacientesFacturados;
+            periodo.CostoSoporte        = calculo.CostoSoporte;
+            periodo.CostoCargos         = calculo.CostoCargos;
+            periodo.Moneda              = calculo.Moneda;
             periodo.Total               = calculo.Total;
             periodo.Estado              = EstadoFacturacion.Cerrado;
             periodo.CerradoAt           = DateTime.UtcNow;
@@ -218,8 +222,33 @@ namespace DataMedix.Infrastructure.Services
 
             var tenant = await _db.Tenants
                 .Where(t => t.Id == tenantId)
-                .Select(t => new { t.PlanNombre, t.TarifaBase, t.TarifaPaciente })
+                .Select(t => new
+                {
+                    t.PlanNombre, t.ModeloCobro, t.TarifaBase,
+                    t.TarifaPaciente, t.TarifaSoporteMensual, t.Moneda
+                })
                 .FirstOrDefaultAsync();
+
+            var tramos = await _db.TenantTarifaTramos
+                .Where(x => x.TenantId == tenantId)
+                .OrderBy(x => x.DesdePacientes)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var cargos = await _db.TenantCargosUnicos
+                .Where(c => c.TenantId == tenantId && c.Aplicado &&
+                            c.PeriodoAnio == anio && c.PeriodoMes == mes)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var cobro = CalculadoraCobro.Calcular(
+                tenant?.ModeloCobro ?? ModeloCobro.Mixto,
+                tenant?.TarifaBase ?? 0,
+                tenant?.TarifaPaciente ?? 0,
+                tenant?.TarifaSoporteMensual ?? 0,
+                tramos,
+                todos.Count,
+                cargos.Sum(c => c.Monto));
 
             var dto = new FacturacionPeriodoDto
             {
@@ -227,9 +256,23 @@ namespace DataMedix.Infrastructure.Services
                 Anio           = anio,
                 Mes            = mes,
                 PlanNombre     = tenant?.PlanNombre,
-                TarifaBase     = tenant?.TarifaBase ?? 0,
-                TarifaPaciente = tenant?.TarifaPaciente ?? 0,
-                Estado         = EstadoFacturacion.Abierto
+                ModeloCobro    = tenant?.ModeloCobro ?? ModeloCobro.Mixto,
+                TarifaBase     = cobro.TarifaBase,
+                TarifaPaciente = cobro.PrecioPaciente,
+                CostoSoporte   = cobro.CostoSoporte,
+                CostoCargos    = cobro.CostoCargos,
+                Moneda         = tenant?.Moneda ?? "USD",
+                Estado         = EstadoFacturacion.Abierto,
+                Cargos         = cargos.Select(c => new CargoUnicoDto
+                {
+                    Id            = c.Id,
+                    Concepto      = c.Concepto,
+                    Monto         = c.Monto,
+                    PeriodoAnio   = c.PeriodoAnio,
+                    PeriodoMes    = c.PeriodoMes,
+                    Aplicado      = c.Aplicado,
+                    Observaciones = c.Observaciones
+                }).ToList()
             };
 
             foreach (var pacienteId in todos)
@@ -270,8 +313,12 @@ namespace DataMedix.Infrastructure.Services
             Anio           = f.PeriodoAnio,
             Mes            = f.PeriodoMes,
             PlanNombre     = f.PlanNombre,
+            ModeloCobro    = f.ModeloCobro,
             TarifaBase     = f.TarifaBase,
             TarifaPaciente = f.TarifaPaciente,
+            CostoSoporte   = f.CostoSoporte,
+            CostoCargos    = f.CostoCargos,
+            Moneda         = f.Moneda,
             Estado         = f.Estado,
             CerradoAt      = f.CerradoAt,
             Pacientes      = f.Detalles

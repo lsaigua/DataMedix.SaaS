@@ -1,5 +1,5 @@
 @page "/pacientes"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:pacientes.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Domain.Entities

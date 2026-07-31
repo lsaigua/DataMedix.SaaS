@@ -1,5 +1,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+
+@inject AuthenticationStateProvider AuthState
+@inject IPermisoService PermisoService
 
 <CascadingAuthenticationState>
 <div class="dm-nav">
@@ -16,6 +21,8 @@
     <!-- Menu -->
     <nav class="dm-nav-menu">
 
+        @if (Puede(Permisos.DashboardVer))
+        {
         <div class="dm-nav-section">GENERAL</div>
         <NavLink href="/dashboard" class="dm-nav-link" Match="NavLinkMatch.All" @onclick="HandleClick">
             <span class="dm-nav-li">
@@ -27,8 +34,15 @@
             </span>
             Dashboard
         </NavLink>
+        }
 
+        @if (AlgunPermiso(Permisos.LaboratorioImportar, Permisos.HistorialClinico,
+                          Permisos.LaboratorioHistorial, Permisos.LaboratorioManual))
+        {
         <div class="dm-nav-section">LABORATORIO</div>
+        }
+        @if (Puede(Permisos.LaboratorioImportar))
+        {
         <NavLink href="/laboratorio/importar" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -39,6 +53,9 @@
             </span>
             Cargar Resultados
         </NavLink>
+        }
+        @if (Puede(Permisos.HistorialClinico))
+        {
         <NavLink href="/historial-clinico" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -48,6 +65,9 @@
             </span>
             Historial Clínico
         </NavLink>
+        }
+        @if (Puede(Permisos.LaboratorioHistorial))
+        {
         <NavLink href="/laboratorio/historial" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -57,6 +77,9 @@
             </span>
             Resultados Crudos
         </NavLink>
+        }
+        @if (Puede(Permisos.LaboratorioManual))
+        {
         <NavLink href="/laboratorio/manual" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -67,8 +90,15 @@
             </span>
             Ingreso Manual
         </NavLink>
+        }
 
+        @if (AlgunPermiso(Permisos.PacientesVer, Permisos.PrescripcionesVer, Permisos.HojaEpoVer,
+                          Permisos.ReglasGestionar, Permisos.CronogramaVer, Permisos.CalidadVer))
+        {
         <div class="dm-nav-section">CLÍNICO</div>
+        }
+        @if (Puede(Permisos.PacientesVer))
+        {
         <NavLink href="/pacientes" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -80,6 +110,9 @@
             </span>
             Pacientes
         </NavLink>
+        }
+        @if (Puede(Permisos.PrescripcionesVer))
+        {
         <NavLink href="/prescripciones" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -89,6 +122,9 @@
             </span>
             Prescripción Clínica
         </NavLink>
+        }
+        @if (Puede(Permisos.HojaEpoVer))
+        {
         <NavLink href="/hoja-epo" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -99,6 +135,9 @@
             </span>
             Prescripción Sugerida
         </NavLink>
+        }
+        @if (Puede(Permisos.ReglasGestionar))
+        {
         <NavLink href="/clinico/reglas" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -109,6 +148,9 @@
             </span>
             Reglas Clínicas
         </NavLink>
+        }
+        @if (Puede(Permisos.CronogramaVer))
+        {
         <NavLink href="/cronograma-medicacion" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -121,6 +163,9 @@
             </span>
             Cronograma Medicación
         </NavLink>
+        }
+        @if (Puede(Permisos.CalidadVer))
+        {
         <NavLink href="/clinico/dashboard-calidad" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -130,10 +175,16 @@
             </span>
             Calidad Clínica KDOQI
         </NavLink>
+        }
 
-        <AuthorizeView Roles="SUPERADMIN,ADMIN">
-            <Authorized>
+        @if (AlgunPermiso(Permisos.CargasVer, Permisos.ReportesVer, Permisos.UsuariosGestionar,
+                          Permisos.RolesGestionar, Permisos.ConfiguracionVer, Permisos.FacturacionVer,
+                          Permisos.AuditoriaVer, Permisos.DepuracionEjecutar))
+        {
                 <div class="dm-nav-section">ADMINISTRACIÓN</div>
+        }
+        @if (Puede(Permisos.CargasVer))
+        {
                 <NavLink href="/cargas" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -143,6 +194,9 @@
                     </span>
                     Lotes de Carga
                 </NavLink>
+        }
+        @if (Puede(Permisos.ReportesVer))
+        {
                 <NavLink href="/reportes" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -153,6 +207,9 @@
                     </span>
                     Reportes
                 </NavLink>
+        }
+        @if (Puede(Permisos.UsuariosGestionar))
+        {
                 <NavLink href="/usuarios" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -163,6 +220,22 @@
                     </span>
                     Usuarios
                 </NavLink>
+        }
+        @if (Puede(Permisos.RolesGestionar))
+        {
+                <NavLink href="/admin/roles-permisos" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                    </span>
+                    Roles y Permisos
+                </NavLink>
+        }
+        @if (Puede(Permisos.ConfiguracionVer))
+        {
                 <NavLink href="/configuracion" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -173,6 +246,9 @@
                     </span>
                     Configuración
                 </NavLink>
+        }
+        @if (Puede(Permisos.FacturacionVer))
+        {
                 <NavLink href="/facturacion" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -183,6 +259,9 @@
                     </span>
                     Facturación
                 </NavLink>
+        }
+        @if (Puede(Permisos.AuditoriaVer))
+        {
                 <NavLink href="/auditoria" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -195,6 +274,9 @@
                     </span>
                     Auditoría
                 </NavLink>
+        }
+        @if (Puede(Permisos.DepuracionEjecutar))
+        {
                 <NavLink href="/admin/depuracion" class="dm-nav-link dm-nav-link-danger" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -207,8 +289,40 @@
                     </span>
                     Depuración de Datos
                 </NavLink>
-            </Authorized>
-        </AuthorizeView>
+        }
+
+        @* Consola del proveedor del SaaS: los permisos de plataforma están
+           marcados solo_superadmin, así que ningún tenant puede concedérselos. *@
+        @if (AlgunPermiso(Permisos.TarifasConfigurar, Permisos.FacturacionGlobal))
+        {
+                <div class="dm-nav-section">PLATAFORMA</div>
+        }
+        @if (Puede(Permisos.TarifasConfigurar))
+        {
+                <NavLink href="/admin/tarifas" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                            <line x1="7" y1="7" x2="7.01" y2="7"/>
+                        </svg>
+                    </span>
+                    Tarifas y Planes
+                </NavLink>
+        }
+        @if (Puede(Permisos.FacturacionGlobal))
+        {
+                <NavLink href="/admin/facturacion-global" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="1" x2="12" y2="23"/>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                    </span>
+                    Facturación Global
+                </NavLink>
+        }
 
     </nav>
 
@@ -286,6 +400,59 @@
     [Parameter] public EventCallback OnNavClick { get; set; }
 
     private async Task HandleClick() => await OnNavClick.InvokeAsync();
+
+    // Permisos efectivos del usuario dentro de su tenant. Se resuelven una vez
+    // por sesión de circuito: el menú se redibuja en cada navegación y consultar
+    // la base en cada render sería un costo innecesario (el servicio cachea igual).
+    private HashSet<string> _permisos = new(StringComparer.OrdinalIgnoreCase);
+    private bool _permisosCargados;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var user = auth.User;
+
+        if (user.Identity is not { IsAuthenticated: true })
+        {
+            _permisosCargados = true;
+            return;
+        }
+
+        var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
+
+        // El proveedor del sistema ve todo el menú aunque el tenant haya
+        // recortado su matriz: necesita entrar para dar soporte.
+        if (roles.Any(r => string.Equals(r, "SUPERADMIN", StringComparison.OrdinalIgnoreCase)))
+        {
+            _esSuperadmin = true;
+            _permisosCargados = true;
+            return;
+        }
+
+        if (Guid.TryParse(user.FindFirst("tenant_id")?.Value, out var tenantId) && tenantId != Guid.Empty)
+        {
+            try
+            {
+                _permisos = await PermisoService.GetPermisosEfectivosAsync(tenantId, roles);
+            }
+            catch
+            {
+                // Sin permisos resueltos el menú queda vacío, pero la aplicación
+                // sigue navegable: cada página valida por su cuenta.
+            }
+        }
+
+        _permisosCargados = true;
+    }
+
+    private bool _esSuperadmin;
+
+    /// <summary>¿Se muestra esta opción del menú?</summary>
+    private bool Puede(string codigo) =>
+        _esSuperadmin || (_permisosCargados && _permisos.Contains(codigo));
+
+    /// <summary>¿Hay alguna opción visible en el grupo? Evita títulos de sección huérfanos.</summary>
+    private bool AlgunPermiso(params string[] codigos) => codigos.Any(Puede);
 }
 
 <style>

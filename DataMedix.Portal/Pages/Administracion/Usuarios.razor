@@ -1,5 +1,5 @@
 @page "/usuarios"
-@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@attribute [Authorize(Policy = "perm:usuarios.gestionar")]
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @using DataMedix.Application.Interfaces

@@ -1,0 +1,340 @@
+@page "/admin/facturacion-global"
+@attribute [Authorize(Policy = "perm:facturacion.global")]
+@using Microsoft.AspNetCore.Authorization
+@using DataMedix.Application.Interfaces
+@using DataMedix.Application.DTOs
+@using DataMedix.Domain.Entities
+
+@inject ITarifaService TarifaService
+
+<PageTitle>Facturación consolidada | DataMedix</PageTitle>
+
+<div class="fg-page">
+
+    <div class="fg-header">
+        <div>
+            <h1 class="fg-title">Facturación consolidada</h1>
+            <p class="fg-subtitle">
+                Lo que DataMedix debe cobrar a cada cliente en @NombreMes(_mes) @_anio.
+                Los períodos cerrados se muestran tal como se congelaron; los abiertos se calculan en vivo.
+            </p>
+        </div>
+        <div class="fg-actions">
+            <select class="fg-select" @bind="_mes" @bind:after="CargarAsync">
+                @for (int m = 1; m <= 12; m++) { <option value="@m">@NombreMes(m)</option> }
+            </select>
+            <select class="fg-select" @bind="_anio" @bind:after="CargarAsync">
+                @for (int a = DateTime.Today.Year + 1; a >= DateTime.Today.Year - 3; a--)
+                { <option value="@a">@a</option> }
+            </select>
+            <button class="fg-btn fg-btn-ghost" @onclick="CargarAsync" disabled="@_cargando">
+                @if (_cargando) { <span class="fg-spinner"></span> }
+                Actualizar
+            </button>
+        </div>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="fg-error">@_error</div>
+    }
+
+    @if (_cargando && _filas.Count == 0)
+    {
+        <div class="fg-loading">
+            <div class="fg-spinner-lg"></div>
+            <p>Calculando consumo de todos los clientes&hellip;</p>
+        </div>
+    }
+    else if (_filas.Count == 0)
+    {
+        <div class="fg-empty">
+            <h3>Sin clientes activos</h3>
+            <p>No hay tenants activos para consolidar.</p>
+        </div>
+    }
+    else
+    {
+        <!-- KPIs del mes -->
+        <div class="fg-kpis">
+            <div class="fg-kpi">
+                <span class="fg-kpi-label">Clientes</span>
+                <span class="fg-kpi-value">@_filas.Count</span>
+            </div>
+            <div class="fg-kpi">
+                <span class="fg-kpi-label">Períodos cerrados</span>
+                <span class="fg-kpi-value">@_filas.Count(f => f.EstaCerrado) / @_filas.Count</span>
+            </div>
+            <div class="fg-kpi">
+                <span class="fg-kpi-label">Pacientes procesados</span>
+                <span class="fg-kpi-value">@_filas.Sum(f => f.PacientesFacturados).ToString("N0")</span>
+            </div>
+            <div class="fg-kpi">
+                <span class="fg-kpi-label">Recurrente (base + soporte)</span>
+                <span class="fg-kpi-value fg-cost">$ @(_filas.Sum(f => f.TarifaBase + f.CostoSoporte).ToString("N2"))</span>
+            </div>
+            <div class="fg-kpi">
+                <span class="fg-kpi-label">Consumo</span>
+                <span class="fg-kpi-value fg-cost">$ @_filas.Sum(f => f.CostoPacientes).ToString("N2")</span>
+            </div>
+            <div class="fg-kpi fg-kpi-total">
+                <span class="fg-kpi-label">TOTAL A FACTURAR</span>
+                <span class="fg-kpi-value">$ @_filas.Sum(f => f.Total).ToString("N2")</span>
+            </div>
+        </div>
+
+        <div class="fg-tabla-wrap">
+            <table class="fg-tabla">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Plan</th>
+                        <th>Modelo</th>
+                        <th class="fg-center">Estado</th>
+                        <th class="fg-right">Pacientes</th>
+                        <th class="fg-right">Base</th>
+                        <th class="fg-right">Consumo</th>
+                        <th class="fg-right">Soporte</th>
+                        <th class="fg-right">Cargos</th>
+                        <th class="fg-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _filas.OrderByDescending(x => x.Total))
+                    {
+                        <tr class="@(f.Total == 0 ? "fg-row-cero" : "")">
+                            <td>
+                                <div class="fg-cliente">@f.TenantNombre</div>
+                                <div class="fg-sub">@f.Subdomain</div>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(f.PlanNombre) ? "—" : f.PlanNombre)</td>
+                            <td><span class="fg-badge-modelo">@ModeloCobro.Etiqueta(f.ModeloCobro)</span></td>
+                            <td class="fg-center">
+                                <span class="fg-badge @(f.EstaCerrado ? "fg-badge-cerrado" : "fg-badge-abierto")">
+                                    @f.Estado
+                                </span>
+                            </td>
+                            <td class="fg-right">@f.PacientesFacturados.ToString("N0")</td>
+                            <td class="fg-right">$ @f.TarifaBase.ToString("N2")</td>
+                            <td class="fg-right">$ @f.CostoPacientes.ToString("N2")</td>
+                            <td class="fg-right">$ @f.CostoSoporte.ToString("N2")</td>
+                            <td class="fg-right">$ @f.CostoCargos.ToString("N2")</td>
+                            <td class="fg-right fg-total">@f.Moneda $ @f.Total.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="4" class="fg-tfoot-label">Total del período</td>
+                        <td class="fg-right">@_filas.Sum(f => f.PacientesFacturados).ToString("N0")</td>
+                        <td class="fg-right">$ @_filas.Sum(f => f.TarifaBase).ToString("N2")</td>
+                        <td class="fg-right">$ @_filas.Sum(f => f.CostoPacientes).ToString("N2")</td>
+                        <td class="fg-right">$ @_filas.Sum(f => f.CostoSoporte).ToString("N2")</td>
+                        <td class="fg-right">$ @_filas.Sum(f => f.CostoCargos).ToString("N2")</td>
+                        <td class="fg-right fg-tfoot-total">$ @_filas.Sum(f => f.Total).ToString("N2")</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        @if (_filas.Any(f => f.Total == 0))
+        {
+            <p class="fg-nota">
+                Los clientes en $ 0.00 no tienen tarifas configuradas o no tuvieron actividad.
+                Puede definir su cobro en <a href="/admin/tarifas">Tarifas y Planes</a>.
+            </p>
+        }
+    }
+</div>
+
+@code {
+    private int _anio = DateTime.Today.Year;
+    private int _mes  = DateTime.Today.Month;
+
+    private List<FacturacionGlobalDto> _filas = new();
+    private bool _cargando = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _error    = null;
+        StateHasChanged();
+
+        try
+        {
+            _filas = await TarifaService.ConsolidadoAsync(_anio, _mes);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al calcular el consolidado: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private static string NombreMes(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+}
+
+<style>
+    .fg-page { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+    .fg-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .fg-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .fg-subtitle { font-size: 0.85rem; color: #64748b; margin: 0; max-width: 680px; line-height: 1.5; }
+    .fg-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+    .fg-select {
+        padding: 0.45rem 0.7rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        background: white;
+        color: #1e293b;
+    }
+    .fg-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: none;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .fg-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .fg-btn-ghost { background: #f1f5f9; color: #475569; }
+    .fg-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
+
+    .fg-kpis {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 2rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.9rem 1.25rem;
+    }
+    .fg-kpi { display: flex; flex-direction: column; gap: 0.15rem; }
+    .fg-kpi-label {
+        font-size: 0.63rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .fg-kpi-value { font-size: 1rem; font-weight: 800; color: #0f172a; }
+    .fg-cost { color: #0ea5e9; }
+    .fg-kpi-total { margin-left: auto; }
+    .fg-kpi-total .fg-kpi-value { color: #7c3aed; font-size: 1.25rem; }
+
+    .fg-tabla-wrap {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: auto;
+        max-height: 65vh;
+    }
+    .fg-tabla { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .fg-tabla thead th {
+        position: sticky;
+        top: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-size: 0.63rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.5rem 0.85rem;
+        text-align: left;
+        z-index: 1;
+    }
+    .fg-tabla tbody td {
+        padding: 0.45rem 0.85rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #1e293b;
+    }
+    .fg-tabla tbody tr:hover td { background: #f8fafc; }
+    .fg-row-cero td { color: #94a3b8; }
+    .fg-center { text-align: center !important; }
+    .fg-right  { text-align: right !important; }
+    .fg-cliente { font-weight: 700; }
+    .fg-sub { font-size: 0.72rem; color: #94a3b8; }
+    .fg-total { font-weight: 800; color: #7c3aed; }
+
+    .fg-tabla tfoot td {
+        background: #0f172a;
+        color: #e2e8f0;
+        font-weight: 700;
+        padding: 0.5rem 0.85rem;
+        position: sticky;
+        bottom: 0;
+    }
+    .fg-tfoot-label { color: #94a3b8; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .fg-tfoot-total { color: #38bdf8; font-size: 0.95rem; }
+
+    .fg-badge {
+        display: inline-block;
+        padding: 0.08rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.65rem;
+        font-weight: 700;
+    }
+    .fg-badge-cerrado { background: #dcfce7; color: #166534; }
+    .fg-badge-abierto { background: #e0f2fe; color: #075985; }
+    .fg-badge-modelo {
+        background: #ede9fe;
+        color: #6d28d9;
+        border-radius: 999px;
+        padding: 0.08rem 0.5rem;
+        font-size: 0.65rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .fg-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        color: #991b1b;
+    }
+    .fg-nota { font-size: 0.78rem; color: #94a3b8; margin: 0; }
+    .fg-empty { text-align: center; padding: 3rem 1rem; color: #94a3b8; }
+    .fg-empty h3 { color: #475569; font-size: 1rem; margin: 0 0 0.35rem; }
+
+    .fg-loading { text-align: center; padding: 3rem 1rem; color: #64748b; }
+    .fg-spinner, .fg-spinner-lg {
+        display: inline-block;
+        border-radius: 50%;
+        animation: fg-spin 0.7s linear infinite;
+    }
+    .fg-spinner {
+        width: 13px; height: 13px;
+        border: 2px solid rgba(100,116,139,0.3);
+        border-top-color: currentColor;
+    }
+    .fg-spinner-lg {
+        width: 34px; height: 34px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #0ea5e9;
+        margin-bottom: 0.75rem;
+    }
+    @@keyframes fg-spin { to { transform: rotate(360deg); } }
+</style>

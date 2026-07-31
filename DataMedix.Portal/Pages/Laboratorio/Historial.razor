@@ -1,5 +1,5 @@
 @page "/laboratorio/historial"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:laboratorio.historial")]
 @implements IDisposable
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces

@@ -61,6 +61,12 @@ namespace DataMedix.Infrastructure.Persistence
         public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
         public DbSet<FacturacionPeriodo> FacturacionPeriodos => Set<FacturacionPeriodo>();
         public DbSet<FacturacionPeriodoDetalle> FacturacionPeriodoDetalles => Set<FacturacionPeriodoDetalle>();
+        public DbSet<TenantTarifaTramo> TenantTarifaTramos => Set<TenantTarifaTramo>();
+        public DbSet<TenantCargoUnico> TenantCargosUnicos => Set<TenantCargoUnico>();
+
+        // Permisos (catálogo global + asignación por rol y tenant)
+        public DbSet<Permiso> Permisos => Set<Permiso>();
+        public DbSet<RolPermiso> RolesPermisos => Set<RolPermiso>();
 
         // DataProtection (persistir claves en DB para sobrevivir reinicios en Railway)
         public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -97,6 +103,11 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(t => t.PlanNombre).HasColumnName("plan_nombre").HasMaxLength(100);
                 e.Property(t => t.TarifaBase).HasColumnName("tarifa_base").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
                 e.Property(t => t.TarifaPaciente).HasColumnName("tarifa_paciente").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(t => t.ModeloCobro).HasColumnName("modelo_cobro").HasMaxLength(20).HasDefaultValue(ModeloCobro.Mixto);
+                e.Property(t => t.TarifaSoporteMensual).HasColumnName("tarifa_soporte_mensual").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(t => t.Moneda).HasColumnName("moneda").HasMaxLength(10).HasDefaultValue("USD");
+                e.Property(t => t.FacturacionNotas).HasColumnName("facturacion_notas").HasMaxLength(500);
+                e.HasMany(t => t.Tramos).WithOne().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
                 e.HasIndex(t => t.Subdomain).IsUnique();
             });
 
@@ -645,9 +656,13 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(f => f.PeriodoAnio).HasColumnName("periodo_anio").IsRequired();
                 e.Property(f => f.PeriodoMes).HasColumnName("periodo_mes").IsRequired();
                 e.Property(f => f.PlanNombre).HasColumnName("plan_nombre").HasMaxLength(100);
+                e.Property(f => f.ModeloCobro).HasColumnName("modelo_cobro").HasMaxLength(20).HasDefaultValue(ModeloCobro.Mixto);
                 e.Property(f => f.TarifaBase).HasColumnName("tarifa_base").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
                 e.Property(f => f.TarifaPaciente).HasColumnName("tarifa_paciente").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
                 e.Property(f => f.PacientesFacturados).HasColumnName("pacientes_facturados").HasDefaultValue(0);
+                e.Property(f => f.CostoSoporte).HasColumnName("costo_soporte").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(f => f.CostoCargos).HasColumnName("costo_cargos").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(f => f.Moneda).HasColumnName("moneda").HasMaxLength(10).HasDefaultValue("USD");
                 e.Property(f => f.Total).HasColumnName("total").HasColumnType("decimal(14,2)").HasDefaultValue(0m);
                 e.Property(f => f.Estado).HasColumnName("estado").HasMaxLength(20).HasDefaultValue(EstadoFacturacion.Abierto);
                 e.Property(f => f.CerradoAt).HasColumnName("cerrado_at");
@@ -683,6 +698,79 @@ namespace DataMedix.Infrastructure.Persistence
                 e.Property(d => d.TarifaAplicada).HasColumnName("tarifa_aplicada").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
                 e.Property(d => d.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
                 e.HasIndex(d => new { d.FacturacionPeriodoId, d.PacienteId }).IsUnique();
+            });
+
+            // ========================
+            // TARIFAS DEL TENANT
+            // ========================
+            m.Entity<TenantTarifaTramo>(e =>
+            {
+                e.ToTable("tenant_tarifa_tramo");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(x => x.DesdePacientes).HasColumnName("desde_pacientes").HasDefaultValue(1);
+                e.Property(x => x.HastaPacientes).HasColumnName("hasta_pacientes");
+                e.Property(x => x.PrecioPaciente).HasColumnName("precio_paciente").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+                e.Ignore(x => x.Rango);
+                e.HasIndex(x => new { x.TenantId, x.DesdePacientes }).IsUnique();
+            });
+
+            m.Entity<TenantCargoUnico>(e =>
+            {
+                e.ToTable("tenant_cargo_unico");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                e.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+                e.Property(x => x.Concepto).HasColumnName("concepto").HasMaxLength(200).IsRequired();
+                e.Property(x => x.Monto).HasColumnName("monto").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+                e.Property(x => x.PeriodoAnio).HasColumnName("periodo_anio").IsRequired();
+                e.Property(x => x.PeriodoMes).HasColumnName("periodo_mes").IsRequired();
+                e.Property(x => x.Aplicado).HasColumnName("aplicado").HasDefaultValue(true);
+                e.Property(x => x.Observaciones).HasColumnName("observaciones").HasMaxLength(500);
+                e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(x => x.CreatedBy).HasColumnName("created_by");
+                e.HasIndex(x => new { x.TenantId, x.PeriodoAnio, x.PeriodoMes });
+            });
+
+            // ========================
+            // PERMISOS
+            // ========================
+            m.Entity<Permiso>(e =>
+            {
+                e.ToTable("permiso");
+                e.HasKey(p => p.Codigo);
+                e.Property(p => p.Codigo).HasColumnName("codigo").HasMaxLength(60);
+                e.Property(p => p.Nombre).HasColumnName("nombre").HasMaxLength(120).IsRequired();
+                e.Property(p => p.Descripcion).HasColumnName("descripcion").HasMaxLength(300);
+                e.Property(p => p.Grupo).HasColumnName("grupo").HasMaxLength(60).IsRequired();
+                e.Property(p => p.Ruta).HasColumnName("ruta").HasMaxLength(200);
+                e.Property(p => p.Icono).HasColumnName("icono").HasMaxLength(40);
+                e.Property(p => p.Orden).HasColumnName("orden").HasDefaultValue(0);
+                e.Property(p => p.SoloSuperadmin).HasColumnName("solo_superadmin").HasDefaultValue(false);
+                e.Property(p => p.Activo).HasColumnName("activo").HasDefaultValue(true);
+                e.Property(p => p.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Ignore(p => p.EsOpcionDeMenu);
+            });
+
+            m.Entity<RolPermiso>(e =>
+            {
+                e.ToTable("rol_permiso");
+                e.HasKey(rp => rp.Id);
+                e.Property(rp => rp.Id).HasColumnName("id").HasDefaultValueSql("uuid_generate_v4()");
+                // Nullable a propósito: NULL = default de fábrica para todos los tenants
+                e.Property(rp => rp.TenantId).HasColumnName("tenant_id");
+                e.Property(rp => rp.RolId).HasColumnName("rol_id").IsRequired();
+                e.Property(rp => rp.PermisoCodigo).HasColumnName("permiso_codigo").HasMaxLength(60).IsRequired();
+                e.Property(rp => rp.Permitido).HasColumnName("permitido").HasDefaultValue(true);
+                e.Property(rp => rp.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+                e.Property(rp => rp.UpdatedAt).HasColumnName("updated_at");
+                e.Property(rp => rp.UpdatedBy).HasColumnName("updated_by");
+                e.HasOne(rp => rp.Rol).WithMany().HasForeignKey(rp => rp.RolId);
+                e.HasOne(rp => rp.Permiso).WithMany().HasForeignKey(rp => rp.PermisoCodigo);
+                e.HasIndex(rp => new { rp.RolId, rp.TenantId });
             });
 
             // ========================
@@ -851,6 +939,13 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(f => !_tenantCtx.IsResolved || f.TenantId == _tenantCtx.TenantId);
             m.Entity<FacturacionPeriodoDetalle>()
              .HasQueryFilter(d => !_tenantCtx.IsResolved || d.TenantId == _tenantCtx.TenantId);
+            // Tarifas: el dueño del SaaS las administra para todos los clientes desde
+            // la consola de plataforma, que usa IgnoreQueryFilters() explícitamente.
+            // El filtro queda igual como red de seguridad para cualquier otro código.
+            m.Entity<TenantTarifaTramo>()
+             .HasQueryFilter(x => !_tenantCtx.IsResolved || x.TenantId == _tenantCtx.TenantId);
+            m.Entity<TenantCargoUnico>()
+             .HasQueryFilter(x => !_tenantCtx.IsResolved || x.TenantId == _tenantCtx.TenantId);
             m.Entity<UsuarioRol>()
              .HasQueryFilter(ur => !_tenantCtx.IsResolved || ur.TenantId == null || ur.TenantId == _tenantCtx.TenantId);
 
@@ -861,6 +956,9 @@ namespace DataMedix.Infrastructure.Persistence
              .HasQueryFilter(r => !_tenantCtx.IsResolved || r.TenantId == null || r.TenantId == _tenantCtx.TenantId);
             m.Entity<AliasParametro>()
              .HasQueryFilter(a => !_tenantCtx.IsResolved || a.TenantId == null || a.TenantId == _tenantCtx.TenantId);
+            // rol_permiso: tenant_id NULL = asignación por defecto, visible para todos
+            m.Entity<RolPermiso>()
+             .HasQueryFilter(rp => !_tenantCtx.IsResolved || rp.TenantId == null || rp.TenantId == _tenantCtx.TenantId);
 
             // Sin filtro: Tenant (directorio), ParametroClinico (catálogo global),
             // Usuario (cross-tenant en login), Rol, UsuarioRol usa GLOBAL-O-TENANT (ver arriba),

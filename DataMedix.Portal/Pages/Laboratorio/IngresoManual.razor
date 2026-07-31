@@ -1,5 +1,5 @@
 @page "/laboratorio/manual"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:laboratorio.manual")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.DTOs.EntradaManual
 @using DataMedix.Application.Interfaces

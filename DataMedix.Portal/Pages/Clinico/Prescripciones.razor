@@ -1,6 +1,6 @@
 @page "/prescripciones"
 @page "/prescripciones/{PacienteId:guid}"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:prescripciones.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using Microsoft.JSInterop

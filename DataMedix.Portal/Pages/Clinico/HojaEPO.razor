@@ -1,5 +1,5 @@
 @page "/hoja-epo"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:hojaepo.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Application.DTOs.HojaEpo

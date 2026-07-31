@@ -57,6 +57,8 @@ namespace DataMedix.Infrastructure
             services.AddScoped<IExcelExporter, ExcelExporter>();
             services.AddScoped<IDepuracionService, DepuracionService>();
             services.AddScoped<IFacturacionService, FacturacionService>();
+            services.AddScoped<IPermisoService, PermisoService>();
+            services.AddScoped<ITarifaService, TarifaService>();
             services.AddScoped<IEntradaManualService, EntradaManualService>();
             services.AddScoped<IUsageMeter, UsageMeter>();
 
