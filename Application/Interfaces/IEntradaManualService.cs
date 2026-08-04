@@ -18,5 +18,20 @@ namespace DataMedix.Application.Interfaces
         /// </summary>
         Task<SnapshotMensual?> GetSnapshotAsync(
             Guid tenantId, Guid pacienteId, int anio, int mes);
+
+        /// <summary>
+        /// Formulario prellenado con lo que se guardó para ese paciente y período,
+        /// incluidos los parámetros adicionales (potasio, albúmina, peso) que viven
+        /// en el detalle del snapshot. Devuelve null si no hay nada cargado.
+        /// </summary>
+        Task<EntradaManualDto?> GetDatosPeriodoAsync(
+            Guid tenantId, Guid pacienteId, int anio, int mes);
+
+        /// <summary>
+        /// Último turno conocido del paciente (del período pedido o del más
+        /// reciente anterior), para no obligar a reescribirlo cada mes.
+        /// </summary>
+        Task<string?> GetTurnoSugeridoAsync(
+            Guid tenantId, Guid pacienteId, int anio, int mes);
     }
 }

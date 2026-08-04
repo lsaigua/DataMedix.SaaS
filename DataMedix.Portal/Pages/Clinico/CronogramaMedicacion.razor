@@ -585,11 +585,14 @@
                                 @if (_editTurnoId == crono.Id)
                                 {
                                     <div class="crono-turno-edit">
-                                        <input type="text" class="crono-input-turno"
-                                               @bind="_editTurnoValor"
-                                               @bind:event="oninput"
-                                               maxlength="25"
-                                               placeholder="LMV / MJS" />
+                                        @* Select y no texto libre: el cronograma solo reconoce
+                                           LMV y MJS, y cualquier otro valor deja al paciente
+                                           sin días de sesión sin explicar por qué. *@
+                                        <select class="crono-input-turno" @bind="_editTurnoValor">
+                                            <option value="">— Sin turno —</option>
+                                            <option value="LMV">LMV</option>
+                                            <option value="MJS">MJS</option>
+                                        </select>
                                         <div class="crono-cell-edit-btns">
                                             <button class="crono-btn-ok" @onclick="() => GuardarTurnoAsync(crono.Id)">✓</button>
                                             <button class="crono-btn-cancel" @onclick="CancelarEditTurno">✕</button>
