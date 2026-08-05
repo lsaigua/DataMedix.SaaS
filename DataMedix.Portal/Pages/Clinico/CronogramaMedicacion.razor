@@ -139,13 +139,16 @@
                 </p>
             </div>
             <div class="crono-config-row">
-                <label>Hierro (precio por mg):</label>
+                <label>Hierro — precio por ampolla (100 mg):</label>
                 <div class="crono-config-money">
                     <span class="crono-config-money-sign">$</span>
                     <input type="text" inputmode="decimal" class="crono-config-input"
                            value="@Money(_precioHierro)"
                            @onchange="e => _precioHierro = ParseDecimal(e.Value?.ToString()) ?? 0" />
                 </div>
+                <span class="crono-config-hint crono-config-hint-inline">
+                    400 mg = 4 ampollas = $ @CostoHierro(400m).ToString("N2")
+                </span>
             </div>
             <div class="crono-config-actions">
                 <button class="crono-btn crono-btn-primary" @onclick="GuardarPreciosAsync">Guardar</button>
@@ -468,7 +471,7 @@
                                 ? (p.EpoCosto / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
                                 : "0";
                             var wFe = maxCosto > 0
-                                ? (p.TotalHierro * _precioHierro / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                                ? (CostoHierro(p.TotalHierro) / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
                                 : "0";
                             <div class="crono-barra-row">
                                 <div class="crono-barra-nombre" title="@PacienteDisplay.Mask(p.Nombre) · @p.Cedula">
@@ -480,10 +483,10 @@
                                         <div class="crono-barra-seg crono-barra-epo" style="width:@wEpo%"
                                              title="EPO $@(p.EpoCosto.ToString("N0"))"></div>
                                     }
-                                    @if (p.TotalHierro * _precioHierro > 0)
+                                    @if (CostoHierro(p.TotalHierro) > 0)
                                     {
                                         <div class="crono-barra-seg crono-barra-fe-bar" style="width:@wFe%"
-                                             title="Hierro $@((p.TotalHierro * _precioHierro).ToString("N0"))"></div>
+                                             title="Hierro $@(CostoHierro(p.TotalHierro).ToString("N2"))"></div>
                                     }
                                 </div>
                                 <div class="crono-barra-costo">$@p.Costo.ToString("N0")</div>
@@ -512,15 +515,9 @@
         <div class="crono-table-wrap" id="cronoTableWrap">
             <table class="crono-table">
                 <thead>
-                    <tr>
-                        <th colspan="100" class="crono-titulo-mes">
-                            @NombreMes(_mes).ToUpper() · @_anio
-                            @if (!string.IsNullOrWhiteSpace(_busqueda))
-                            {
-                                <span class="crono-titulo-filtro"> — filtro: "@_busqueda"</span>
-                            }
-                        </th>
-                    </tr>
+                    @* El período ya se indica en el encabezado de la página y en
+                       los selectores de mes/año: la banda de título solo robaba
+                       alto útil a la grilla. *@
                     <tr>
                         <th class="crono-th-fixed crono-th-paciente">Paciente</th>
                         <th class="crono-th-fixed crono-th-cedula">Cédula</th>
@@ -735,7 +732,7 @@
                                     <div class="crono-total-num">@totalHierro.ToString("N0")</div>
                                     @if (_precioHierro > 0)
                                     {
-                                        <div class="crono-total-costo">$@((totalHierro * _precioHierro).ToString("N0"))</div>
+                                        <div class="crono-total-costo">$@(CostoHierro(totalHierro).ToString("N2"))</div>
                                     }
                                 }
                                 else { <span class="crono-dash">—</span> }
@@ -815,7 +812,7 @@
                     c.Paciente.NombreCompleto,
                     c.Paciente.Identificacion,
                     epo, fe, epoCosto,
-                    epoCosto + fe * _precioHierro);
+                    epoCosto + CostoHierro(fe));
             })
             .Where(p => p.Costo > 0)
             .OrderByDescending(p => p.Costo)
@@ -884,7 +881,7 @@
                         acc = (0, 0, 0);
                     aplsPorDosis[epoUI] = (acc.Apps + 1, acc.TotalUI + epoUI, acc.Costo + precio);
                 }
-                costoHierro += feUI * _precioHierro;
+                costoHierro += CostoHierro(feUI);
             }
 
             // Dosis inicial pendiente: administrada solo si fue marcada Aplicada; sino va a pendPorDosis
@@ -961,6 +958,13 @@
             18000 => 6000m,
             _     => 0m
         };
+
+    /// <summary>
+    /// Costo del hierro IV según el precio por ampolla configurado.
+    /// La regla vive en <see cref="CostoMedicacion"/> para que la pantalla y el
+    /// servicio no puedan divergir.
+    /// </summary>
+    private decimal CostoHierro(decimal mg) => CostoMedicacion.CostoHierro(mg, _precioHierro);
 
     /// <summary>
     /// Costo de UNA aplicación de EPO. El precio configurado es por dosis
@@ -1681,6 +1685,7 @@
         color: #64748b;
         font-style: italic;
     }
+    .crono-config-hint-inline { margin: 0; white-space: nowrap; }
 
     /* Resumen costos */
     .crono-resumen {
@@ -2007,7 +2012,7 @@
     /* Cabecera sticky — fila 1 (título mes) en top:0; fila 2 (columnas) en top:44px */
     .crono-table thead th {
         position: sticky;
-        top: 44px;                  /* fila 2 se pega DEBAJO de la fila 1 */
+        top: 0;                     /* única fila de cabecera: se pega al tope */
         background: var(--dm-brand-surface);
         color: var(--dm-on-brand-soft);
         font-size: 0.65rem;
@@ -2018,31 +2023,6 @@
         text-align: center;
         z-index: 10;                /* por encima de celdas de body */
         white-space: nowrap;
-    }
-
-    /* Fila título mes/año — se pega en top:0 Y en left:0 (esquina superior izquierda) */
-    .crono-titulo-mes {
-        background: linear-gradient(135deg, var(--dm-brand-surface) 0%, var(--dm-brand-surface-strong) 100%) !important;
-        color: white !important;
-        font-size: 0.95rem !important;
-        font-weight: 800 !important;
-        letter-spacing: 0.08em !important;
-        text-transform: uppercase !important;
-        padding: 0.7rem 1rem !important;
-        text-align: left !important;
-        border-bottom: 2px solid #0ea5e9 !important;
-        position: sticky;
-        top: 0 !important;          /* primera fila: tope del contenedor */
-        left: 0;                    /* también se fija al desplazarse a la derecha */
-        z-index: 20 !important;     /* por encima de todo */
-        height: 44px;
-        box-sizing: border-box;
-    }
-    .crono-titulo-filtro {
-        font-size: 0.75rem;
-        font-weight: 400;
-        color: #7dd3fc;
-        letter-spacing: 0.02em;
     }
 
     /* Columnas fijas (sticky left) */

@@ -551,13 +551,16 @@ namespace DataMedix.Application.Services
                         costoEpo += precio;
                 }
 
+            // El precio de hierro es por ampolla de 100 mg, no por miligramo
+            var precioAmpolla = confHierro?.PrecioUnitario ?? 0;
+
             return new ResumenCostos
             {
                 TotalEpoUI = totalEpoUi,
                 TotalHierroMg = totalHierroMg,
                 CostoEpo = costoEpo,
-                CostoHierro = totalHierroMg * (confHierro?.PrecioUnitario ?? 0),
-                PrecioHierroPorMg = confHierro?.PrecioUnitario ?? 0
+                CostoHierro = CostoMedicacion.CostoHierro(totalHierroMg, precioAmpolla),
+                PrecioHierroPorAmpolla = precioAmpolla
             };
         }
 
@@ -859,7 +862,8 @@ namespace DataMedix.Application.Services
         public decimal CostoEpo { get; set; }
         public decimal CostoHierro { get; set; }
         public decimal CostoTotal => CostoEpo + CostoHierro;
-        public decimal PrecioHierroPorMg { get; set; }
+        /// <summary>Precio de una ampolla de 100 mg de hierro IV.</summary>
+        public decimal PrecioHierroPorAmpolla { get; set; }
         public int TotalPacientes { get; set; }
         public int TotalSesiones { get; set; }
     }
