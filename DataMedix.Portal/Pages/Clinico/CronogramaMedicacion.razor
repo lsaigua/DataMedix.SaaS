@@ -1232,7 +1232,7 @@
         ws.Range(1, 1, 1, 10).Merge();
         ws.Row(1).Style.Font.Bold = true;
         ws.Row(1).Style.Font.FontSize = 13;
-        ws.Row(1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#0f172a");
+        ws.Row(1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#125e8a");
         ws.Row(1).Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
 
         // ── Fila 2: Resumen ───────────────────────────────────────────────────
@@ -1270,7 +1270,7 @@
 
         var hdr = ws.Row(headerRow);
         hdr.Style.Font.Bold = true;
-        hdr.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#0f172a");
+        hdr.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#125e8a");
         hdr.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
 
         // ── Filas de datos ────────────────────────────────────────────────────
@@ -1561,7 +1561,7 @@
     .crono-title {
         font-size: 1.4rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         margin: 0;
     }
     .crono-subtitle {
@@ -1641,7 +1641,7 @@
     }
     .crono-config-title {
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         font-size: 0.85rem;
         margin-right: 0.5rem;
     }
@@ -1701,19 +1701,19 @@
     }
     .crono-resumen-item:last-child { border-right: none; }
     .crono-resumen-label { font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em; }
-    .crono-resumen-value { font-size: 1rem; font-weight: 700; color: #0f172a; }
+    .crono-resumen-value { font-size: 1rem; font-weight: 700; color: var(--dm-brand-ink); }
     .crono-cost { color: #0ea5e9; }
     .crono-resumen-total .crono-resumen-value { color: #7c3aed; font-size: 1.1rem; }
 
     /* ── Botón Resumen en la barra de acciones ─────────────────────────────── */
     .crono-btn-resumen {
-        background: #0f172a;
+        background: var(--dm-brand-surface);
         color: #e2e8f0;
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
     }
-    .crono-btn-resumen:hover:not(:disabled) { background: #1e293b; }
+    .crono-btn-resumen:hover:not(:disabled) { background: var(--dm-brand-surface-hover); }
     .crono-btn-resumen svg { width: 15px; height: 15px; flex: none; }
     .crono-btn-badge {
         background: rgba(56, 189, 248, 0.2);
@@ -1763,7 +1763,7 @@
     .crono-resumen-modal-title {
         font-size: 1.05rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         margin: 0 0 0.15rem;
     }
     .crono-resumen-modal-sub { font-size: 0.78rem; color: #64748b; margin: 0; }
@@ -1778,7 +1778,7 @@
         border-radius: 8px;
         transition: all 0.15s;
     }
-    .crono-resumen-modal-close:hover { background: #e2e8f0; color: #0f172a; }
+    .crono-resumen-modal-close:hover { background: #e2e8f0; color: var(--dm-brand-ink); }
     .crono-resumen-modal-close:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
 
     /* Solo el cuerpo scrollea: cabecera y pie quedan fijos */
@@ -1825,8 +1825,8 @@
     /* Cabecera = control de disclosure: toda la barra es clickable (área grande,
        ley de Fitts) y funciona con teclado por ser un button nativo. */
     .crono-desglose-epo-header {
-        background: #0f172a;
-        color: #94a3b8;
+        background: var(--dm-brand-surface);
+        color: var(--dm-on-brand-soft);
         padding: 0.45rem 1rem;
         font-size: 0.65rem;
         font-weight: 700;
@@ -1843,14 +1843,14 @@
         cursor: pointer;
         transition: background 0.16s ease;
     }
-    .crono-desglose-epo-header:hover  { background: #1e293b; }
-    .crono-desglose-epo-header:active { background: #172033; }
+    .crono-desglose-epo-header:hover  { background: var(--dm-brand-surface-hover); }
+    .crono-desglose-epo-header:active { background: var(--dm-brand-surface-strong); }
     .crono-desglose-epo-header:focus-visible {
         outline: 2px solid #38bdf8;
         outline-offset: -2px;
     }
     .crono-desglose-epo-titulo { color: #e2e8f0; }
-    .crono-desglose-epo-sub { font-size: 0.6rem; color: #94a3b8; text-transform: none; letter-spacing: 0; }
+    .crono-desglose-epo-sub { font-size: 0.6rem; color: var(--dm-on-brand-muted); text-transform: none; letter-spacing: 0; }
 
     /* Chevron: única señal de estado que rota 180° al expandir */
     .crono-desglose-chevron {
@@ -1886,7 +1886,7 @@
         letter-spacing: 0.03em;
         white-space: nowrap;
     }
-    .crono-peek-costo { background: rgba(56, 189, 248, 0.18); color: #7dd3fc; }
+    .crono-peek-costo { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
 
     /* Animación de altura sin JS: grid 1fr → 0fr anima a contenido variable */
     .crono-desglose-epo-body {
@@ -1929,16 +1929,16 @@
     .crono-desglose-epo-num   { text-align: right; }
     .crono-desglose-epo-costo { text-align: right; font-weight: 700; color: #0ea5e9; }
     .crono-desglose-epo-table tfoot td {
-        background: #0f172a;
+        background: var(--dm-brand-surface);
         color: #e2e8f0;
         font-weight: 700;
         font-size: 0.78rem;
         padding: 0.32rem 1rem;
         border-top: 2px solid #334155;
     }
-    .crono-desglose-epo-total-label { color: #94a3b8; font-size: 0.65rem; letter-spacing: 0.06em; }
+    .crono-desglose-epo-total-label { color: var(--dm-on-brand-muted); font-size: 0.65rem; letter-spacing: 0.06em; }
     .crono-desglose-epo-total-val   { text-align: right; }
-    .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #38bdf8; }
+    .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #bfe9ff; }
     .crono-desglose-epo-sin-epo td  { color: #94a3b8; font-style: italic; border-top: 1px dashed #e2e8f0; }
 
     /* Panel EPO pendiente — naranja oscuro para diferenciarlo del administrado */
@@ -2008,8 +2008,8 @@
     .crono-table thead th {
         position: sticky;
         top: 44px;                  /* fila 2 se pega DEBAJO de la fila 1 */
-        background: #0f172a;
-        color: #94a3b8;
+        background: var(--dm-brand-surface);
+        color: var(--dm-on-brand-soft);
         font-size: 0.65rem;
         font-weight: 700;
         text-transform: uppercase;
@@ -2022,7 +2022,7 @@
 
     /* Fila título mes/año — se pega en top:0 Y en left:0 (esquina superior izquierda) */
     .crono-titulo-mes {
-        background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%) !important;
+        background: linear-gradient(135deg, var(--dm-brand-surface) 0%, var(--dm-brand-surface-strong) 100%) !important;
         color: white !important;
         font-size: 0.95rem !important;
         font-weight: 800 !important;
@@ -2051,7 +2051,7 @@
         left: 0;
         z-index: 6;                 /* body fixed > body scroll (auto) */
     }
-    .crono-th-fixed { z-index: 15; background: #0f172a !important; }
+    .crono-th-fixed { z-index: 15; background: var(--dm-brand-surface) !important; }
     /* (0,2,1) > (0,1,2): gana sobre .crono-table thead th — fija las columnas sobre las de fecha al desplazarse */
     .crono-table thead .crono-th-fixed { z-index: 25; }
     .crono-td-fixed { background: white; }
@@ -2142,7 +2142,7 @@
     .crono-td-total {
         min-width: 85px;
         text-align: center;
-        border-left: 3px solid #0f172a;
+        border-left: 3px solid var(--dm-brand-surface);
         padding: 0.3rem 0.4rem;
         vertical-align: middle;
     }
@@ -2174,7 +2174,7 @@
 
     /* Fechas en encabezado */
     .crono-th-fecha { min-width: 62px; }
-    .crono-fds { background: #1e293b !important; color: #475569 !important; }
+    .crono-fds { background: #eef4f8 !important; color: #7c93a5 !important; }
     .crono-fecha-dia { font-size: 0.58rem; color: #64748b; }
     .crono-fecha-num { font-size: 0.85rem; color: #e2e8f0; font-weight: 700; }
 
@@ -2212,7 +2212,7 @@
     .crono-td-paciente {
         padding: 0.5rem 0.75rem;
         font-weight: 600;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         font-size: 0.8rem;
         border-right: 1px solid #f1f5f9;
         white-space: nowrap;
@@ -2299,7 +2299,7 @@
         border-radius: 4px;
         font-size: 0.72rem;
         text-align: center;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
     }
     .crono-cell-edit-btns {
         display: flex;
@@ -2400,7 +2400,7 @@
         font-size: 0.72rem;
         text-align: center;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
     }
 
     /* ─── Gráficos de costo ─────────────────────────────────────────────── */
@@ -2413,7 +2413,7 @@
     .crono-grafico-titulo {
         font-size: 0.82rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         display: flex;
         align-items: center;
         gap: 1rem;
@@ -2475,7 +2475,7 @@
         flex-shrink: 0;
         font-size: 0.72rem;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         text-align: right;
     }
     .crono-grafico-aviso {

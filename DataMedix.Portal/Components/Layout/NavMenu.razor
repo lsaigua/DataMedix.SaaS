@@ -473,8 +473,8 @@
         height: 100%;
         display: flex;
         flex-direction: column;
-        background: #0f172a;
-        color: #cbd5e1;
+        background: var(--dm-brand-surface);
+        color: var(--dm-on-brand-soft);
         overflow: hidden;
     }
 
@@ -484,7 +484,7 @@
         align-items: center;
         gap: 0.75rem;
         padding: 1.25rem 1.25rem 1rem;
-        border-bottom: 1px solid rgba(255,255,255,0.07);
+        border-bottom: 1px solid rgba(255,255,255,0.20);
         flex-shrink: 0;
     }
 
@@ -497,7 +497,7 @@
 
     .dm-nav-subtitle {
         font-size: 0.65rem;
-        color: #475569;
+        color: var(--dm-on-brand-muted);
         font-weight: 500;
         letter-spacing: 0.03em;
     }
@@ -509,13 +509,13 @@
         overflow-x: hidden;
         padding: 0.875rem 0.75rem;
         scrollbar-width: thin;
-        scrollbar-color: #1e293b transparent;
+        scrollbar-color: rgba(255,255,255,0.30) transparent;
     }
 
     .dm-nav-section {
         font-size: 0.6rem;
         font-weight: 800;
-        color: #334155;
+        color: var(--dm-on-brand-muted);
         letter-spacing: 0.1em;
         padding: 0.875rem 0.75rem 0.35rem;
         text-transform: uppercase;
@@ -527,7 +527,7 @@
         gap: 0.65rem;
         padding: 0.55rem 0.75rem;
         border-radius: 8px;
-        color: #94a3b8;
+        color: var(--dm-on-brand-soft);
         text-decoration: none;
         font-size: 0.85rem;
         font-weight: 500;
@@ -537,13 +537,15 @@
     }
 
     .dm-nav-link:hover {
-        background: rgba(255,255,255,0.06);
-        color: #e2e8f0;
+        background: rgba(255,255,255,0.14);
+        color: var(--dm-on-brand);
     }
 
+    /* Sobre el azul claro un celeste no destacaría lo suficiente: el activo
+       se marca con blanco pleno y un fondo más sólido. */
     .dm-nav-link.active {
-        background: rgba(14,165,233,0.15);
-        color: #38bdf8;
+        background: rgba(255,255,255,0.20);
+        color: var(--dm-on-brand);
         font-weight: 600;
     }
 
@@ -564,7 +566,7 @@
     /* Footer */
     .dm-nav-footer {
         padding: 0.875rem 0.75rem;
-        border-top: 1px solid rgba(255,255,255,0.07);
+        border-top: 1px solid rgba(255,255,255,0.20);
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
@@ -601,7 +603,7 @@
     .dm-nav-user-name {
         font-size: 0.78rem;
         font-weight: 600;
-        color: #e2e8f0;
+        color: var(--dm-on-brand);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -609,7 +611,7 @@
 
     .dm-nav-user-role {
         font-size: 0.62rem;
-        color: #475569;
+        color: var(--dm-on-brand-muted);
         text-transform: uppercase;
         font-weight: 700;
         letter-spacing: 0.06em;
@@ -619,7 +621,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        color: #475569;
+        color: var(--dm-on-brand-soft);
         text-decoration: none;
         font-size: 0.8rem;
         font-weight: 500;
@@ -658,15 +660,15 @@
         gap: 0.3rem;
         padding: 0.2rem 0;
         font-size: 0.62rem;
-        color: #1e293b;
+        color: var(--dm-on-brand-muted);
     }
     .dm-nav-legal a {
-        color: #334155;
+        color: var(--dm-on-brand-soft);
         text-decoration: none;
         font-weight: 500;
     }
-    .dm-nav-legal a:hover { color: #94a3b8; text-decoration: underline; }
-    .dm-nav-legal span { color: #1e293b; }
+    .dm-nav-legal a:hover { color: var(--dm-on-brand); text-decoration: underline; }
+    .dm-nav-legal span { color: var(--dm-on-brand-muted); }
 
     /* PetMac Labs — créditos de desarrollo */
     .dm-nav-dev {
@@ -676,7 +678,7 @@
     }
     .dm-nav-dev-label {
         font-size: 0.55rem;
-        color: #1e293b;
+        color: var(--dm-on-brand-muted);
         text-transform: uppercase;
         letter-spacing: 0.08em;
         font-weight: 700;
