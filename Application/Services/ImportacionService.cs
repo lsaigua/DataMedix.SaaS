@@ -49,6 +49,10 @@ namespace DataMedix.Application.Services
             var errores = new List<ErrorImportacionDto>();
             var filasValidas = new List<LabRowDto>();
 
+            // Se avisa del turno en la previsualización para que el usuario lo
+            // vea ANTES de confirmar, no después de importar
+            errores.AddRange(NormalizarTurnos(filas));
+
             foreach (var fila in filas)
             {
                 var erroresFila = ValidarFila(fila);
@@ -81,6 +85,10 @@ namespace DataMedix.Application.Services
             var filas = await _excelReader.ReadAsync(fileStream);
             if (!filas.Any())
                 return Error(Guid.Empty, "El archivo no contiene datos.");
+
+            // Solo LMV y MJS llegan al paciente y al snapshot: cualquier otro
+            // texto dejaría al paciente sin días en el cronograma
+            var avisosTurno = NormalizarTurnos(filas);
 
             // 2. Determinar período del lote (usar la fecha más frecuente)
             var periodDate = DeterminarPeriodo(filas);
@@ -116,6 +124,21 @@ namespace DataMedix.Application.Services
                 var errores = new List<ImportacionError>();
                 var resultados = new List<ResultadoLaboratorio>();
                 var pacientesCache = new Dictionary<string, Paciente>(StringComparer.OrdinalIgnoreCase);
+
+                // Los turnos no reconocidos quedan registrados en el lote para
+                // que se puedan revisar después desde Cargas
+                foreach (var aviso in avisosTurno)
+                {
+                    errores.Add(new ImportacionError
+                    {
+                        LoteId        = lote.Id,
+                        NumeroFila    = aviso.NumeroFila,
+                        Campo         = aviso.Campo,
+                        TipoError     = aviso.TipoError,
+                        Mensaje       = aviso.Mensaje,
+                        ValorRecibido = aviso.ValorRecibido
+                    });
+                }
 
                 foreach (var fila in filas)
                 {
@@ -468,6 +491,57 @@ namespace DataMedix.Application.Services
                 UnidadMedidaRaw = f.UnidadMedida,
                 PeriodDate = f.PeriodDate
             }).ToList();
+        }
+
+        /// <summary>
+        /// Deja el turno de cada fila en LMV o MJS, los únicos que el cronograma
+        /// sabe repartir en días de sesión. El archivo trae variantes como
+        /// "1er LMV" o "3er MJS" (se reconocen) y también valores que no son un
+        /// turno, que se descartan: guardarlos dejaba al paciente en la grilla
+        /// sin días ni totales y sin explicación.
+        ///
+        /// El turno solo se exige en HEMODIÁLISIS. En peritoneal el tratamiento
+        /// es diario y domiciliario —el archivo lo marca como "LMXJVSAD"—, así
+        /// que ahí la ausencia de turno es lo esperado y no se reporta: la
+        /// modalidad ya queda registrada en TipoAtencion.
+        ///
+        /// Se avisa una vez por cada valor distinto, no por fila, para no
+        /// inundar el reporte: un mismo paciente trae muchas filas de resultados.
+        /// </summary>
+        private static List<ErrorImportacionDto> NormalizarTurnos(IEnumerable<LabRowDto> filas)
+        {
+            var avisos     = new List<ErrorImportacionDto>();
+            var reportados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var fila in filas)
+            {
+                var crudo = fila.PlanSalud?.Trim();
+
+                var modalidad = TipoAtencionPaciente.Detectar(fila.TipoAtencion);
+                if (modalidad is not null) fila.TipoAtencion = modalidad;
+
+                var turno = TurnoDialisis.Detectar(crudo);
+                fila.PlanSalud = turno;
+
+                bool esPeritoneal = modalidad == TipoAtencionPaciente.Peritoneal;
+
+                if (turno is null && !esPeritoneal &&
+                    !string.IsNullOrWhiteSpace(crudo) && reportados.Add(crudo))
+                {
+                    avisos.Add(new ErrorImportacionDto
+                    {
+                        NumeroFila    = fila.LineNumber,
+                        Campo         = "PlanSalud",
+                        TipoError     = TipoErrorImportacion.Formato,
+                        ValorRecibido = crudo,
+                        Mensaje       = $"Turno «{crudo}» no reconocido; solo se admiten LMV y MJS. " +
+                                        "Los resultados se importan igual, pero estos pacientes quedarán " +
+                                        "sin turno y habrá que asignárselo en el Cronograma de Medicación."
+                    });
+                }
+            }
+
+            return avisos;
         }
 
         private static List<ErrorImportacionDto> ValidarFila(LabRowDto fila)

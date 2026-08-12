@@ -41,31 +41,8 @@ namespace DataMedix.Application.DTOs.EntradaManual
         public bool EsEdicion { get; set; }
     }
 
-    /// <summary>Turnos de sesión reconocidos por el cronograma.</summary>
-    public static class TurnoDialisis
-    {
-        public const string Lmv = "LMV";
-        public const string Mjs = "MJS";
-
-        public static readonly (string Valor, string Etiqueta)[] Opciones =
-        [
-            (Lmv, "LMV — Lunes, Miércoles y Viernes"),
-            (Mjs, "MJS — Martes, Jueves y Sábado")
-        ];
-
-        /// <summary>
-        /// Extrae el turno de un texto libre (el Excel trae cosas como
-        /// "LMV MAÑANA" o "Turno MJS"). Devuelve null si no reconoce ninguno.
-        /// </summary>
-        public static string? Detectar(string? texto)
-        {
-            if (string.IsNullOrWhiteSpace(texto)) return null;
-            var upper = texto.ToUpperInvariant();
-            if (upper.Contains(Lmv)) return Lmv;
-            if (upper.Contains(Mjs)) return Mjs;
-            return null;
-        }
-    }
+    // TurnoDialisis vive en DataMedix.Domain.Entities: la comparten el ingreso
+    // manual, la importación de archivos y el alta de pacientes.
 
     public class ResultadoEntradaManualDto
     {

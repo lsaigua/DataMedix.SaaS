@@ -2154,9 +2154,15 @@
 
     /* Fechas en encabezado */
     .crono-th-fecha { min-width: 62px; }
-    .crono-fds { background: #eef4f8 !important; color: #7c93a5 !important; }
-    .crono-fecha-dia { font-size: 0.58rem; color: #64748b; }
-    .crono-fecha-num { font-size: 0.85rem; color: #e2e8f0; font-weight: 700; }
+    .crono-fecha-dia { font-size: 0.58rem; color: var(--dm-on-brand-muted); }
+    .crono-fecha-num { font-size: 0.85rem; color: var(--dm-on-brand); font-weight: 700; }
+
+    /* Fin de semana: no hay sesión. Se apaga con un tono más profundo de la
+       marca, no aclarando el fondo: al aclararlo, el número —que es blanco—
+       quedaba invisible y la columna entera se leía como un hueco. */
+    .crono-th-fecha.crono-fds { background: var(--dm-brand-surface-strong) !important; }
+    .crono-th-fecha.crono-fds .crono-fecha-dia,
+    .crono-th-fecha.crono-fds .crono-fecha-num { color: var(--dm-on-brand-soft); }
 
     /* Columna HOY — header */
     .crono-hoy-th {
