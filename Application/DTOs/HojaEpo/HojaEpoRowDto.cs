@@ -6,6 +6,8 @@ namespace DataMedix.Application.DTOs.HojaEpo
         public string Identificacion { get; set; } = "";
         public string NombrePaciente { get; set; } = "";
         public int TiempoDialisisMeses { get; set; }
+        /// <summary>Modalidad del paciente: alimenta el filtro de tipo de atención.</summary>
+        public string? TipoAtencion { get; set; }
         public Dictionary<DateTime, HojaEpoCeldaDto> Meses { get; set; } = new();
 
         // Resumen calculado

@@ -60,6 +60,7 @@ namespace DataMedix.Application.Services
                     Identificacion       = paciente.Identificacion ?? "",
                     NombrePaciente       = paciente.NombreCompleto,
                     TiempoDialisisMeses  = paciente.MesesEnDialisis ?? 0,
+                    TipoAtencion         = paciente.TipoAtencion,
                 };
 
                 foreach (var mes in meses)

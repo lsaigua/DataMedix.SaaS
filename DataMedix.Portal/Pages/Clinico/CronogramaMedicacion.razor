@@ -180,7 +180,7 @@
         {
             bool hayFiltro = _filtroTurno != "Todos" || _filtroDia != 0 ||
                              _filtroSala != "Todas" || !string.IsNullOrWhiteSpace(_busqueda) ||
-                             TieneFiltroFecha;
+                             TieneFiltroFecha || _filtrosTipo.Count > 0;
             @if (hayFiltro)
             {
                 <div class="crono-resumen-modal-aviso">
@@ -407,6 +407,17 @@
                     var localItem = item;
                     <button class="crono-seg-btn @(_filtroDia == localItem.Val ? "crono-seg-active" : "")"
                             @onclick="() => _filtroDia = localItem.Val">@localItem.Label</button>
+                }
+            </div>
+            <div class="crono-filtros-grupo">
+                <span class="crono-filtros-label">Tipo de atención:</span>
+                <button class="crono-seg-btn @(_filtrosTipo.Count == 0 ? "crono-seg-active" : "")"
+                        @onclick="() => _filtrosTipo.Clear()">Todos</button>
+                @foreach (var t in _tiposAtencion)
+                {
+                    var tipo = t;
+                    <button class="crono-seg-btn @(_filtrosTipo.Contains(tipo) ? "crono-seg-active" : "")"
+                            @onclick="() => ToggleTipoAtencion(tipo)">@tipo</button>
                 }
             </div>
             <div class="crono-filtros-grupo">
@@ -830,7 +841,31 @@
                 ? c.Dias.Any(d => FechaEnRango(d.FechaSesion))
                 : _filtroDia == 0 || c.Dias.Any(d => (int)d.FechaSesion.DayOfWeek == _filtroDia))
             .Where(c => _filtroSala == "Todas" ||
-                string.Equals(c.Sala, _filtroSala, StringComparison.OrdinalIgnoreCase));
+                string.Equals(c.Sala, _filtroSala, StringComparison.OrdinalIgnoreCase))
+            .Where(c => _filtrosTipo.Count == 0 ||
+                (c.Paciente.TipoAtencion != null && _filtrosTipo.Contains(c.Paciente.TipoAtencion)));
+
+    /// <summary>
+    /// Modalidades presentes en el período. Se derivan de los datos, como en
+    /// Resultados Crudos, para no ofrecer un filtro que no devolvería nada.
+    /// </summary>
+    private List<string> _tiposAtencion = new();
+
+    private readonly HashSet<string> _filtrosTipo = new(StringComparer.OrdinalIgnoreCase);
+
+    private void ToggleTipoAtencion(string tipo)
+    {
+        if (!_filtrosTipo.Add(tipo)) _filtrosTipo.Remove(tipo);
+    }
+
+    private void RecalcularTiposAtencion() =>
+        _tiposAtencion = _cronogramas
+            .Select(c => c.Paciente?.TipoAtencion)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t)
+            .ToList();
 
     // RF3: computed
     private DateTime FechaFinFlex => _fechaInicioFlex.AddMonths(1).AddDays(-1);
@@ -1087,6 +1122,7 @@
     {
         _cronogramas = await CronogramaService.GetCronogramasMesAsync(_tenantId, _anio, _mes);
         _fechasColumna = ObtenerFechasColumna();
+        RecalcularTiposAtencion();
         if (_cronogramas.Count > 0)
             _needScrollSync = true;
         var eventos = await EventoRepo.GetByPeriodoAsync(_tenantId, _anio, _mes);
@@ -1123,6 +1159,7 @@
                 _tenantId, _anio, _mes, usuarioId,
                 _modo == 1 ? _fechaInicioFlex : null);
             _fechasColumna = ObtenerFechasColumna();
+            RecalcularTiposAtencion();
             _needScrollSync = true;
             await CargarHbAsync();
             Toast.ShowSuccess($"Cronograma de {NombreMes(_mes)} {_anio} actualizado — {_cronogramas.Count} pacientes");
@@ -1413,12 +1450,14 @@
                 var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
                 if (idx >= 0) _cronogramas[idx] = actualizado;
                 _fechasColumna = ObtenerFechasColumna();
+                RecalcularTiposAtencion();
             }
             else
             {
                 // Reactivado con días regenerados: recargar todo para reflejar nuevas fechas
                 _cronogramas = await CronogramaService.GetCronogramasMesAsync(_tenantId, _anio, _mes);
                 _fechasColumna = ObtenerFechasColumna();
+                RecalcularTiposAtencion();
                 await CargarHbAsync();
             }
             _needScrollSync = true;
