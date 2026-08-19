@@ -33,7 +33,7 @@
 .dm-global-loading-text {
     font-size: 15px;
     font-weight: 600;
-    color: #0f172a;
+    color: var(--dm-brand-ink);
 }
 
 @keyframes dm-spin {

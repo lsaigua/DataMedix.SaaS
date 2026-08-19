@@ -6,6 +6,14 @@ namespace DataMedix.Application.DTOs.EntradaManual
         public int    PeriodoAnio { get; set; }
         public int    PeriodoMes  { get; set; }
 
+        /// <summary>
+        /// Turno de diálisis: LMV o MJS. Es lo que usa el cronograma para saber
+        /// en qué días hay sesión; sin turno el paciente aparece sin días ni
+        /// totales. En la importación llega en la columna Plan Salud del Excel.
+        /// </summary>
+        public string?  Turno        { get; set; }
+        public string?  TipoAtencion { get; set; }
+
         // Panel principal — todos opcionales (al menos uno debe tener valor)
         public decimal? HbValor          { get; set; }
         public string?  HbUnidad         { get; set; } = "g/dL";
@@ -28,7 +36,13 @@ namespace DataMedix.Application.DTOs.EntradaManual
             HbValor.HasValue || HierroValor.HasValue ||
             FerritinaValor.HasValue || SaturacionValor.HasValue ||
             PotasioValor.HasValue || AlbuminaValor.HasValue || PesoKgValor.HasValue;
+
+        /// <summary>True si el formulario se prellenó con datos ya guardados.</summary>
+        public bool EsEdicion { get; set; }
     }
+
+    // TurnoDialisis vive en DataMedix.Domain.Entities: la comparten el ingreso
+    // manual, la importación de archivos y el alta de pacientes.
 
     public class ResultadoEntradaManualDto
     {

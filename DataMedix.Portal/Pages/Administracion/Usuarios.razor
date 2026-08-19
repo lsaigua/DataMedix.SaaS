@@ -1,5 +1,5 @@
 @page "/usuarios"
-@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@attribute [Authorize(Policy = "perm:usuarios.gestionar")]
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @using DataMedix.Application.Interfaces
@@ -511,7 +511,7 @@ else
     }
     .usr-title {
         font-size: 1.6rem; font-weight: 800;
-        color: #0f172a; margin: 0; letter-spacing: -0.03em;
+        color: var(--dm-brand-ink); margin: 0; letter-spacing: -0.03em;
     }
     .usr-subtitle { color: #64748b; margin: 0.2rem 0 0; font-size: 0.875rem; }
 
@@ -614,7 +614,7 @@ else
         font-size: 0.75rem; font-weight: 700; color: white;
         text-transform: uppercase;
     }
-    .usr-fullname { font-weight: 600; color: #0f172a; font-size: 0.875rem; }
+    .usr-fullname { font-weight: 600; color: var(--dm-brand-ink); font-size: 0.875rem; }
     .usr-mono { font-family: 'Menlo', 'Consolas', monospace; font-size: 0.8rem; color: #475569; }
     .usr-muted { color: #94a3b8; font-size: 0.8rem; }
 
@@ -725,7 +725,7 @@ else
         display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
     .usr-modal-head-icon svg { width: 18px; height: 18px; }
-    .usr-modal-title { font-size: 1rem; font-weight: 700; color: #0f172a; margin: 0; }
+    .usr-modal-title { font-size: 1rem; font-weight: 700; color: var(--dm-brand-ink); margin: 0; }
     .usr-modal-sub   { font-size: 0.78rem; color: #64748b; margin: 0.1rem 0 0; }
     .usr-modal-close {
         margin-left: auto; width: 32px; height: 32px; border-radius: 8px;

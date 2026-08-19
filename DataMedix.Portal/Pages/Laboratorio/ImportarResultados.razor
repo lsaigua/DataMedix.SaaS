@@ -1,5 +1,5 @@
 @page "/laboratorio/importar"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:laboratorio.importar")]
 @implements IDisposable
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms

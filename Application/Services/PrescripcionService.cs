@@ -86,14 +86,18 @@ namespace DataMedix.Application.Services
 
             await _prescripcionRepo.BulkUpsertSugeridaAsync(resultado);
 
-            // Registrar evento de facturación: 1 evento por prescripción generada
+            // Un evento POR PACIENTE. Antes se registraba un único evento con la
+            // cantidad dentro del JSON, y como la métrica de facturación cuenta
+            // filas, un lote de 161 pacientes se contabilizaba como 1.
             if (resultado.Count > 0)
-                await _usageMeter.RecordAsync(UsageEventTypes.PrescripcionSugerida, new
-                {
-                    tenantId,
-                    periodo = periodDate.ToString("yyyy-MM"),
-                    cantidad = resultado.Count
-                });
+                await _usageMeter.RecordManyAsync(
+                    UsageEventTypes.PrescripcionSugerida,
+                    resultado.Select(object (p) => new
+                    {
+                        tenantId,
+                        pacienteId = p.PacienteId,
+                        periodo    = periodDate.ToString("yyyy-MM")
+                    }));
         }
 
         /// <summary>

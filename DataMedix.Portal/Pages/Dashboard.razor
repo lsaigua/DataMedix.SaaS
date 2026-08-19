@@ -1,5 +1,5 @@
 @page "/dashboard"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:dashboard.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @using DataMedix.Application.Interfaces
@@ -225,7 +225,7 @@ else
     .dash-title {
         font-size: 1.6rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         margin: 0;
         letter-spacing: -0.03em;
     }
@@ -286,7 +286,7 @@ else
         display: block;
         font-size: 1.9rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         line-height: 1;
         letter-spacing: -0.04em;
     }

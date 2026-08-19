@@ -26,6 +26,25 @@ namespace DataMedix.Domain.Entities
         /// <summary>Nombre del plan de servicio para facturación.</summary>
         public string? PlanNombre { get; set; }
 
+        // ── Tarifas del plan (agregado en migración 007) ──────────────────────
+        /// <summary>Cargo fijo mensual del plan.</summary>
+        public decimal TarifaBase { get; set; }
+        /// <summary>
+        /// Cargo por cada paciente procesado. Se usa cuando el tenant no tiene
+        /// tramos por volumen definidos; con tramos, manda el tramo.
+        /// </summary>
+        public decimal TarifaPaciente { get; set; }
+
+        // ── Modelo de cobro (agregado en migración 008) ───────────────────────
+        /// <summary>SUSCRIPCION | POR_PACIENTE | MIXTO — ver <see cref="ModeloCobro"/>.</summary>
+        public string ModeloCobro { get; set; } = Entities.ModeloCobro.Mixto;
+        /// <summary>Soporte premium u otros recurrentes que se suman cada mes.</summary>
+        public decimal TarifaSoporteMensual { get; set; }
+        public string Moneda { get; set; } = "USD";
+        public string? FacturacionNotas { get; set; }
+
+        public ICollection<TenantTarifaTramo> Tramos { get; set; } = new List<TenantTarifaTramo>();
+
         public ICollection<Usuario> Usuarios { get; set; } = new List<Usuario>();
         public ICollection<Paciente> Pacientes { get; set; } = new List<Paciente>();
     }

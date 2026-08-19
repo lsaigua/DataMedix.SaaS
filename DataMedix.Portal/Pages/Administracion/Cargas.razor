@@ -1,5 +1,5 @@
 @page "/cargas"
-@attribute [Authorize(Roles = "SUPERADMIN,ADMIN,OPERADOR")]
+@attribute [Authorize(Policy = "perm:cargas.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Domain.Entities

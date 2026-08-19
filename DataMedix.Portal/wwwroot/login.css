@@ -67,7 +67,7 @@
         display: block;
         margin-bottom: 8px;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         font-size: 14px;
     }
 

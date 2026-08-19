@@ -1,6 +1,6 @@
 @page "/historial-clinico"
 @page "/historial-clinico/{PacienteId:guid}"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:historial.clinico")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Domain.Entities

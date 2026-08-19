@@ -1,5 +1,5 @@
 @page "/rangos-prescriba"
-@attribute [Authorize(Roles = "SUPERADMIN,ADMIN,MEDICO")]
+@attribute [Authorize(Policy = "perm:rangos.gestionar")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Domain.Entities

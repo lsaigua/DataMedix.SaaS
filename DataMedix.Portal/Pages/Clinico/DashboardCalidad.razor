@@ -3,7 +3,7 @@
 @using DataMedix.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:calidad.ver")]
 @inject ISnapshotMensualRepository SnapshotRepo
 @inject AuthenticationStateProvider AuthProvider
 @inject GlobalLoadingService Loading
@@ -411,7 +411,7 @@
     .dq-title {
         font-size: 1.4rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         margin: 0;
     }
     .dq-subtitle {
@@ -526,7 +526,7 @@
         transform: translate(-50%, -50%);
         font-size: 1.1rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
     }
     .dq-kpi-abs {
         font-size: 0.72rem;
@@ -579,7 +579,7 @@
     .dq-tabla-titulo {
         font-size: 0.9rem;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
     }
     .dq-tabla-total {
         font-size: 0.75rem;
@@ -616,8 +616,8 @@
         font-size: 0.8rem;
     }
     .dq-th {
-        background: #0f172a;
-        color: #94a3b8;
+        background: var(--dm-brand-surface);
+        color: var(--dm-on-brand-soft);
         font-size: 0.65rem;
         font-weight: 700;
         text-transform: uppercase;
@@ -659,7 +659,7 @@
     .dq-td-pac {
         text-align: left;
         font-weight: 600;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         white-space: nowrap;
     }
     .dq-td-ced  { font-size: 0.75rem; color: #64748b; }

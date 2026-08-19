@@ -1,5 +1,5 @@
 @page "/clinico/reglas"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:reglas.gestionar")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Application.RuleEngine

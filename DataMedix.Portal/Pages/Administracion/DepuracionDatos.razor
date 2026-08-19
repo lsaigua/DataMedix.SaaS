@@ -1,5 +1,5 @@
 @page "/admin/depuracion"
-@attribute [Authorize(Roles = "SUPERADMIN,ADMIN")]
+@attribute [Authorize(Policy = "perm:depuracion.ejecutar")]
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @using DataMedix.Application.Interfaces
@@ -23,7 +23,10 @@
     </div>
     <div>
         <h1 class="dep-title">Depuración de Datos</h1>
-        <p class="dep-subtitle">Elimina permanentemente todos los datos clínicos y de importación de un período</p>
+        <p class="dep-subtitle">
+            Elimina permanentemente los datos clínicos, de importación y de cronograma de un período.
+            La facturación se cierra antes de borrar y el padrón de pacientes se conserva.
+        </p>
     </div>
 </div>
 
@@ -111,6 +114,11 @@
                     <tr><td>Lotes de importación</td><td class="dep-count">@_conteo.LotesImportacion.ToString("N0")</td></tr>
                     <tr><td>Detalles de importación</td><td class="dep-count">@_conteo.DetallesImportacion.ToString("N0")</td></tr>
                     <tr><td>Errores de importación</td><td class="dep-count">@_conteo.ErroresImportacion.ToString("N0")</td></tr>
+                    <tr><td>Cronogramas de medicación</td><td class="dep-count">@_conteo.Cronogramas.ToString("N0")</td></tr>
+                    <tr><td>Días de cronograma</td><td class="dep-count">@_conteo.CronogramaDias.ToString("N0")</td></tr>
+                    <tr><td>Aplicaciones de hierro</td><td class="dep-count">@_conteo.AplicacionesHierro.ToString("N0")</td></tr>
+                    <tr><td>Eventos de dosis pendiente</td><td class="dep-count">@_conteo.EventosDosisPendiente.ToString("N0")</td></tr>
+                    <tr><td>Auditoría de cronograma</td><td class="dep-count">@_conteo.CronogramaAuditorias.ToString("N0")</td></tr>
                 </tbody>
                 <tfoot>
                     <tr class="dep-total">
@@ -119,6 +127,47 @@
                     </tr>
                 </tfoot>
             </table>
+
+            <!-- Efecto sobre facturación y padrón: lo que NO se borra -->
+            <div class="dep-preserva">
+                <h3 class="dep-preserva-title">Qué se preserva</h3>
+                <ul class="dep-preserva-list">
+                    <li>
+                        <strong>Facturación del período.</strong>
+                        @if (_conteo.FacturacionCerrada)
+                        {
+                            <text>
+                                Ya está cerrada con <strong>@_conteo.PacientesFacturables</strong>
+                                paciente(s). No se modificará.
+                            </text>
+                        }
+                        else
+                        {
+                            <text>
+                                Se cerrará automáticamente antes de borrar, con
+                                <strong>@_conteo.PacientesFacturables</strong> paciente(s) facturables.
+                                El detalle guarda cédula y nombre, así que el cobro
+                                seguirá siendo justificable.
+                            </text>
+                        }
+                    </li>
+                    <li>
+                        <strong>Padrón de pacientes.</strong>
+                        Ningún paciente se elimina de la base.
+                        @if (_conteo.PacientesADarDeBaja > 0)
+                        {
+                            <text>
+                                <strong>@_conteo.PacientesADarDeBaja</strong> quedarán sin datos en
+                                ningún período y se darán de baja (inactivos); su ficha se conserva.
+                            </text>
+                        }
+                        else
+                        {
+                            <text>Todos conservan datos en otros períodos, así que ninguno se dará de baja.</text>
+                        }
+                    </li>
+                </ul>
+            </div>
 
             <!-- Confirmación doble -->
             <div class="dep-confirm-box">
@@ -289,7 +338,7 @@
         flex-shrink: 0;
     }
     .dep-header-icon svg { width: 24px; height: 24px; }
-    .dep-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 0.2rem; }
+    .dep-title { font-size: 1.4rem; font-weight: 800; color: var(--dm-brand-ink); margin: 0 0 0.2rem; }
     .dep-subtitle { font-size: 0.85rem; color: #64748b; margin: 0; }
 
     .dep-danger-banner {
@@ -416,6 +465,29 @@
         color: #991b1b;
         border-top: 2px solid #fecaca;
     }
+
+    .dep-preserva {
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        border-left: 4px solid #0ea5e9;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.25rem;
+    }
+    .dep-preserva-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #075985;
+        margin: 0 0 0.5rem;
+    }
+    .dep-preserva-list {
+        margin: 0;
+        padding-left: 1.1rem;
+        font-size: 0.83rem;
+        color: #0c4a6e;
+        line-height: 1.55;
+    }
+    .dep-preserva-list li + li { margin-top: 0.4rem; }
 
     .dep-confirm-box {
         background: #fff7ed;
