@@ -16,6 +16,7 @@
 # =========================
 # Publish output (deploy artifact, not source)
 # =========================
+publish/
 publish_out/
 
 # =========================
