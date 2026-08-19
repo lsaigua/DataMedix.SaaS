@@ -1,5 +1,5 @@
 @page "/pacientes"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:pacientes.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Domain.Entities
@@ -93,7 +93,7 @@ else
                     <tr>
                         <th>Identificación</th>
                         <th>Paciente</th>
-                        <th>Plan Salud</th>
+                        <th>Turno</th>
                         <th>Tipo Atención</th>
                         <th>Ingreso Diálisis</th>
                         <th>Tiempo Diálisis</th>
@@ -110,7 +110,7 @@ else
                                 <div class="pac-cell-paciente">
                                     <div class="pac-avatar">@InicialPaciente(p)</div>
                                     <div>
-                                        <div class="pac-nombre">@p.NombreCompleto</div>
+                                        <div class="pac-nombre">@PacienteDisplay.Mask(p.NombreCompleto)</div>
                                         @if (!string.IsNullOrEmpty(p.MedicoResponsable))
                                         {
                                             <div class="pac-medico">Dr. @p.MedicoResponsable</div>
@@ -264,15 +264,36 @@ else
                 <!-- DATOS CLÍNICOS -->
                 <div class="pac-section-label" style="margin-top:1.25rem">Datos Clínicos</div>
                 <div class="pac-form-grid">
+                    @* Turno y modalidad son listas cerradas: el cronograma solo
+                       sabe repartir LMV y MJS, y texto libre dejaba pacientes
+                       con valores como "LMXJVSAD" que no generan sesiones. *@
                     <div class="pac-form-group">
-                        <label>Plan de Salud</label>
-                        <input type="text" class="pac-input" placeholder="Ej: IESS, MSP, Privado"
-                               @bind="_form.PlanSalud" maxlength="200" />
+                        <label>Turno de Diálisis</label>
+                        <select class="pac-input" @bind="_form.PlanSalud">
+                            <option value="">— Sin turno asignado —</option>
+                            @foreach (var (valor, etiqueta) in TurnoDialisis.Opciones)
+                            {
+                                <option value="@valor">@etiqueta</option>
+                            }
+                        </select>
+                        @if (string.IsNullOrWhiteSpace(_form.PlanSalud))
+                        {
+                            <span class="pac-hint">
+                                @(_form.TipoAtencion == TipoAtencionPaciente.Peritoneal
+                                    ? "En peritoneal el tratamiento es diario y no usa turno de sesión."
+                                    : "Sin turno el paciente no tendrá días de sesión en el cronograma.")
+                            </span>
+                        }
                     </div>
                     <div class="pac-form-group">
                         <label>Tipo de Atención</label>
-                        <input type="text" class="pac-input" placeholder="Ej: Hemodiálisis"
-                               @bind="_form.TipoAtencion" maxlength="200" />
+                        <select class="pac-input" @bind="_form.TipoAtencion">
+                            <option value="">— Sin especificar —</option>
+                            @foreach (var tipo in TipoAtencionPaciente.Opciones)
+                            {
+                                <option value="@tipo">@tipo</option>
+                            }
+                        </select>
                     </div>
                     <div class="pac-form-group">
                         <label>Fecha Ingreso a Diálisis</label>
@@ -313,7 +334,7 @@ else
             </div>
             <div class="pac-modal-body">
                 <p style="margin:0 0 0.5rem">¿Confirma desactivar al paciente?</p>
-                <p class="pac-confirm-nombre">@_pacienteAEliminar.NombreCompleto</p>
+                <p class="pac-confirm-nombre">@PacienteDisplay.Mask(_pacienteAEliminar.NombreCompleto)</p>
                 <p class="pac-confirm-ident">Cédula: @_pacienteAEliminar.Identificacion</p>
                 <p class="pac-confirm-aviso">
                     El historial clínico y las prescripciones se conservan.
@@ -455,6 +476,7 @@ else
                          font-size:.875rem; color:#1e293b; outline:none; transition:border-color .2s;
                          background:white; width:100%; box-sizing:border-box; }
     .pac-input:focus   { border-color:#0ea5e9; }
+    .pac-hint          { font-size:.72rem; color:#94a3b8; line-height:1.4; }
     .pac-input-error   { border-color:#dc2626; }
     .pac-textarea      { resize:vertical; min-height:56px; }
 
@@ -624,7 +646,7 @@ else
 
                 await PacienteRepo.UpdateAsync(p);
                 await UoW.SaveChangesAsync();
-                _exito = $"Paciente «{p.NombreCompleto}» actualizado.";
+                _exito = $"Paciente «{PacienteDisplay.Mask(p.NombreCompleto)}» actualizado.";
             }
             else
             {
@@ -654,7 +676,7 @@ else
                 };
                 await PacienteRepo.AddAsync(nuevo);
                 await UoW.SaveChangesAsync();
-                _exito = $"Paciente «{nuevo.NombreCompleto}» creado exitosamente.";
+                _exito = $"Paciente «{PacienteDisplay.Mask(nuevo.NombreCompleto)}» creado exitosamente.";
             }
 
             _mostrarModal = false;
@@ -679,7 +701,7 @@ else
         {
             await PacienteRepo.DeleteAsync(TenantId, _pacienteAEliminar.Id);
             await UoW.SaveChangesAsync();
-            _exito = $"Paciente «{_pacienteAEliminar.NombreCompleto}» desactivado.";
+            _exito = $"Paciente «{PacienteDisplay.Mask(_pacienteAEliminar.NombreCompleto)}» desactivado.";
             _pacienteAEliminar = null;
             await CargarPacientesAsync();
         }

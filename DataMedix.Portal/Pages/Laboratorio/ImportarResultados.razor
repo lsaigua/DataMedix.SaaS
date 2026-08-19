@@ -1,5 +1,5 @@
 @page "/laboratorio/importar"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:laboratorio.importar")]
 @implements IDisposable
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
@@ -170,7 +170,7 @@
                                 <td class="dm-td-num">@fila.LineNumber</td>
                                 <td>@(fila.FechaOrden?.ToString("dd/MM/yyyy") ?? "—")</td>
                                 <td>@(fila.Identificacion ?? "—")</td>
-                                <td>@(fila.NombrePaciente ?? "—")</td>
+                                <td>@(fila.NombrePaciente is null ? "—" : PacienteDisplay.Mask(fila.NombrePaciente))</td>
                                 <td>@(fila.Parametro ?? "—")</td>
                                 <td class="dm-td-resultado">@(fila.ResultadoTexto ?? "—")</td>
                                 <td>@(fila.UnidadMedida ?? "—")</td>

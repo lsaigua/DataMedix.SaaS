@@ -1,5 +1,5 @@
 @page "/laboratorio/manual"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:laboratorio.manual")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.DTOs.EntradaManual
 @using DataMedix.Application.Interfaces
@@ -28,7 +28,7 @@
         @if (_resultado.Exitoso)
         {
             <strong>✓ Resultados guardados</strong>
-            <span>— @_resultado.NombrePaciente · @NombreMes(_resultado.PeriodoMes) @_resultado.PeriodoAnio</span>
+            <span>— @PacienteDisplay.Mask(_resultado.NombrePaciente) · @NombreMes(_resultado.PeriodoMes) @_resultado.PeriodoAnio</span>
             @if (_resultado.PrescripcionBloqueada)
             {
                 <span class="im-toast-warn"> · La prescripción ya fue aprobada; no se regeneró.</span>
@@ -66,8 +66,8 @@
                     <div class="im-search-results">
                         @foreach (var p in _resultadosBusqueda)
                         {
-                            <button class="im-search-item" @onclick="() => SeleccionarPaciente(p)">
-                                <div class="im-si-nombre">@p.NombreCompleto</div>
+                            <button class="im-search-item" @onclick="() => SeleccionarPacienteAsync(p)">
+                                <div class="im-si-nombre">@PacienteDisplay.Mask(p.NombreCompleto)</div>
                                 <div class="im-si-ident">@p.Identificacion</div>
                             </button>
                         }
@@ -83,7 +83,7 @@
                 <div class="im-paciente-sel">
                     <div class="im-ps-avatar">@_pacienteSeleccionado.PrimerNombre[0]</div>
                     <div class="im-ps-info">
-                        <div class="im-ps-nombre">@_pacienteSeleccionado.NombreCompleto</div>
+                        <div class="im-ps-nombre">@PacienteDisplay.Mask(_pacienteSeleccionado.NombreCompleto)</div>
                         <div class="im-ps-ident">@_pacienteSeleccionado.Identificacion</div>
                         @if (!string.IsNullOrEmpty(_pacienteSeleccionado.PlanSalud))
                         {
@@ -100,7 +100,8 @@
             <div class="im-periodo-grid">
                 <div class="im-form-group">
                     <label>Mes</label>
-                    <select class="im-input" @bind="_mes">
+                    @* @bind:after recarga lo guardado al cambiar de período *@
+                    <select class="im-input" @bind="_mes" @bind:after="CargarPeriodoAsync">
                         @for (int m = 1; m <= 12; m++)
                         {
                             <option value="@m">@NombreMes(m)</option>
@@ -109,8 +110,8 @@
                 </div>
                 <div class="im-form-group">
                     <label>Año</label>
-                    <select class="im-input" @bind="_anio">
-                        @for (int a = DateTime.Today.Year; a >= DateTime.Today.Year - 3; a--)
+                    <select class="im-input" @bind="_anio" @bind:after="CargarPeriodoAsync">
+                        @for (int a = DateTime.Today.Year + 1; a >= DateTime.Today.Year - 3; a--)
                         {
                             <option value="@a">@a</option>
                         }
@@ -120,11 +121,47 @@
             @if (_pacienteSeleccionado != null)
             {
                 <button class="im-btn-cargar-existente im-btn im-btn-outline"
-                        @onclick="CargarSnapshotExistenteAsync">
-                    🔍 Cargar datos existentes
+                        @onclick="CargarPeriodoAsync" disabled="@_cargandoPeriodo">
+                    @if (_cargandoPeriodo)
+                    {
+                        <span class="im-spinner-sm"></span>
+                    }
+                    🔄 Recargar datos del período
                 </button>
+
+                @if (_mensajePeriodo != null)
+                {
+                    <p class="im-periodo-msg @(_form.EsEdicion ? "im-periodo-msg-ok" : "")">
+                        @_mensajePeriodo
+                    </p>
+                }
             }
         </div>
+
+        @* El turno decide en qué días hay sesión: sin él el paciente aparece en
+           el cronograma pero sin días ni totales. *@
+        @if (_pacienteSeleccionado != null)
+        {
+            <div class="im-card">
+                <div class="im-card-title">3. Turno de diálisis</div>
+                <div class="im-form-group">
+                    <select class="im-input" @bind="_form.Turno">
+                        <option value="">— Sin turno asignado —</option>
+                        @foreach (var (valor, etiqueta) in TurnoDialisis.Opciones)
+                        {
+                            <option value="@valor">@etiqueta</option>
+                        }
+                    </select>
+                    @if (string.IsNullOrWhiteSpace(_form.Turno))
+                    {
+                        <p class="im-turno-aviso">
+                            Sin turno, el paciente aparecerá en el Cronograma de Medicación
+                            pero sin días de sesión ni totales de EPO/Hierro.
+                        </p>
+                    }
+                </div>
+            </div>
+        }
 
         @if (_snapshotExistente != null)
         {
@@ -145,7 +182,7 @@
     <!-- ══ PANEL DERECHO: formulario de resultados ══ -->
     <div class="im-main">
         <div class="im-card">
-            <div class="im-card-title">3. Resultados de Laboratorio</div>
+            <div class="im-card-title">4. Resultados de Laboratorio</div>
 
             @if (_pacienteSeleccionado == null)
             {
@@ -298,6 +335,35 @@
     .im-periodo-grid { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.75rem; }
     .im-btn-cargar-existente { width:100%; justify-content:center; font-size:.8rem; }
 
+    /* Estado de la carga del período y aviso de turno */
+    .im-periodo-msg {
+        margin: .5rem 0 0;
+        font-size: .74rem;
+        color: #64748b;
+        line-height: 1.45;
+    }
+    .im-periodo-msg-ok { color: #166534; font-weight: 600; }
+    .im-turno-aviso {
+        margin: .45rem 0 0;
+        font-size: .74rem;
+        color: #9a3412;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 6px;
+        padding: .4rem .6rem;
+        line-height: 1.45;
+    }
+    .im-spinner-sm {
+        display: inline-block;
+        width: 12px; height: 12px;
+        border: 2px solid rgba(100,116,139,.3);
+        border-top-color: #475569;
+        border-radius: 50%;
+        animation: im-spin-sm .7s linear infinite;
+        margin-right: .3rem;
+    }
+    @@keyframes im-spin-sm { to { transform: rotate(360deg); } }
+
     /* ─── Datos previos ──────────────────────────────────────────────────────── */
     .im-prev-item  { font-size:.8rem; color:#1e40af; padding:.15rem 0; }
     .im-prev-item strong { font-weight:700; }
@@ -394,6 +460,8 @@
     private string _error          = string.Empty;
     private ResultadoEntradaManualDto? _resultado;
     private SnapshotMensual?           _snapshotExistente;
+    private bool    _cargandoPeriodo = false;
+    private string? _mensajePeriodo;
 
     protected override async Task OnInitializedAsync()
     {
@@ -404,7 +472,7 @@
         if (!string.IsNullOrEmpty(PacienteId) && Guid.TryParse(PacienteId, out var pid))
         {
             var p = await PacienteRepo.GetByIdAsync(TenantId, pid);
-            if (p != null) SeleccionarPaciente(p);
+            if (p != null) await SeleccionarPacienteAsync(p);
         }
     }
 
@@ -427,12 +495,12 @@
         finally { _buscando = false; }
     }
 
-    private void SeleccionarPaciente(Paciente p)
+    private async Task SeleccionarPacienteAsync(Paciente p)
     {
         _pacienteSeleccionado = p;
         _resultadosBusqueda.Clear();
         _busqueda = string.Empty;
-        _snapshotExistente = null;
+        await CargarPeriodoAsync();
     }
 
     private void LimpiarPaciente()
@@ -440,23 +508,58 @@
         _pacienteSeleccionado = null;
         _snapshotExistente    = null;
         _busquedaRealizada    = false;
+        _mensajePeriodo       = null;
         LimpiarFormulario();
     }
 
-    // ── Carga de snapshot existente ───────────────────────────────────────────
+    // ── Carga de lo ya guardado para el paciente y período ────────────────────
 
-    private async Task CargarSnapshotExistenteAsync()
+    /// <summary>
+    /// Trae al formulario lo que se registró para ese paciente y período.
+    /// Se dispara al seleccionar paciente y al cambiar mes o año: antes solo
+    /// ocurría con un botón y además perdía potasio, albúmina y peso.
+    /// </summary>
+    private async Task CargarPeriodoAsync()
     {
         if (_pacienteSeleccionado == null) return;
-        _snapshotExistente = await EntradaManual.GetSnapshotAsync(
-            TenantId, _pacienteSeleccionado.Id, _anio, _mes);
 
-        if (_snapshotExistente != null)
+        _cargandoPeriodo = true;
+        _resultado       = null;
+        StateHasChanged();
+
+        try
         {
-            _form.HbValor        = _snapshotExistente.HbValor;
-            _form.HierroValor    = _snapshotExistente.HierroValor;
-            _form.FerritinaValor = _snapshotExistente.FerritinaValor;
-            _form.SaturacionValor = _snapshotExistente.SaturacionValor;
+            var pacienteId = _pacienteSeleccionado.Id;
+
+            _snapshotExistente = await EntradaManual.GetSnapshotAsync(TenantId, pacienteId, _anio, _mes);
+            var datos = await EntradaManual.GetDatosPeriodoAsync(TenantId, pacienteId, _anio, _mes);
+
+            if (datos != null)
+            {
+                _form = datos;
+                _mensajePeriodo = $"Datos cargados de {NombreMes(_mes)} {_anio}. " +
+                                  "Al guardar se actualizarán.";
+            }
+            else
+            {
+                // Período sin datos: formulario limpio, pero se conserva el turno
+                // conocido del paciente para no obligar a reasignarlo cada mes.
+                _form = new EntradaManualDto
+                {
+                    Turno = await EntradaManual.GetTurnoSugeridoAsync(TenantId, pacienteId, _anio, _mes)
+                };
+                _mensajePeriodo = $"Sin registros para {NombreMes(_mes)} {_anio}. Ingrese los resultados.";
+            }
+
+            _error = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al cargar el período: {ex.Message}";
+        }
+        finally
+        {
+            _cargandoPeriodo = false;
         }
     }
 
@@ -475,14 +578,24 @@
             _form.PeriodoAnio = _anio;
             _form.PeriodoMes  = _mes;
             _resultado = await EntradaManual.ProcesarAsync(_form, TenantId, UsuarioId);
-            if (_resultado.Exitoso) LimpiarFormulario();
+
+            // Se recarga en vez de limpiar: el formulario debe quedar mostrando
+            // lo que acaba de guardarse, igual que al volver a ese período.
+            if (_resultado.Exitoso)
+            {
+                var guardado = _resultado;
+                await CargarPeriodoAsync();
+                _resultado = guardado;
+            }
         }
         finally { _guardando = false; }
     }
 
     private void LimpiarFormulario()
     {
-        _form = new EntradaManualDto();
+        // Se conserva el turno: es configuración del paciente, no un resultado
+        var turno = _form.Turno;
+        _form = new EntradaManualDto { Turno = turno };
         _error = string.Empty;
     }
 

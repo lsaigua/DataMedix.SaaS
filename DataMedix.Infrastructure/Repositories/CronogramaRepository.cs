@@ -201,4 +201,104 @@ namespace DataMedix.Infrastructure.Repositories
             await _db.SaveChangesAsync();
         }
     }
+
+    public class PrecioEpoDosisRepository : IPrecioEpoDosisRepository
+    {
+        private readonly DataMedixDbContext _db;
+
+        public PrecioEpoDosisRepository(DataMedixDbContext db) => _db = db;
+
+        public async Task<List<PrecioEpoDosis>> GetByTenantAsync(Guid tenantId)
+            => await _db.PreciosEpoDosis
+                .Where(p => p.TenantId == tenantId && p.Activo)
+                .OrderBy(p => p.DosisUI)
+                .ToListAsync();
+
+        public async Task UpsertManyAsync(List<PrecioEpoDosis> precios)
+        {
+            if (precios.Count == 0) return;
+            var tenantId = precios[0].TenantId;
+            var dosisIds = precios.Select(p => p.DosisUI).ToList();
+
+            var existing = await _db.PreciosEpoDosis
+                .Where(p => p.TenantId == tenantId && dosisIds.Contains(p.DosisUI))
+                .ToListAsync();
+
+            foreach (var precio in precios)
+            {
+                var found = existing.FirstOrDefault(e => e.DosisUI == precio.DosisUI);
+                if (found == null)
+                    _db.PreciosEpoDosis.Add(precio);
+                else
+                {
+                    found.Precio     = precio.Precio;
+                    found.UpdatedAt  = DateTime.UtcNow;
+                }
+            }
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    public class EventoDosisPendienteRepository : IEventoDosisPendienteRepository
+    {
+        private readonly DataMedixDbContext _db;
+
+        public EventoDosisPendienteRepository(DataMedixDbContext db) => _db = db;
+
+        public Task<EventoDosisPendiente?> GetByCronogramaAsync(Guid tenantId, Guid cronogramaId)
+            => _db.EventosDosisPendiente
+                .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.CronogramaId == cronogramaId);
+
+        public Task<List<EventoDosisPendiente>> GetByPeriodoAsync(Guid tenantId, int anio, int mes)
+            => _db.EventosDosisPendiente
+                .Where(e => e.TenantId == tenantId &&
+                            e.Cronograma.PeriodoAnio == anio &&
+                            e.Cronograma.PeriodoMes  == mes)
+                .ToListAsync();
+
+        public async Task UpsertAsync(EventoDosisPendiente evento)
+        {
+            var existing = await _db.EventosDosisPendiente
+                .FirstOrDefaultAsync(e => e.TenantId == evento.TenantId &&
+                                          e.CronogramaId == evento.CronogramaId);
+            if (existing == null)
+            {
+                _db.EventosDosisPendiente.Add(evento);
+            }
+            else
+            {
+                existing.FechaProgramada = evento.FechaProgramada;
+                existing.DosisUI         = evento.DosisUI;
+                // Solo resetear a Programada si venía Suspendida; respetar Aplicada
+                if (existing.Estado == EstadoDosisPendiente.Suspendida)
+                    existing.Estado = EstadoDosisPendiente.Programada;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task DeleteByCronogramaIdsAsync(IEnumerable<Guid> cronogramaIds)
+        {
+            var ids = cronogramaIds.ToList();
+            if (ids.Count == 0) return;
+            var eventos = await _db.EventosDosisPendiente
+                .Where(e => ids.Contains(e.CronogramaId))
+                .ToListAsync();
+            if (eventos.Count > 0)
+            {
+                _db.EventosDosisPendiente.RemoveRange(eventos);
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        public async Task ActualizarEstadoAsync(Guid id, string estado, Guid? usuarioId)
+        {
+            var evento = await _db.EventosDosisPendiente.FindAsync(id);
+            if (evento == null) return;
+            evento.Estado    = estado;
+            evento.UpdatedAt = DateTime.UtcNow;
+            evento.UpdatedBy = usuarioId;
+            await _db.SaveChangesAsync();
+        }
+    }
 }

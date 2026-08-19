@@ -57,6 +57,19 @@ namespace DataMedix.Application.Services
                                PeriodoMes  = dto.PeriodoMes,
                            };
 
+            // Turno de sesión. El cronograma lo lee de snapshot.PlanSalud para
+            // saber en qué días hay diálisis; si no se guarda, el paciente sale
+            // en la grilla pero sin días ni totales, que es lo que pasaba antes.
+            var turno = TurnoDialisis.Detectar(dto.Turno)
+                        ?? TurnoDialisis.Detectar(paciente.PlanSalud);
+
+            if (!string.IsNullOrWhiteSpace(turno))
+                snapshot.PlanSalud = turno;
+
+            var tipoAtencion = dto.TipoAtencion ?? paciente.TipoAtencion;
+            if (!string.IsNullOrWhiteSpace(tipoAtencion))
+                snapshot.TipoAtencion = tipoAtencion;
+
             // Actualizar solo los campos que se ingresaron explícitamente
             if (dto.HbValor.HasValue)
             {
@@ -187,6 +200,73 @@ namespace DataMedix.Application.Services
         {
             var periodDate = new DateTime(anio, mes, 1);
             return await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodDate);
+        }
+
+        public async Task<EntradaManualDto?> GetDatosPeriodoAsync(
+            Guid tenantId, Guid pacienteId, int anio, int mes)
+        {
+            var snapshot = await GetSnapshotAsync(tenantId, pacienteId, anio, mes);
+            if (snapshot is null) return null;
+
+            var dto = new EntradaManualDto
+            {
+                PacienteId      = pacienteId,
+                PeriodoAnio     = anio,
+                PeriodoMes      = mes,
+                Turno           = TurnoDialisis.Detectar(snapshot.PlanSalud),
+                TipoAtencion    = snapshot.TipoAtencion,
+                HbValor         = snapshot.HbValor,
+                HbUnidad        = snapshot.HbUnidad         ?? "g/dL",
+                HierroValor     = snapshot.HierroValor,
+                HierroUnidad    = snapshot.HierroUnidad     ?? "µg/dL",
+                FerritinaValor  = snapshot.FerritinaValor,
+                FerritinaUnidad = snapshot.FerritinaUnidad  ?? "ng/mL",
+                SaturacionValor = snapshot.SaturacionValor,
+                SaturacionUnidad= snapshot.SaturacionUnidad ?? "%",
+                EsEdicion       = true
+            };
+
+            // Potasio, albúmina y peso no están en el snapshot sino en su detalle:
+            // sin esto el formulario los mostraba vacíos aunque estuvieran guardados.
+            var mapa = await _snapshotRepo.GetDetallesBySnapshotIdsAsync(new[] { snapshot.Id });
+
+            if (mapa.TryGetValue(snapshot.Id, out var detalles))
+            {
+                decimal? Buscar(string nombre) => detalles
+                    .FirstOrDefault(d => string.Equals(d.ParametroNombre?.Trim(), nombre,
+                                                       StringComparison.OrdinalIgnoreCase))
+                    ?.ValorNumerico;
+
+                dto.PotasioValor  = Buscar("POTASIO");
+                dto.AlbuminaValor = Buscar("ALBUMINA");
+                dto.PesoKgValor   = Buscar("PESO");
+            }
+
+            return dto;
+        }
+
+        public async Task<string?> GetTurnoSugeridoAsync(
+            Guid tenantId, Guid pacienteId, int anio, int mes)
+        {
+            var periodDate = new DateTime(anio, mes, 1);
+
+            var actual = await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodDate);
+            var turno  = TurnoDialisis.Detectar(actual?.PlanSalud);
+            if (turno is not null) return turno;
+
+            // Sin turno este mes, se hereda del más reciente que sí lo tenga
+            var historial = await _snapshotRepo.GetHistorialAsync(tenantId, pacienteId, 12);
+
+            turno = historial
+                .Where(h => h.PeriodDate <= periodDate)
+                .OrderByDescending(h => h.PeriodDate)
+                .Select(h => TurnoDialisis.Detectar(h.PlanSalud))
+                .FirstOrDefault(t => t is not null);
+
+            if (turno is not null) return turno;
+
+            var paciente = await _pacienteRepo.GetByIdAsync(tenantId, pacienteId);
+            return TurnoDialisis.Detectar(paciente?.PlanSalud);
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

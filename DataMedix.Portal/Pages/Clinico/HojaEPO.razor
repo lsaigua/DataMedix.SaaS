@@ -1,5 +1,5 @@
 @page "/hoja-epo"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:hojaepo.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Application.DTOs.HojaEpo
@@ -84,6 +84,25 @@
         </div>
     </div>
 
+    @* Se filtra sobre lo ya cargado, sin volver a consultar: la matriz puede
+       abarcar varios meses y recargarla por un chip sería lento. *@
+    @if (_tiposAtencion.Count > 0)
+    {
+        <div class="epo-filter-group">
+            <label class="epo-label">Tipo de Atención</label>
+            <div class="epo-tipo-btns">
+                <button class="epo-tbtn @(_filtrosTipo.Count == 0 ? "epo-tbtn-on" : "")"
+                        @onclick="() => _filtrosTipo.Clear()">Todos</button>
+                @foreach (var t in _tiposAtencion)
+                {
+                    var tipo = t;
+                    <button class="epo-tbtn @(_filtrosTipo.Contains(tipo) ? "epo-tbtn-on" : _filtrosTipo.Count > 0 ? "epo-tbtn-off" : "")"
+                            @onclick="() => ToggleTipoAtencion(tipo)">@tipo</button>
+                }
+            </div>
+        </div>
+    }
+
     <div class="epo-filter-actions">
         <button class="epo-btn epo-btn-primary" @onclick="BuscarAsync" disabled="@Cargando">
             @if (Cargando)
@@ -102,7 +121,7 @@
             Limpiar
         </button>
         <button class="epo-btn epo-btn-export" @onclick="ExportarExcelAsync"
-                disabled="@(_exportando || !Filas.Any())" title="Exportar la grilla a Excel">
+                disabled="@(_exportando || !FilasVisibles.Any())" title="Exportar la grilla a Excel">
             @if (_exportando) { <span class="epo-spinner-sm"></span> }
             else { <span>📊</span> }
             Exportar Excel
@@ -130,7 +149,7 @@ else if (Cargando)
         <p>Cargando matriz clínica...</p>
     </div>
 }
-else if (!Filas.Any())
+else if (!FilasVisibles.Any())
 {
     <div class="epo-empty-state">
         <div class="epo-empty-icon">🔬</div>
@@ -148,7 +167,7 @@ else
             <span class="epo-legend-item"><span class="epo-dot epo-hb-alto"></span>HB &gt;13 — reducir/suspender EPO</span>
             <span class="epo-legend-item"><span class="epo-dot epo-ajuste"></span><strong>✏ Aj.EPO / Aj.Hierro</strong>: dosis ajustada por médico</span>
             <span class="epo-legend-item"><span class="epo-dot epo-pato-dot"></span>PATOLÓGICO: HB fuera de rango</span>
-            <span class="epo-legend-item epo-legend-count">@Filas.Count paciente(s) · @FiltroActual.Meses.Count mes(es)</span>
+            <span class="epo-legend-item epo-legend-count">@FilasVisibles.Count paciente(s) · @FiltroActual.Meses.Count mes(es)</span>
         </div>
         <div class="epo-legend-note">
             <strong>Nota clínica:</strong> Los valores <em>EPO UI/sem</em> y <em>Hierro mg/mes</em> son calculados automáticamente según reglas de prescripción. Las columnas <strong>✏ Aj.EPO</strong> y <strong>✏ Aj.Hierro</strong> permiten al médico registrar la dosis final ajustada — haga clic en la celda o en ✏ para editar y seleccionar de la lista de dosis. El ícono 💊 abre la <em>Prescripción Clínica</em> del paciente.
@@ -193,7 +212,7 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var row in Filas)
+                @foreach (var row in FilasVisibles)
                 {
                     <tr class="epo-row">
                         <td class="epo-td epo-col-sticky epo-col-ident epo-td-ident">
@@ -201,8 +220,8 @@ else
                         </td>
                         <td class="epo-td epo-col-sticky epo-col-nombre">
                             <div class="epo-paciente-cell">
-                                <div class="epo-avatar">@(row.NombrePaciente.FirstOrDefault())</div>
-                                <span class="epo-nombre">@row.NombrePaciente</span>
+                                <div class="epo-avatar">@PacienteDisplay.Inicial(row.NombrePaciente)</div>
+                                <span class="epo-nombre">@PacienteDisplay.Mask(row.NombrePaciente)</span>
                             </div>
                         </td>
                         <td class="epo-td epo-td-center epo-td-sm">
@@ -254,7 +273,8 @@ else
                                     <input type="text"
                                            list="epo-dosis-list"
                                            class="epo-cell-input epo-cell-input-aj"
-                                           @bind="_tempAjusteEpo"
+                                           value="@_tempAjusteEpo"
+                                           @oninput="e => _tempAjusteEpo = e.Value?.ToString()"
                                            placeholder="UI/sem"
                                            @onkeydown="e => OnEditKeyDown(e, row, mes)"
                                            autocomplete="off" />
@@ -293,7 +313,8 @@ else
                                     <input type="text"
                                            list="hierro-dosis-list"
                                            class="epo-cell-input epo-cell-input-aj"
-                                           @bind="_tempAjusteHierro"
+                                           value="@_tempAjusteHierro"
+                                           @oninput="e => _tempAjusteHierro = e.Value?.ToString()"
                                            placeholder="mg/mes"
                                            @onkeydown="e => OnEditKeyDown(e, row, mes)"
                                            autocomplete="off" />
@@ -441,6 +462,24 @@ else
     .epo-select:focus { border-color: #0ea5e9; }
     .epo-select-sm { min-width: 80px; }
     .epo-filter-actions { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+
+    /* Chips de tipo de atención — mismo lenguaje visual que Resultados Crudos */
+    .epo-tipo-btns { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .epo-tbtn {
+        padding: 0.3rem 0.75rem;
+        border-radius: 20px;
+        border: 1.5px solid #e2e8f0;
+        background: white;
+        color: #64748b;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.12s;
+        white-space: nowrap;
+    }
+    .epo-tbtn:hover { background: #f1f5f9; color: #374151; border-color: #cbd5e1; }
+    .epo-tbtn-on    { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+    .epo-tbtn-off   { background: #f8fafc; color: #94a3b8; border-color: #f1f5f9; }
     .epo-btn-export { background: #059669; color: white; }
     .epo-btn-export:hover:not(:disabled) { background: #047857; }
     .epo-btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -480,13 +519,13 @@ else
 
     /* ── Table ───────────────────────────────────────────────────────────── */
     .epo-table { border-collapse: collapse; white-space: nowrap; font-size: 0.8rem; }
-    .epo-th { background: #0f172a; color: #94a3b8; padding: 0.55rem 0.6rem; text-align: center;
-               font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; border: 1px solid #1e293b;
+    .epo-th { background: var(--dm-brand-surface); color: var(--dm-on-brand-soft); padding: 0.55rem 0.6rem; text-align: center;
+               font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; border: 1px solid var(--dm-brand-surface-strong);
                position: sticky; top: 0; z-index: 10; }
-    .epo-th-mes { background: #1e293b; color: #e2e8f0; font-size: 0.72rem; }
+    .epo-th-mes { background: var(--dm-brand-surface-strong); color: var(--dm-on-brand); font-size: 0.72rem; }
     .epo-th-resumen { background: #164e63; color: #bae6fd; }
-    .epo-sub { background: #0f172a; font-weight: 600; }
-    .epo-sub-calc { color: #7dd3fc; }
+    .epo-sub { background: var(--dm-brand-surface); font-weight: 600; }
+    .epo-sub-calc { color: #e0f5ff; }
     .epo-sub-ajuste { color: #c4b5fd; }
     .epo-sub-ajuste-h { background: #3b0764 !important; color: #e9d5ff !important;
                          border-left: 2px solid #7c3aed !important; border-right: 2px solid #7c3aed !important; }
@@ -501,7 +540,7 @@ else
     .epo-col-ident { left: 0; min-width: 120px; z-index: 6; }
     .epo-col-nombre { left: 120px; min-width: 180px; z-index: 6; }
     .epo-col-dialisis { min-width: 60px; }
-    thead .epo-col-sticky { background: #0f172a; z-index: 20; }
+    thead .epo-col-sticky { background: var(--dm-brand-surface); z-index: 20; }
 
     /* ── Table cells ─────────────────────────────────────────────────────── */
     .epo-td { padding: 0.4rem 0.55rem; border: 1px solid #f1f5f9; vertical-align: middle; }
@@ -637,6 +676,31 @@ else
 
     // ── Estado ───────────────────────────────────────────────────────────────
     private List<HojaEpoRowDto>    Filas       = new();
+
+    // ── Filtro por tipo de atención ───────────────────────────────────────────
+    // Mismo comportamiento que en Resultados Crudos: las modalidades se derivan
+    // de lo cargado, para no ofrecer un chip que devolvería la tabla vacía.
+    private List<string> _tiposAtencion = new();
+    private readonly HashSet<string> _filtrosTipo = new(StringComparer.OrdinalIgnoreCase);
+
+    private List<HojaEpoRowDto> FilasVisibles =>
+        _filtrosTipo.Count == 0
+            ? Filas
+            : Filas.Where(f => f.TipoAtencion != null && _filtrosTipo.Contains(f.TipoAtencion)).ToList();
+
+    private void ToggleTipoAtencion(string tipo)
+    {
+        if (!_filtrosTipo.Add(tipo)) _filtrosTipo.Remove(tipo);
+    }
+
+    private void RecalcularTiposAtencion() =>
+        _tiposAtencion = Filas
+            .Select(f => f.TipoAtencion)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t)
+            .ToList();
     private List<ParametroClinico> Parametros  = new();
     private HojaEpoFiltroDto       FiltroActual = new();
     private bool   Cargando      = false;
@@ -695,6 +759,7 @@ else
         }
         finally
         {
+            RecalcularTiposAtencion();
             Cargando = false;
         }
     }
@@ -708,6 +773,8 @@ else
         FiltroMesHasta   = DateTime.Now.Month;
         FiltroAnioHasta  = DateTime.Now.Year;
         Filas            = [];
+        _tiposAtencion   = new();
+        _filtrosTipo.Clear();
         HaBuscado        = false;
         ErrorMensaje     = null;
         _editKey         = null;
@@ -720,14 +787,14 @@ else
 
     private async Task ExportarExcelAsync()
     {
-        if (_exportando || !Filas.Any()) return;
+        if (_exportando || !FilasVisibles.Any()) return;
         _exportando = true;
         StateHasChanged();
         try
         {
             var periodo  = $"{new DateTime(FiltroAnioDe, FiltroMesDe, 1):yyyy-MM} a {new DateTime(FiltroAnioHasta, FiltroMesHasta, 1):yyyy-MM}";
             var bytes    = await Task.Run(() =>
-                ExcelExporter.ExportarHojaEpo(Filas, FiltroActual.Meses, periodo));
+                ExcelExporter.ExportarHojaEpo(FilasVisibles, FiltroActual.Meses, periodo));
             var base64   = Convert.ToBase64String(bytes);
             var fileName = $"PrescripcionSugerida_{new DateTime(FiltroAnioDe, FiltroMesDe, 1):yyyyMM}-{new DateTime(FiltroAnioHasta, FiltroMesHasta, 1):yyyyMM}.xlsx";
             await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, base64,
@@ -793,7 +860,7 @@ else
             celda.AjusteHierro = string.IsNullOrWhiteSpace(_tempAjusteHierro) ? null : _tempAjusteHierro!.Trim();
 
             _editKey             = null;
-            _mensajeGuardado     = $"Ajuste guardado — {row.NombrePaciente} {mes:MMM yyyy}";
+            _mensajeGuardado     = $"Ajuste guardado — {PacienteDisplay.Mask(row.NombrePaciente)} {mes:MMM yyyy}";
             _mensajeGuardadoOk   = true;
 
             // Ocultar el toast automáticamente

@@ -4,7 +4,7 @@
 @using DataMedix.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:cronograma.ver")]
 @inject CronogramaService CronogramaService
 @inject IConfiguracionMedicamentoRepository ConfigRepo
 @inject ISnapshotMensualRepository SnapshotRepo
@@ -12,6 +12,8 @@
 @inject GlobalLoadingService Loading
 @inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
+@inject IPrecioEpoDosisRepository PrecioEpoDosisRepo
+@inject IEventoDosisPendienteRepository EventoRepo
 
 <PageTitle>Cronograma de Medicación — DataMedix</PageTitle>
 
@@ -21,23 +23,49 @@
     <div class="crono-header">
         <div class="crono-header-left">
             <h1 class="crono-title">Cronograma de Medicación</h1>
-            <p class="crono-subtitle">EPO · Hierro IV · @NombreMes(_mes) @_anio</p>
+            <p class="crono-subtitle">EPO · Hierro IV · @SubtituloModo</p>
         </div>
         <div class="crono-header-actions">
             <input type="text" class="crono-busqueda" placeholder="Buscar cédula o nombre..."
                    @bind="_busqueda" @bind:event="oninput" />
-            <select class="crono-select" @bind="_mes">
-                @for (int m = 1; m <= 12; m++)
-                {
-                    <option value="@m">@NombreMes(m)</option>
-                }
-            </select>
-            <select class="crono-select" @bind="_anio">
-                @for (int a = DateTime.Today.Year - 1; a <= DateTime.Today.Year + 1; a++)
-                {
-                    <option value="@a">@a</option>
-                }
-            </select>
+
+            <!-- Selector de modo: Mensual / Flexible -->
+            <div class="crono-modo-toggle" title="Modo de generación del cronograma">
+                <button class="crono-modo-btn @(_modo == 0 ? "crono-modo-active" : "")"
+                        @onclick='() => _modo = 0' title="Calendario mensual (del 1 al fin del mes)">
+                    Mensual
+                </button>
+                <button class="crono-modo-btn @(_modo == 1 ? "crono-modo-active" : "")"
+                        @onclick='() => _modo = 1' title="Cronograma flexible (fecha libre, duración 1 mes)">
+                    Flexible
+                </button>
+            </div>
+
+            @if (_modo == 0)
+            {
+                <select class="crono-select" @bind="_mes">
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        <option value="@m">@NombreMes(m)</option>
+                    }
+                </select>
+                <select class="crono-select" @bind="_anio">
+                    @for (int a = DateTime.Today.Year - 1; a <= DateTime.Today.Year + 1; a++)
+                    {
+                        <option value="@a">@a</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <input type="date" class="crono-select crono-fecha-flex"
+                       value="@_fechaInicioFlex.ToString("yyyy-MM-dd")"
+                       @onchange="OnFechaFlexChange" />
+                <span class="crono-flex-hasta" title="Fecha fin calculada automáticamente">
+                    hasta @FechaFinFlex.ToString("dd/MM/yy")
+                </span>
+            }
+
             <button class="crono-btn crono-btn-primary" @onclick="GenerarCronogramaAsync" disabled="@_cargando">
                 @if (_cargando)
                 {
@@ -51,6 +79,24 @@
             <button class="crono-btn crono-btn-ghost" @onclick="() => _showConfig = !_showConfig">
                 Precios
             </button>
+            @if (_cronogramas.Count > 0)
+            {
+                // Total en el botón: al mover los KPI al modal, la cifra clave
+                // debe seguir estando a la vista sin abrirlo.
+                var (rvBtn, _, _) = ComputarResumenYDesglose();
+                <button class="crono-btn crono-btn-resumen" @onclick="() => _showResumen = true"
+                        title="Ver resumen y desglose de costos del período">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 16V9M8 16V4M13 16v-5M18 16v-9" />
+                    </svg>
+                    Resumen
+                    @if (rvBtn != null && (_preciosEpo.Values.Any(v => v > 0) || _precioHierro > 0))
+                    {
+                        <span class="crono-btn-badge">$ @rvBtn.CostoTotal.ToString("N2")</span>
+                    }
+                </button>
+            }
         </div>
     </div>
 
@@ -59,17 +105,50 @@
     {
         <div class="crono-config-panel">
             <div class="crono-config-title">Configuración de Precios</div>
-            <div class="crono-config-row">
-                <label>EPO (precio por UI):</label>
-                <input type="number" step="0.0001" min="0" class="crono-config-input"
-                       value="@_precioEpo"
-                       @onchange="e => _precioEpo = ParseDecimal(e.Value?.ToString()) ?? 0" />
+            <div class="crono-config-epo-section">
+                <div class="crono-config-epo-label">EPO — precio por aplicación (dólares):</div>
+                <table class="crono-config-epo-table">
+                    <thead><tr><th>Dosis UI</th><th>Precio por aplicación</th></tr></thead>
+                    <tbody>
+                        @foreach (var dosis in _dosisEpoConfig)
+                        {
+                            var localDosis = dosis;
+                            <tr>
+                                <td>@localDosis.DosisUI.ToString("N0") UI</td>
+                                <td>
+                                    <div class="crono-config-money">
+                                        <span class="crono-config-money-sign">$</span>
+                                        @* type=text: con type=number el navegador muestra el
+                                           separador decimal de su idioma y 2.80 se lee "2,8000" *@
+                                        <input type="text" inputmode="decimal" class="crono-config-input"
+                                               value="@Money(localDosis.Precio)"
+                                               @onchange="e => localDosis.Precio = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <p class="crono-config-hint">
+                    Cada aplicación cuesta este valor completo:
+                    @if (_dosisEpoConfig.Count > 0)
+                    {
+                        var ej = _dosisEpoConfig[0];
+                        <text>10 aplicaciones de @ej.DosisUI.ToString("N0") UI = $ @((ej.Precio * 10).ToString("N2")).</text>
+                    }
+                </p>
             </div>
             <div class="crono-config-row">
-                <label>Hierro (precio por mg):</label>
-                <input type="number" step="0.01" min="0" class="crono-config-input"
-                       value="@_precioHierro"
-                       @onchange="e => _precioHierro = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                <label>Hierro — precio por ampolla (100 mg):</label>
+                <div class="crono-config-money">
+                    <span class="crono-config-money-sign">$</span>
+                    <input type="text" inputmode="decimal" class="crono-config-input"
+                           value="@Money(_precioHierro)"
+                           @onchange="e => _precioHierro = ParseDecimal(e.Value?.ToString()) ?? 0" />
+                </div>
+                <span class="crono-config-hint crono-config-hint-inline">
+                    400 mg = 4 ampollas = $ @CostoHierro(400m).ToString("N2")
+                </span>
             </div>
             <div class="crono-config-actions">
                 <button class="crono-btn crono-btn-primary" @onclick="GuardarPreciosAsync">Guardar</button>
@@ -78,30 +157,233 @@
         </div>
     }
 
-    <!-- ═══ RESUMEN DE COSTOS ════════════════════════════════════════════════ -->
-    @if (_resumen != null)
+    <!-- ═══ MODAL: RESUMEN DE COSTOS + DESGLOSE POR DOSIS ══════════════════ -->
+    @if (_showResumen && _cronogramas.Count > 0)
     {
-        <div class="crono-resumen">
-            <div class="crono-resumen-item">
-                <span class="crono-resumen-label">Total EPO</span>
-                <span class="crono-resumen-value">@_resumen.TotalEpoUI.ToString("N0") UI</span>
+        var (rv, desglose, desglPend) = ComputarResumenYDesglose();
+        <div class="crono-resumen-overlay" @onclick="() => _showResumen = false">
+        <div class="crono-resumen-modal" @onclick:stopPropagation="true">
+
+            <div class="crono-resumen-modal-header">
+                <div>
+                    <h2 class="crono-resumen-modal-title">Resumen del período</h2>
+                    <p class="crono-resumen-modal-sub">
+                        @NombreMes(_mes) @_anio · @SubtituloModo
+                    </p>
+                </div>
+                <button class="crono-resumen-modal-close" @onclick="() => _showResumen = false"
+                        title="Cerrar" aria-label="Cerrar resumen">&times;</button>
             </div>
-            <div class="crono-resumen-item">
-                <span class="crono-resumen-label">Total Hierro</span>
-                <span class="crono-resumen-value">@_resumen.TotalHierroMg.ToString("N0") mg</span>
+
+            <div class="crono-resumen-modal-body">
+        @if (rv != null)
+        {
+            bool hayFiltro = _filtroTurno != "Todos" || _filtroDia != 0 ||
+                             _filtroSala != "Todas" || !string.IsNullOrWhiteSpace(_busqueda) ||
+                             TieneFiltroFecha || _filtrosTipo.Count > 0;
+            @if (hayFiltro)
+            {
+                <div class="crono-resumen-modal-aviso">
+                    Los valores corresponden a los filtros activos, no a todo el mes.
+                </div>
+            }
+            <div class="crono-resumen @(hayFiltro ? "crono-resumen-filtrado" : "")">
+                <div class="crono-resumen-item">
+                    <span class="crono-resumen-label">Pacientes</span>
+                    <span class="crono-resumen-value">@rv.TotalPacientes</span>
+                </div>
+                <div class="crono-resumen-item">
+                    <span class="crono-resumen-label">Sesiones</span>
+                    <span class="crono-resumen-value">@rv.TotalSesiones.ToString("N0")</span>
+                </div>
+                <div class="crono-resumen-item">
+                    <span class="crono-resumen-label">Total EPO</span>
+                    <span class="crono-resumen-value">@rv.TotalEpoUI.ToString("N0") UI</span>
+                </div>
+                <div class="crono-resumen-item">
+                    <span class="crono-resumen-label">Total Hierro</span>
+                    <span class="crono-resumen-value">@rv.TotalHierroMg.ToString("N0") mg</span>
+                </div>
+                @if (_preciosEpo.Values.Any(v => v > 0) || _precioHierro > 0)
+                {
+                    <div class="crono-resumen-item">
+                        <span class="crono-resumen-label">Costo EPO</span>
+                        <span class="crono-resumen-value crono-cost">$ @rv.CostoEpo.ToString("N2")</span>
+                    </div>
+                    <div class="crono-resumen-item">
+                        <span class="crono-resumen-label">Costo Hierro</span>
+                        <span class="crono-resumen-value crono-cost">$ @rv.CostoHierro.ToString("N2")</span>
+                    </div>
+                    <div class="crono-resumen-item crono-resumen-total">
+                        <span class="crono-resumen-label">TOTAL @(hayFiltro ? "▼" : "")</span>
+                        <span class="crono-resumen-value">$ @rv.CostoTotal.ToString("N2")</span>
+                    </div>
+                }
             </div>
-            <div class="crono-resumen-item">
-                <span class="crono-resumen-label">Costo EPO</span>
-                <span class="crono-resumen-value crono-cost">$ @_resumen.CostoEpo.ToString("N2")</span>
+        }
+
+        <!-- Resumen costos por dosis administrada -->
+        @if (desglose.Count > 0)
+        {
+            bool hayCostos     = _preciosEpo.Values.Any(v => v > 0);
+            var  admAplic      = desglose.Sum(r => r.Aplicaciones);
+            var  admUI         = desglose.Sum(r => r.TotalUI);
+            var  admCosto      = desglose.Sum(r => r.Costo);
+            <section class="crono-desglose-epo @(_showResumenEpo ? "" : "crono-desglose-colapsado")">
+                <button type="button"
+                        class="crono-desglose-epo-header"
+                        id="crono-desglose-adm-btn"
+                        aria-expanded="@(_showResumenEpo ? "true" : "false")"
+                        aria-controls="crono-desglose-adm-body"
+                        title="@(_showResumenEpo ? "Ocultar el detalle por dosis" : "Mostrar el detalle por dosis")"
+                        @onclick="ToggleResumenEpoAsync">
+                    <span class="crono-desglose-chevron" aria-hidden="true">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 8l4 4 4-4" />
+                        </svg>
+                    </span>
+                    <span class="crono-desglose-epo-titulo">Resumen EPO</span>
+                    <span class="crono-desglose-epo-sub">por dosis administrada</span>
+
+                    <!-- Cifras clave siempre visibles: colapsar no debe esconder el dato -->
+                    <span class="crono-desglose-peek">
+                        <span class="crono-peek-chip">@admAplic.ToString("N0") aplic.</span>
+                        <span class="crono-peek-chip">@admUI.ToString("N0") UI</span>
+                        @if (hayCostos)
+                        {
+                            <span class="crono-peek-chip crono-peek-costo">$ @admCosto.ToString("N2")</span>
+                        }
+                    </span>
+                </button>
+                <div class="crono-desglose-epo-body" id="crono-desglose-adm-body"
+                     role="region" aria-labelledby="crono-desglose-adm-btn">
+                <div class="crono-desglose-epo-body-inner">
+                <table class="crono-desglose-epo-table">
+                    <thead>
+                        <tr>
+                            <th>Dosis UI</th>
+                            <th>Aplicaciones</th>
+                            <th>Total UI</th>
+                            @if (hayCostos) { <th title="Precio de una aplicación">Precio x aplic.</th><th>Costo</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fila in desglose)
+                        {
+                            <tr>
+                                <td class="crono-desglose-epo-dosis">@fila.DosisUI.ToString("N0") UI</td>
+                                <td class="crono-desglose-epo-num">@fila.Aplicaciones</td>
+                                <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
+                                @if (hayCostos)
+                                {
+                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N2")</td>
+                                    <td class="crono-desglose-epo-costo">$ @fila.Costo.ToString("N2")</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="crono-desglose-epo-total-label">TOTAL</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@admAplic</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@admUI.ToString("N0")</td>
+                            @if (hayCostos)
+                            {
+                                <td></td>
+                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val">$ @admCosto.ToString("N2")</td>
+                            }
+                        </tr>
+                    </tfoot>
+                </table>
+                </div>
+                </div>
+            </section>
+        }
+
+        <!-- Resumen dosis pendientes NO administradas -->
+        @if (desglPend.Count > 0)
+        {
+            bool hayCostosPend = _preciosEpo.Values.Any(v => v > 0);
+            var  pendPac       = desglPend.Sum(r => r.Aplicaciones);
+            var  pendUI        = desglPend.Sum(r => r.TotalUI);
+            var  pendCosto     = desglPend.Sum(r => r.Costo);
+            <section class="crono-desglose-epo crono-desglose-pend @(_showEpoPendiente ? "" : "crono-desglose-colapsado")">
+                <button type="button"
+                        class="crono-desglose-epo-header"
+                        id="crono-desglose-pend-btn"
+                        aria-expanded="@(_showEpoPendiente ? "true" : "false")"
+                        aria-controls="crono-desglose-pend-body"
+                        title="@(_showEpoPendiente ? "Ocultar el detalle de dosis pendientes" : "Mostrar el detalle de dosis pendientes")"
+                        @onclick="ToggleEpoPendienteAsync">
+                    <span class="crono-desglose-chevron" aria-hidden="true">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 8l4 4 4-4" />
+                        </svg>
+                    </span>
+                    <span class="crono-desglose-epo-titulo">EPO Pendiente</span>
+                    <span class="crono-desglose-epo-sub">dosis no administrada — compensación programada</span>
+
+                    <span class="crono-desglose-peek">
+                        <span class="crono-peek-chip">@pendPac.ToString("N0") pac.</span>
+                        <span class="crono-peek-chip">@pendUI.ToString("N0") UI</span>
+                        @if (hayCostosPend)
+                        {
+                            <span class="crono-peek-chip crono-peek-costo">$ @pendCosto.ToString("N2")</span>
+                        }
+                    </span>
+                </button>
+                <div class="crono-desglose-epo-body" id="crono-desglose-pend-body"
+                     role="region" aria-labelledby="crono-desglose-pend-btn">
+                <div class="crono-desglose-epo-body-inner">
+                <table class="crono-desglose-epo-table">
+                    <thead>
+                        <tr>
+                            <th>Dosis UI</th>
+                            <th>Pacientes</th>
+                            <th>Total UI</th>
+                            @if (hayCostosPend) { <th title="Precio de una aplicación">Precio x aplic.</th><th>Costo potencial</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fila in desglPend)
+                        {
+                            <tr>
+                                <td class="crono-desglose-epo-dosis crono-desglose-pend-dosis">@fila.DosisUI.ToString("N0") UI</td>
+                                <td class="crono-desglose-epo-num">@fila.Aplicaciones</td>
+                                <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
+                                @if (hayCostosPend)
+                                {
+                                    <td class="crono-desglose-epo-costo">$ @fila.Precio.ToString("N2")</td>
+                                    <td class="crono-desglose-epo-costo crono-pend-costo-val">$ @fila.Costo.ToString("N2")</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="crono-desglose-epo-total-label">TOTAL</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendPac</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendUI.ToString("N0")</td>
+                            @if (hayCostosPend)
+                            {
+                                <td></td>
+                                <td class="crono-desglose-epo-costo crono-desglose-epo-total-val crono-pend-costo-val">$ @pendCosto.ToString("N2")</td>
+                            }
+                        </tr>
+                    </tfoot>
+                </table>
+                </div>
+                </div>
+            </section>
+        }
             </div>
-            <div class="crono-resumen-item">
-                <span class="crono-resumen-label">Costo Hierro</span>
-                <span class="crono-resumen-value crono-cost">$ @_resumen.CostoHierro.ToString("N2")</span>
+
+            <div class="crono-resumen-modal-footer">
+                <button class="crono-btn crono-btn-ghost" @onclick="() => _showResumen = false">Cerrar</button>
             </div>
-            <div class="crono-resumen-item crono-resumen-total">
-                <span class="crono-resumen-label">TOTAL</span>
-                <span class="crono-resumen-value">$ @_resumen.CostoTotal.ToString("N2")</span>
-            </div>
+        </div>
         </div>
     }
 
@@ -127,6 +409,40 @@
                             @onclick="() => _filtroDia = localItem.Val">@localItem.Label</button>
                 }
             </div>
+            <div class="crono-filtros-grupo">
+                <span class="crono-filtros-label">Tipo de atención:</span>
+                <button class="crono-seg-btn @(_filtrosTipo.Count == 0 ? "crono-seg-active" : "")"
+                        @onclick="() => _filtrosTipo.Clear()">Todos</button>
+                @foreach (var t in _tiposAtencion)
+                {
+                    var tipo = t;
+                    <button class="crono-seg-btn @(_filtrosTipo.Contains(tipo) ? "crono-seg-active" : "")"
+                            @onclick="() => ToggleTipoAtencion(tipo)">@tipo</button>
+                }
+            </div>
+            <div class="crono-filtros-grupo">
+                <span class="crono-filtros-label">Sala:</span>
+                <select class="crono-select crono-select-sala" @bind="_filtroSala">
+                    @foreach (var s in _salasOpciones)
+                    {
+                        <option value="@s">@s</option>
+                    }
+                </select>
+            </div>
+            <div class="crono-filtros-grupo">
+                <span class="crono-filtros-label">Desde:</span>
+                <input type="date" class="crono-select crono-filtro-fecha"
+                       value="@(_filtroFechaDesde?.ToString("yyyy-MM-dd") ?? "")"
+                       @onchange="OnFiltroFechaDesdeChange" />
+                <span class="crono-filtros-label crono-filtros-label-hasta">Hasta:</span>
+                <input type="date" class="crono-select crono-filtro-fecha"
+                       value="@(_filtroFechaHasta?.ToString("yyyy-MM-dd") ?? "")"
+                       @onchange="OnFiltroFechaHastaChange" />
+                @if (TieneFiltroFecha)
+                {
+                    <button class="crono-btn-clear-fecha" @onclick="LimpiarFiltroFecha" title="Limpiar rango de fechas">✕</button>
+                }
+            </div>
             <div class="crono-filtros-grupo crono-filtros-right">
                 <button class="crono-btn crono-btn-ghost"
                         @onclick="() => _showGraficos = !_showGraficos">
@@ -139,7 +455,7 @@
     <!-- ═══ GRÁFICOS DE COSTO ════════════════════════════════════════════ -->
     @if (_showGraficos && _cronogramas.Count > 0)
     {
-        @if (_precioEpo == 0 && _precioHierro == 0)
+        @if (!_preciosEpo.Values.Any(v => v > 0) && _precioHierro == 0)
         {
             <div class="crono-graficos-panel">
                 <p class="crono-grafico-aviso">Configure los precios de EPO y Hierro (botón "Precios") para ver los gráficos de costo.</p>
@@ -163,25 +479,25 @@
                         @foreach (var p in lista20)
                         {
                             var wEpo = maxCosto > 0
-                                ? (p.TotalEpo * _precioEpo / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                                ? (p.EpoCosto / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
                                 : "0";
                             var wFe = maxCosto > 0
-                                ? (p.TotalHierro * _precioHierro / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                                ? (CostoHierro(p.TotalHierro) / maxCosto * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
                                 : "0";
                             <div class="crono-barra-row">
-                                <div class="crono-barra-nombre" title="@p.Nombre · @p.Cedula">
-                                    @TruncateNombre(p.Nombre, 22)
+                                <div class="crono-barra-nombre" title="@PacienteDisplay.Mask(p.Nombre) · @p.Cedula">
+                                    @PacienteDisplay.Mask(p.Nombre, 22)
                                 </div>
                                 <div class="crono-barra-wrap">
-                                    @if (p.TotalEpo * _precioEpo > 0)
+                                    @if (p.EpoCosto > 0)
                                     {
                                         <div class="crono-barra-seg crono-barra-epo" style="width:@wEpo%"
-                                             title="EPO $@((p.TotalEpo * _precioEpo).ToString("N0"))"></div>
+                                             title="EPO $@(p.EpoCosto.ToString("N0"))"></div>
                                     }
-                                    @if (p.TotalHierro * _precioHierro > 0)
+                                    @if (CostoHierro(p.TotalHierro) > 0)
                                     {
                                         <div class="crono-barra-seg crono-barra-fe-bar" style="width:@wFe%"
-                                             title="Hierro $@((p.TotalHierro * _precioHierro).ToString("N0"))"></div>
+                                             title="Hierro $@(CostoHierro(p.TotalHierro).ToString("N2"))"></div>
                                     }
                                 </div>
                                 <div class="crono-barra-costo">$@p.Costo.ToString("N0")</div>
@@ -210,22 +526,18 @@
         <div class="crono-table-wrap" id="cronoTableWrap">
             <table class="crono-table">
                 <thead>
-                    <tr>
-                        <th colspan="100" class="crono-titulo-mes">
-                            @NombreMes(_mes).ToUpper() · @_anio
-                            @if (!string.IsNullOrWhiteSpace(_busqueda))
-                            {
-                                <span class="crono-titulo-filtro"> — filtro: "@_busqueda"</span>
-                            }
-                        </th>
-                    </tr>
+                    @* El período ya se indica en el encabezado de la página y en
+                       los selectores de mes/año: la banda de título solo robaba
+                       alto útil a la grilla. *@
                     <tr>
                         <th class="crono-th-fixed crono-th-paciente">Paciente</th>
                         <th class="crono-th-fixed crono-th-cedula">Cédula</th>
+                        <th class="crono-th-fixed crono-th-sala">Sala</th>
                         <th class="crono-th-fixed crono-th-turno">Turno</th>
                         <th class="crono-th-fixed crono-th-dosis crono-th-epo">EPO<br/><small>UI/sem</small></th>
                         <th class="crono-th-fixed crono-th-dosis crono-th-fe">Fe IV<br/><small>mg/mes</small></th>
-                        @foreach (var fecha in _fechasColumna)
+                        <th class="crono-th-fixed crono-th-pendiente" title="EPO que no pudo distribuirse en la primera semana parcial del cronograma">Pend.<br/><small>UI Init.</small></th>
+                        @foreach (var fecha in FechasColumnaFiltradas)
                         {
                             <th class="crono-th-fecha @(EsFinDeSemana(fecha) ? "crono-fds" : "") @(EsHoy(fecha) ? "crono-hoy-th" : "") @(EsInicioSemana(fecha) ? "crono-semana-inicio" : "")">
                                 <div class="crono-fecha-dia">@fecha.ToString("ddd", _es).ToUpper()</div>
@@ -240,24 +552,55 @@
                     @foreach (var crono in CronogramasVisibles)
                     {
                         var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
-                        decimal totalEpo = crono.Dias.Sum(d => d.EpoDosisuI ?? 0);
-                        decimal totalHierro = crono.Dias.Sum(d => d.HierroDosismg ?? 0);
-                        <tr class="crono-row">
+                        var diasFiltrados = (TieneFiltroFecha
+                            ? crono.Dias.Where(d => FechaEnRango(d.FechaSesion))
+                            : _filtroDia == 0
+                                ? crono.Dias
+                                : crono.Dias.Where(d => (int)d.FechaSesion.DayOfWeek == _filtroDia))
+                            .ToList();
+                        decimal totalEpo = diasFiltrados.Sum(d => d.EpoDosisuI ?? 0);
+                        decimal totalHierro = diasFiltrados.Sum(d => d.HierroDosismg ?? 0);
+                        decimal epoRowCosto = diasFiltrados.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI));
+                        // Solo sumar pendiente al total del row si ya fue marcada Aplicada
+                        bool vistaCompleta = !TieneFiltroFecha && _filtroDia == 0;
+                        if (vistaCompleta && crono.EpoDosisPendienteUI > 0 &&
+                            _eventosPendientes.TryGetValue(crono.Id, out var evRow) &&
+                            evRow.Estado == EstadoDosisPendiente.Aplicada)
+                        {
+                            totalEpo    += crono.EpoDosisPendienteUI!.Value;
+                            epoRowCosto += CostoPendienteEpo(crono);
+                        }
+                        <tr class="crono-row @(crono.Ausente ? "crono-row-ausente" : "")">
                             <td class="crono-td-fixed crono-td-paciente">
-                                @crono.Paciente.NombreCompleto
+                                @PacienteDisplay.Mask(crono.Paciente.NombreCompleto)
                             </td>
                             <td class="crono-td-fixed crono-td-cedula">
                                 @crono.Paciente.Identificacion
+                            </td>
+                            <td class="crono-td-fixed crono-td-sala">
+                                <select class="crono-sala-select"
+                                        value="@(crono.Sala ?? "")"
+                                        @onchange="e => GuardarSalaAsync(crono.Id, e.Value?.ToString())"
+                                        disabled="@(_cargandoSala.Contains(crono.Id))">
+                                    <option value="">—</option>
+                                    @foreach (var s in _salasOpciones.Skip(1))
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </select>
                             </td>
                             <td class="crono-td-fixed crono-td-turno">
                                 @if (_editTurnoId == crono.Id)
                                 {
                                     <div class="crono-turno-edit">
-                                        <input type="text" class="crono-input-turno"
-                                               @bind="_editTurnoValor"
-                                               @bind:event="oninput"
-                                               maxlength="25"
-                                               placeholder="LMV / MJS" />
+                                        @* Select y no texto libre: el cronograma solo reconoce
+                                           LMV y MJS, y cualquier otro valor deja al paciente
+                                           sin días de sesión sin explicar por qué. *@
+                                        <select class="crono-input-turno" @bind="_editTurnoValor">
+                                            <option value="">— Sin turno —</option>
+                                            <option value="LMV">LMV</option>
+                                            <option value="MJS">MJS</option>
+                                        </select>
                                         <div class="crono-cell-edit-btns">
                                             <button class="crono-btn-ok" @onclick="() => GuardarTurnoAsync(crono.Id)">✓</button>
                                             <button class="crono-btn-cancel" @onclick="CancelarEditTurno">✕</button>
@@ -266,17 +609,36 @@
                                 }
                                 else
                                 {
-                                    <span class="crono-badge-turno crono-badge-turno-edit"
-                                          @onclick="() => IniciarEditTurno(crono.Id, crono.PlanSalud)"
-                                          title="Click para editar turno">
-                                        @(crono.PlanSalud ?? "—")
-                                    </span>
-                                    @if (_mapaHb.TryGetValue(crono.PacienteId, out var hbVal) && hbVal.HasValue)
+                                    @if (crono.Ausente)
                                     {
-                                        <div class="crono-hb-mini @HbMiniClass(hbVal.Value)"
-                                             title="Hemoglobina: @hbVal.Value.ToString("F1") g/dL">
-                                            Hb @hbVal.Value.ToString("F1")
-                                        </div>
+                                        <span class="crono-badge-ausente">AUSENTE</span>
+                                        <button class="crono-btn-ausente crono-btn-ausente-on"
+                                                @onclick="() => ToggleAusenteAsync(crono.Id, false)"
+                                                disabled="@(_cargandoAusente.Contains(crono.Id))"
+                                                title="Reactivar paciente">
+                                            Reactivar
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="crono-badge-turno crono-badge-turno-edit"
+                                              @onclick="() => IniciarEditTurno(crono.Id, crono.PlanSalud)"
+                                              title="Click para editar turno">
+                                            @(crono.PlanSalud ?? "—")
+                                        </span>
+                                        @if (_mapaHb.TryGetValue(crono.PacienteId, out var hbVal) && hbVal.HasValue)
+                                        {
+                                            <div class="crono-hb-mini @HbMiniClass(hbVal.Value)"
+                                                 title="Hemoglobina: @hbVal.Value.ToString("F1") g/dL">
+                                                Hb @hbVal.Value.ToString("F1")
+                                            </div>
+                                        }
+                                        <button class="crono-btn-ausente"
+                                                @onclick="() => ToggleAusenteAsync(crono.Id, true)"
+                                                disabled="@(_cargandoAusente.Contains(crono.Id))"
+                                                title="Marcar como ausente este mes">
+                                            Ausente
+                                        </button>
                                     }
                                 }
                             </td>
@@ -286,7 +648,28 @@
                             <td class="crono-td-fixed crono-td-dosis crono-td-fe">
                                 @(crono.HierroMgMes?.ToString("N0") ?? "—")
                             </td>
-                            @foreach (var fecha in _fechasColumna)
+                            <td class="crono-td-fixed crono-td-pendiente">
+                                @if (crono.EpoDosisPendienteUI > 0)
+                                {
+                                    _eventosPendientes.TryGetValue(crono.Id, out var evPend);
+                                    bool aplicada = evPend?.Estado == EstadoDosisPendiente.Aplicada;
+                                    <span class="crono-badge-pendiente @(aplicada ? "crono-badge-pendiente-aplicada" : "")">
+                                        @crono.EpoDosisPendienteUI!.Value.ToString("N0")
+                                    </span>
+                                    @if (evPend != null)
+                                    {
+                                        <div class="crono-pend-fecha">@evPend.FechaProgramada.ToString("dd/MM")</div>
+                                        <button class="crono-btn-marcar-aplicada @(aplicada ? "crono-btn-ma-on" : "")"
+                                                title="@(aplicada ? "Aplicada — click para desmarcar" : "Marcar como aplicada")"
+                                                disabled="@(_cargandoEvento.Contains(crono.Id))"
+                                                @onclick="() => ToggleAplicadaAsync(crono.Id, evPend.Id, aplicada)">
+                                            @(aplicada ? "✓ Aplicada" : "Aplicar")
+                                        </button>
+                                    }
+                                }
+                                else { <span class="crono-dash">—</span> }
+                            </td>
+                            @foreach (var fecha in FechasColumnaFiltradas)
                             {
                                 var dia = diasMap.TryGetValue(fecha.Date, out var d) ? d : null;
                                 var editKey = (crono.Id, fecha);
@@ -324,9 +707,11 @@
                                                 {
                                                     <span class="crono-val-epo">@dia.EpoDosisuI.Value.ToString("N0")</span>
                                                 }
-                                                @if (dia.HierroDosismg.HasValue)
+                                                @if (dia.HierroDosismg.HasValue && dia.HierroDosismg > 0)
                                                 {
-                                                    <span class="crono-val-fe">Fe @dia.HierroDosismg.Value.ToString("N0")</span>
+                                                    <span class="crono-val-fe-iv" title="Hierro IV — @dia.HierroDosismg.Value.ToString("N0") mg">
+                                                        @dia.HierroDosismg.Value.ToString("N0")<br/><small>Fe IV</small>
+                                                    </span>
                                                 }
                                                 @if (dia.EpoEditadoManual || dia.HierroEditadoManual)
                                                 {
@@ -345,9 +730,9 @@
                                 @if (totalEpo > 0)
                                 {
                                     <div class="crono-total-num">@totalEpo.ToString("N0")</div>
-                                    @if (_precioEpo > 0)
+                                    @if (epoRowCosto > 0)
                                     {
-                                        <div class="crono-total-costo">$@((totalEpo * _precioEpo).ToString("N0"))</div>
+                                        <div class="crono-total-costo">$@(epoRowCosto.ToString("N0"))</div>
                                     }
                                 }
                                 else { <span class="crono-dash">—</span> }
@@ -358,7 +743,7 @@
                                     <div class="crono-total-num">@totalHierro.ToString("N0")</div>
                                     @if (_precioHierro > 0)
                                     {
-                                        <div class="crono-total-costo">$@((totalHierro * _precioHierro).ToString("N0"))</div>
+                                        <div class="crono-total-costo">$@(CostoHierro(totalHierro).ToString("N2"))</div>
                                     }
                                 }
                                 else { <span class="crono-dash">—</span> }
@@ -378,21 +763,41 @@
     private bool _cargando = false;
     private bool _showConfig = false;
 
+    // RF3: Modo de cronograma
+    private short    _modo = 0;
+    private DateTime _fechaInicioFlex = DateTime.Today;
+
     private Guid _tenantId;
     private string _busqueda = "";
     private bool _needScrollSync = false;
     private List<CronogramaMedicamento> _cronogramas = new();
     private List<DateTime> _fechasColumna = new();
-    private ResumenCostos? _resumen;
 
     // Filtros de segmento
-    private string _filtroTurno = "Todos";
-    private int    _filtroDia   = 0;   // 0=Todos; 1=Lun…6=Sáb  (alineado con DayOfWeek)
+    private string    _filtroTurno      = "Todos";
+    private int       _filtroDia        = 0;   // 0=Todos; 1=Lun…6=Sáb  (alineado con DayOfWeek)
+    private string    _filtroSala       = "Todas";
+    private DateTime? _filtroFechaDesde = null;
+    private DateTime? _filtroFechaHasta = null;
+
+    private bool TieneFiltroFecha => _filtroFechaDesde.HasValue || _filtroFechaHasta.HasValue;
+    private bool FechaEnRango(DateTime fecha)
+    {
+        var d = fecha.Date;
+        if (_filtroFechaDesde.HasValue && d < _filtroFechaDesde.Value.Date) return false;
+        if (_filtroFechaHasta.HasValue && d > _filtroFechaHasta.Value.Date) return false;
+        return true;
+    }
     private static readonly (string Label, int Val)[] _diasFiltroOpciones =
     {
         ("Todos", 0), ("Lun", 1), ("Mar", 2), ("Mié", 3),
         ("Jue", 4), ("Vie", 5), ("Sáb", 6)
     };
+    private static readonly string[] _salasOpciones =
+        { "Todas", "Sala 1", "Sala 2", "Sala 3", "Sala 4", "Sala 5", "Sala 6", "Sala 7" };
+
+    // RF2: Sala — carga en progreso
+    private HashSet<Guid> _cargandoSala = new();
 
     // Edición inline de turno
     private Guid?  _editTurnoId;
@@ -400,19 +805,25 @@
 
     // Gráficos
     private bool _showGraficos = false;
-    private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal Costo);
+    private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal EpoCosto, decimal Costo);
+    private record ResumenDosisAdmRow(decimal DosisUI, int Aplicaciones, decimal TotalUI, decimal Precio, decimal Costo);
 
     private IEnumerable<CostoPaciente> Top20Pacientes =>
         _cronogramas
             .Select(c =>
             {
-                var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0);
+                bool evAplic = _eventosPendientes.TryGetValue(c.Id, out var evT) &&
+                               evT.Estado == EstadoDosisPendiente.Aplicada;
+                var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0) +
+                          (evAplic ? (c.EpoDosisPendienteUI ?? 0) : 0);
                 var fe  = c.Dias.Sum(d => d.HierroDosismg ?? 0);
+                var epoCosto = c.Dias.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI))
+                    + (evAplic ? CostoPendienteEpo(c) : 0);
                 return new CostoPaciente(
                     c.Paciente.NombreCompleto,
                     c.Paciente.Identificacion,
-                    epo, fe,
-                    epo * _precioEpo + fe * _precioHierro);
+                    epo, fe, epoCosto,
+                    epoCosto + CostoHierro(fe));
             })
             .Where(p => p.Costo > 0)
             .OrderByDescending(p => p.Costo)
@@ -426,18 +837,234 @@
             .Where(c => _filtroTurno == "Todos" ||
                 (!string.IsNullOrWhiteSpace(c.PlanSalud) &&
                  c.PlanSalud.ToUpperInvariant().Contains(_filtroTurno)))
-            .Where(c => _filtroDia == 0 ||
-                c.Dias.Any(d => (int)d.FechaSesion.DayOfWeek == _filtroDia));
+            .Where(c => TieneFiltroFecha
+                ? c.Dias.Any(d => FechaEnRango(d.FechaSesion))
+                : _filtroDia == 0 || c.Dias.Any(d => (int)d.FechaSesion.DayOfWeek == _filtroDia))
+            .Where(c => _filtroSala == "Todas" ||
+                string.Equals(c.Sala, _filtroSala, StringComparison.OrdinalIgnoreCase))
+            .Where(c => _filtrosTipo.Count == 0 ||
+                (c.Paciente.TipoAtencion != null && _filtrosTipo.Contains(c.Paciente.TipoAtencion)));
 
-    private decimal _precioEpo = 0;
+    /// <summary>
+    /// Modalidades presentes en el período. Se derivan de los datos, como en
+    /// Resultados Crudos, para no ofrecer un filtro que no devolvería nada.
+    /// </summary>
+    private List<string> _tiposAtencion = new();
+
+    private readonly HashSet<string> _filtrosTipo = new(StringComparer.OrdinalIgnoreCase);
+
+    private void ToggleTipoAtencion(string tipo)
+    {
+        if (!_filtrosTipo.Add(tipo)) _filtrosTipo.Remove(tipo);
+    }
+
+    private void RecalcularTiposAtencion() =>
+        _tiposAtencion = _cronogramas
+            .Select(c => c.Paciente?.TipoAtencion)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t)
+            .ToList();
+
+    // RF3: computed
+    private DateTime FechaFinFlex => _fechaInicioFlex.AddMonths(1).AddDays(-1);
+    private string SubtituloModo => _modo == 0
+        ? $"{NombreMes(_mes)} {_anio}"
+        : $"Flexible {_fechaInicioFlex:dd/MM/yy} – {FechaFinFlex:dd/MM/yy}";
+
+    // Columnas visibles según el filtro de fecha o día activo
+    private IReadOnlyList<DateTime> FechasColumnaFiltradas =>
+        TieneFiltroFecha
+            ? _fechasColumna.Where(f => FechaEnRango(f)).ToList()
+            : _filtroDia == 0
+                ? _fechasColumna
+                : _fechasColumna.Where(f => (int)f.DayOfWeek == _filtroDia).ToList();
+
+    // RF1: resumen + desglose administrado + desglose pendiente (no administrado) — un solo recorrido O(n)
+    private (ResumenCostos? resumen, List<ResumenDosisAdmRow> desglose, List<ResumenDosisAdmRow> desglPend) ComputarResumenYDesglose()
+    {
+        var visible = CronogramasVisibles.ToList();
+        if (visible.Count == 0) return (null, new(), new());
+
+        var aplsPorDosis  = new Dictionary<decimal, (int Apps, decimal TotalUI, decimal Costo)>();
+        var pendPorDosis  = new Dictionary<decimal, (int Pacientes, decimal TotalUI, decimal Costo)>();
+        int totalSesiones = 0;
+        decimal totalEpoUI = 0, totalHierroMg = 0, costoEpo = 0, costoHierro = 0;
+
+        bool resumenCompleto = !TieneFiltroFecha && _filtroDia == 0;
+        foreach (var crono in visible)
+        {
+            IEnumerable<CronogramaDia> dias = TieneFiltroFecha
+                ? crono.Dias.Where(d => FechaEnRango(d.FechaSesion))
+                : _filtroDia == 0
+                    ? crono.Dias
+                    : crono.Dias.Where(d => (int)d.FechaSesion.DayOfWeek == _filtroDia);
+            foreach (var dia in dias)
+            {
+                totalSesiones++;
+                var epoUI = dia.EpoDosisuI ?? 0;
+                var feUI  = dia.HierroDosismg ?? 0;
+                totalEpoUI    += epoUI;
+                totalHierroMg += feUI;
+                if (epoUI > 0)
+                {
+                    // Una sesión = una aplicación: cuesta el precio completo de la dosis
+                    var precio = _preciosEpo.GetValueOrDefault(epoUI, 0);
+                    costoEpo += precio;
+                    if (!aplsPorDosis.TryGetValue(epoUI, out var acc))
+                        acc = (0, 0, 0);
+                    aplsPorDosis[epoUI] = (acc.Apps + 1, acc.TotalUI + epoUI, acc.Costo + precio);
+                }
+                costoHierro += CostoHierro(feUI);
+            }
+
+            // Dosis inicial pendiente: administrada solo si fue marcada Aplicada; sino va a pendPorDosis
+            if (resumenCompleto && crono.EpoDosisPendienteUI > 0 && crono.EpoUiSemana > 0)
+            {
+                var pendUI      = crono.EpoDosisPendienteUI!.Value;
+                var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value);
+                if (dosisSesion > 0)
+                {
+                    bool evAplic = _eventosPendientes.TryGetValue(crono.Id, out var evC) &&
+                                   evC.Estado == EstadoDosisPendiente.Aplicada;
+                    var sesEq     = (int)Math.Round(pendUI / dosisSesion);
+                    var precio    = _preciosEpo.GetValueOrDefault(dosisSesion, 0);
+                    var costoPend = sesEq * precio;
+
+                    if (evAplic)
+                    {
+                        totalEpoUI += pendUI;
+                        costoEpo   += costoPend;
+                        if (!aplsPorDosis.TryGetValue(dosisSesion, out var acc))
+                            acc = (0, 0, 0);
+                        aplsPorDosis[dosisSesion] = (acc.Apps + sesEq, acc.TotalUI + pendUI, acc.Costo + costoPend);
+                    }
+                    else
+                    {
+                        if (!pendPorDosis.TryGetValue(dosisSesion, out var pacc))
+                            pacc = (0, 0, 0);
+                        pendPorDosis[dosisSesion] = (pacc.Pacientes + 1, pacc.TotalUI + pendUI, pacc.Costo + costoPend);
+                    }
+                }
+            }
+        }
+
+        var resumen = new ResumenCostos
+        {
+            TotalPacientes = visible.Count,
+            TotalSesiones  = totalSesiones,
+            TotalEpoUI     = totalEpoUI,
+            TotalHierroMg  = totalHierroMg,
+            CostoEpo       = costoEpo,
+            CostoHierro    = costoHierro
+        };
+
+        var desglose = aplsPorDosis
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new ResumenDosisAdmRow(
+                kv.Key, kv.Value.Apps, kv.Value.TotalUI,
+                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
+            .ToList();
+
+        var desglPend = pendPorDosis
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new ResumenDosisAdmRow(
+                kv.Key, kv.Value.Pacientes, kv.Value.TotalUI,
+                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
+            .ToList();
+
+        return (resumen, desglose, desglPend);
+    }
+
+    private List<PrecioEpoDosis> _dosisEpoConfig = new();
+    private Dictionary<decimal, decimal> _preciosEpo = new();
     private decimal _precioHierro = 0;
+
+    // Dosis UI que se asigna en cada sesión según la prescripción semanal
+    private static decimal DosisPorSesionEpo(decimal epoUiSemana) =>
+        (int)Math.Round(epoUiSemana) switch
+        {
+            2000  => 2000m,
+            4000  => 2000m,
+            6000  => 2000m,
+            8000  => 4000m,
+            12000 => 4000m,
+            18000 => 6000m,
+            _     => 0m
+        };
+
+    /// <summary>
+    /// Costo del hierro IV según el precio por ampolla configurado.
+    /// La regla vive en <see cref="CostoMedicacion"/> para que la pantalla y el
+    /// servicio no puedan divergir.
+    /// </summary>
+    private decimal CostoHierro(decimal mg) => CostoMedicacion.CostoHierro(mg, _precioHierro);
+
+    /// <summary>
+    /// Costo de UNA aplicación de EPO. El precio configurado es por dosis
+    /// administrada (ej. 2,000 UI = $2.80 por aplicación), no por unidad
+    /// internacional, así que no se multiplica por las UI.
+    /// </summary>
+    private decimal PrecioAplicacionEpo(decimal? dosisUI)
+    {
+        var d = dosisUI ?? 0;
+        return d > 0 ? _preciosEpo.GetValueOrDefault(d, 0) : 0;
+    }
+
+    private decimal CostoPendienteEpo(CronogramaMedicamento crono)
+    {
+        var pendiente = crono.EpoDosisPendienteUI ?? 0;
+        if (pendiente <= 0 || !(crono.EpoUiSemana > 0)) return 0;
+        var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value);
+        if (dosisSesion <= 0) return 0;
+        return (pendiente / dosisSesion) * _preciosEpo.GetValueOrDefault(dosisSesion, 0);
+    }
 
     private (Guid CronogramaId, DateTime Fecha)? _editKey;
     private decimal? _editEpo;
     private decimal? _editHierro;
 
+    // Eventos de dosis pendiente (Fase 2), indexados por CronogramaId
+    private Dictionary<Guid, EventoDosisPendiente> _eventosPendientes = new();
+    private HashSet<Guid> _cargandoEvento = new();
+
     // Hb del último snapshot mensual, indexado por PacienteId
     private Dictionary<Guid, decimal?> _mapaHb = new();
+
+    // Cronogramas con toggle ausente en progreso
+    private HashSet<Guid> _cargandoAusente = new();
+
+    // ── Paneles de resumen colapsables ────────────────────────────────────────
+    // Se recuerda la preferencia del usuario en localStorage para que no tenga
+    // que volver a colapsar los paneles en cada visita.
+    private const string PrefResumenEpo   = "dm.crono.resumenEpo";
+    private const string PrefEpoPendiente = "dm.crono.epoPendiente";
+
+    private bool _showResumenEpo   = true;
+    private bool _showEpoPendiente = true;
+    private bool _prefsCargadas;
+
+    /// <summary>Modal con el resumen de costos y los desgloses de EPO.</summary>
+    private bool _showResumen;
+
+    private async Task ToggleResumenEpoAsync()
+    {
+        _showResumenEpo = !_showResumenEpo;
+        await GuardarPrefAsync(PrefResumenEpo, _showResumenEpo);
+    }
+
+    private async Task ToggleEpoPendienteAsync()
+    {
+        _showEpoPendiente = !_showEpoPendiente;
+        await GuardarPrefAsync(PrefEpoPendiente, _showEpoPendiente);
+    }
+
+    private async Task GuardarPrefAsync(string clave, bool valor)
+    {
+        try { await JS.InvokeVoidAsync("dmPrefs.setBool", clave, valor); }
+        catch (JSException) { /* localStorage bloqueado: el toggle sigue funcionando en sesión */ }
+    }
 
     private static readonly System.Globalization.CultureInfo _es =
         new System.Globalization.CultureInfo("es-ES");
@@ -454,6 +1081,18 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender && !_prefsCargadas)
+        {
+            _prefsCargadas = true;
+            try
+            {
+                _showResumenEpo   = await JS.InvokeAsync<bool>("dmPrefs.getBool", PrefResumenEpo,   true);
+                _showEpoPendiente = await JS.InvokeAsync<bool>("dmPrefs.getBool", PrefEpoPendiente, true);
+                StateHasChanged();
+            }
+            catch (JSException) { /* sin localStorage: se mantienen los paneles expandidos */ }
+        }
+
         if (_needScrollSync)
         {
             _needScrollSync = false;
@@ -464,19 +1103,30 @@
     private async Task CargarConfiguracionAsync()
     {
         var configs = await ConfigRepo.GetByTenantAsync(_tenantId);
-        _precioEpo = configs.FirstOrDefault(c => c.Medicamento == "EPO")?.PrecioUnitario ?? 0;
         _precioHierro = configs.FirstOrDefault(c => c.Medicamento == "HIERRO")?.PrecioUnitario ?? 0;
+
+        _dosisEpoConfig = await PrecioEpoDosisRepo.GetByTenantAsync(_tenantId);
+        if (_dosisEpoConfig.Count == 0)
+        {
+            _dosisEpoConfig = new List<PrecioEpoDosis>
+            {
+                new() { TenantId = _tenantId, DosisUI = 2000, Precio = 0 },
+                new() { TenantId = _tenantId, DosisUI = 4000, Precio = 0 },
+                new() { TenantId = _tenantId, DosisUI = 6000, Precio = 0 },
+            };
+        }
+        _preciosEpo = _dosisEpoConfig.ToDictionary(p => p.DosisUI, p => p.Precio);
     }
 
     private async Task CargarCronogramasAsync()
     {
         _cronogramas = await CronogramaService.GetCronogramasMesAsync(_tenantId, _anio, _mes);
         _fechasColumna = ObtenerFechasColumna();
+        RecalcularTiposAtencion();
         if (_cronogramas.Count > 0)
-        {
-            _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
             _needScrollSync = true;
-        }
+        var eventos = await EventoRepo.GetByPeriodoAsync(_tenantId, _anio, _mes);
+        _eventosPendientes = eventos.ToDictionary(e => e.CronogramaId);
         await CargarHbAsync();
     }
 
@@ -505,9 +1155,11 @@
             if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
                 usuarioId = uid;
 
-            _cronogramas = await CronogramaService.GenerarOActualizarMesAsync(_tenantId, _anio, _mes, usuarioId);
+            _cronogramas = await CronogramaService.GenerarOActualizarMesAsync(
+                _tenantId, _anio, _mes, usuarioId,
+                _modo == 1 ? _fechaInicioFlex : null);
             _fechasColumna = ObtenerFechasColumna();
-            _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
+            RecalcularTiposAtencion();
             _needScrollSync = true;
             await CargarHbAsync();
             Toast.ShowSuccess($"Cronograma de {NombreMes(_mes)} {_anio} actualizado — {_cronogramas.Count} pacientes");
@@ -527,13 +1179,9 @@
     {
         try
         {
-            await ConfigRepo.UpsertAsync(new ConfiguracionMedicamento
-            {
-                TenantId = _tenantId,
-                Medicamento = "EPO",
-                PrecioUnitario = _precioEpo,
-                Unidad = "UI"
-            });
+            await PrecioEpoDosisRepo.UpsertManyAsync(_dosisEpoConfig);
+            _preciosEpo = _dosisEpoConfig.ToDictionary(p => p.DosisUI, p => p.Precio);
+
             await ConfigRepo.UpsertAsync(new ConfiguracionMedicamento
             {
                 TenantId = _tenantId,
@@ -542,8 +1190,6 @@
                 Unidad = "mg"
             });
             _showConfig = false;
-            if (_cronogramas.Count > 0)
-                _resumen = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
             Toast.ShowSuccess("Precios guardados correctamente");
         }
         catch (Exception ex)
@@ -619,33 +1265,69 @@
         using var wb = new ClosedXML.Excel.XLWorkbook();
         var ws = wb.Worksheets.Add("Cronograma");
 
-        // Encabezados
+        var (rv, _, _) = ComputarResumenYDesglose();
+        var fechas = FechasColumnaFiltradas;
+
+        // ── Fila 1: Título ────────────────────────────────────────────────────
+        ws.Cell(1, 1).Value = $"CRONOGRAMA DE MEDICACIÓN — {SubtituloModo.ToUpper()}";
+        ws.Range(1, 1, 1, 10).Merge();
+        ws.Row(1).Style.Font.Bold = true;
+        ws.Row(1).Style.Font.FontSize = 13;
+        ws.Row(1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#125e8a");
+        ws.Row(1).Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+
+        // ── Fila 2: Resumen ───────────────────────────────────────────────────
+        int rc = 1;
+        void RLabel(string t) { ws.Cell(2, rc).Value = t;   ws.Cell(2, rc).Style.Font.Bold = true; ws.Cell(2, rc).Style.Font.FontColor = ClosedXML.Excel.XLColor.FromHtml("#64748b"); rc++; }
+        void RValue(object v) { ws.Cell(3, rc - 1).Value = v.ToString(); ws.Cell(3, rc - 1).Style.Font.Bold = true; }
+
+        RLabel("PACIENTES");  RValue(rv?.TotalPacientes ?? 0);
+        RLabel("SESIONES");   RValue(rv?.TotalSesiones ?? 0);
+        RLabel("TOTAL EPO (UI)"); RValue(rv?.TotalEpoUI.ToString("N0") ?? "—");
+        RLabel("TOTAL HIERRO (mg)"); RValue(rv?.TotalHierroMg.ToString("N0") ?? "—");
+        if (_preciosEpo.Values.Any(v => v > 0) || _precioHierro > 0)
+        {
+            RLabel("COSTO EPO");   RValue("$ " + (rv?.CostoEpo.ToString("N2") ?? "—"));
+            RLabel("COSTO HIERRO"); RValue("$ " + (rv?.CostoHierro.ToString("N2") ?? "—"));
+            RLabel("TOTAL");       RValue("$ " + (rv?.CostoTotal.ToString("N2") ?? "—"));
+        }
+        ws.Row(2).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#f1f5f9");
+        ws.Row(3).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#f8fafc");
+
+        // ── Fila 5: Encabezados de datos ──────────────────────────────────────
+        int headerRow = 5;
         int col = 1;
-        ws.Cell(1, col++).Value = "Paciente";
-        ws.Cell(1, col++).Value = "Turno";
-        ws.Cell(1, col++).Value = "EPO UI/sem";
-        ws.Cell(1, col++).Value = "Hierro mg/mes";
-        foreach (var f in _fechasColumna)
-            ws.Cell(1, col++).Value = f.ToString("dd/MM ddd", _es);
-        ws.Cell(1, col++).Value = "Total EPO UI";
-        ws.Cell(1, col).Value = "Total Hierro mg";
+        ws.Cell(headerRow, col++).Value = "Paciente";
+        ws.Cell(headerRow, col++).Value = "Cédula";
+        ws.Cell(headerRow, col++).Value = "Sala";
+        ws.Cell(headerRow, col++).Value = "Turno";
+        ws.Cell(headerRow, col++).Value = "EPO UI/sem";
+        ws.Cell(headerRow, col++).Value = "Hierro mg/mes";
+        ws.Cell(headerRow, col++).Value = "Pend. EPO UI";
+        foreach (var f in fechas)
+            ws.Cell(headerRow, col++).Value = f.ToString("dd/MM ddd", _es);
+        ws.Cell(headerRow, col++).Value = "Total EPO UI";
+        ws.Cell(headerRow, col).Value   = "Total Hierro mg";
 
-        var headerRow = ws.Row(1);
-        headerRow.Style.Font.Bold = true;
-        headerRow.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#0f172a");
-        headerRow.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+        var hdr = ws.Row(headerRow);
+        hdr.Style.Font.Bold = true;
+        hdr.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#125e8a");
+        hdr.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
 
-        // Filas de datos
-        int row = 2;
-        foreach (var crono in _cronogramas)
+        // ── Filas de datos ────────────────────────────────────────────────────
+        int row = headerRow + 1;
+        foreach (var crono in CronogramasVisibles)
         {
             var diasMap = crono.Dias.ToDictionary(d => d.FechaSesion.Date);
             col = 1;
             ws.Cell(row, col++).Value = crono.Paciente.NombreCompleto;
+            ws.Cell(row, col++).Value = crono.Paciente.Identificacion;
+            ws.Cell(row, col++).Value = crono.Sala ?? "";
             ws.Cell(row, col++).Value = crono.PlanSalud ?? "";
             ws.Cell(row, col++).Value = (double?)crono.EpoUiSemana ?? 0;
             ws.Cell(row, col++).Value = (double?)crono.HierroMgMes ?? 0;
-            foreach (var f in _fechasColumna)
+            ws.Cell(row, col++).Value = (double?)crono.EpoDosisPendienteUI ?? 0;
+            foreach (var f in fechas)
             {
                 if (diasMap.TryGetValue(f.Date, out var d))
                 {
@@ -656,8 +1338,16 @@
                 }
                 else col++;
             }
-            ws.Cell(row, col++).Value = (double)crono.Dias.Sum(d => d.EpoDosisuI ?? 0);
-            ws.Cell(row, col).Value = (double)crono.Dias.Sum(d => d.HierroDosismg ?? 0);
+            // Totales de fila: mismo filtro que la vista (rango de fechas, día específico o todo)
+            var diasXls = (TieneFiltroFecha
+                ? crono.Dias.Where(d => FechaEnRango(d.FechaSesion))
+                : _filtroDia == 0
+                    ? crono.Dias
+                    : crono.Dias.Where(d => (int)d.FechaSesion.DayOfWeek == _filtroDia)).ToList();
+            decimal totEpo    = diasXls.Sum(d => d.EpoDosisuI    ?? 0);
+            decimal totHierro = diasXls.Sum(d => d.HierroDosismg ?? 0);
+            ws.Cell(row, col++).Value = (double)totEpo;
+            ws.Cell(row, col).Value   = (double)totHierro;
             row++;
         }
 
@@ -725,7 +1415,6 @@
             var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
             if (idx >= 0) _cronogramas[idx] = actualizado;
             _fechasColumna  = ObtenerFechasColumna();
-            _resumen        = await CronogramaService.CalcularCostosAsync(_tenantId, _anio, _mes);
             _needScrollSync = true;
 
             CancelarEditTurno();
@@ -741,6 +1430,81 @@
         }
     }
 
+    private async Task ToggleAusenteAsync(Guid cronogramaId, bool nuevoEstado)
+    {
+        _cargandoAusente.Add(cronogramaId);
+        StateHasChanged();
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? usuarioId = null;
+            if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
+                usuarioId = uid;
+
+            var actualizado = await CronogramaService.MarcarAusenteAsync(
+                _tenantId, cronogramaId, nuevoEstado, usuarioId);
+
+            if (nuevoEstado)
+            {
+                // Ausente: reemplazar la fila; ResumenVisible recalcula automáticamente
+                var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
+                if (idx >= 0) _cronogramas[idx] = actualizado;
+                _fechasColumna = ObtenerFechasColumna();
+                RecalcularTiposAtencion();
+            }
+            else
+            {
+                // Reactivado con días regenerados: recargar todo para reflejar nuevas fechas
+                _cronogramas = await CronogramaService.GetCronogramasMesAsync(_tenantId, _anio, _mes);
+                _fechasColumna = ObtenerFechasColumna();
+                RecalcularTiposAtencion();
+                await CargarHbAsync();
+            }
+            _needScrollSync = true;
+
+            Toast.ShowSuccess(nuevoEstado ? "Paciente marcado como AUSENTE — días eliminados del cronograma" : "Paciente reactivado — cronograma regenerado");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _cargandoAusente.Remove(cronogramaId);
+        }
+    }
+
+    private async Task ToggleAplicadaAsync(Guid cronogramaId, Guid eventoId, bool estabaAplicada)
+    {
+        _cargandoEvento.Add(cronogramaId);
+        StateHasChanged();
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? usuarioId = null;
+            if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
+                usuarioId = uid;
+
+            var nuevoEstado = estabaAplicada
+                ? EstadoDosisPendiente.Programada
+                : EstadoDosisPendiente.Aplicada;
+
+            await EventoRepo.ActualizarEstadoAsync(eventoId, nuevoEstado, usuarioId);
+
+            // Actualizar el mapa local sin recargar todo
+            if (_eventosPendientes.TryGetValue(cronogramaId, out var ev))
+                ev.Estado = nuevoEstado;
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error al actualizar estado: {ex.Message}");
+        }
+        finally
+        {
+            _cargandoEvento.Remove(cronogramaId);
+        }
+    }
+
     private static string HbMiniClass(decimal v) => v switch
     {
         < 8m    => "crono-hb-crit",
@@ -752,8 +1516,71 @@
     private static string TruncateNombre(string nombre, int maxLen) =>
         nombre.Length <= maxLen ? nombre : nombre[..maxLen] + "…";
 
-    private static decimal? ParseDecimal(string? s) =>
-        decimal.TryParse(s, out var v) ? v : null;
+    private async Task GuardarSalaAsync(Guid cronogramaId, string? sala)
+    {
+        _cargandoSala.Add(cronogramaId);
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? usuarioId = null;
+            if (Guid.TryParse(authState.User.FindFirst("sub")?.Value, out var uid))
+                usuarioId = uid;
+            await CronogramaService.ActualizarSalaAsync(_tenantId, cronogramaId, sala, usuarioId);
+            var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
+            if (idx >= 0) _cronogramas[idx].Sala = string.IsNullOrWhiteSpace(sala) ? null : sala.Trim();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error al guardar sala: {ex.Message}");
+        }
+        finally
+        {
+            _cargandoSala.Remove(cronogramaId);
+        }
+    }
+
+    private void OnFechaFlexChange(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var fecha))
+            _fechaInicioFlex = fecha.Date;
+    }
+
+    private void OnFiltroFechaDesdeChange(ChangeEventArgs e)
+    {
+        _filtroFechaDesde = DateTime.TryParse(e.Value?.ToString(), out var f) ? f.Date : null;
+    }
+
+    private void OnFiltroFechaHastaChange(ChangeEventArgs e)
+    {
+        _filtroFechaHasta = DateTime.TryParse(e.Value?.ToString(), out var f) ? f.Date : null;
+    }
+
+    private void LimpiarFiltroFecha()
+    {
+        _filtroFechaDesde = null;
+        _filtroFechaHasta = null;
+    }
+
+    // Los input type=number siempre envían el valor con punto decimal, sin importar
+    // el idioma del navegador. Se parsea en invariante y se acepta la coma como
+    // separador decimal por si el valor llega escrito o pegado a mano.
+    private static decimal? ParseDecimal(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var estilo = System.Globalization.NumberStyles.Float;
+
+        if (decimal.TryParse(s, estilo, inv, out var v)) return v;
+        return decimal.TryParse(s.Replace(',', '.'), estilo, inv, out v) ? v : null;
+    }
+
+    /// <summary>
+    /// Formato monetario para campos editables: siempre punto decimal y al menos
+    /// dos decimales (2.80, no 2,8000), conservando hasta cuatro si el precio los
+    /// necesita para no perder precisión al reeditar.
+    /// </summary>
+    private static string Money(decimal v) =>
+        v.ToString("0.00##", System.Globalization.CultureInfo.InvariantCulture);
 }
 
 <style>
@@ -777,7 +1604,7 @@
     .crono-title {
         font-size: 1.4rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         margin: 0;
     }
     .crono-subtitle {
@@ -857,7 +1684,7 @@
     }
     .crono-config-title {
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         font-size: 0.85rem;
         margin-right: 0.5rem;
     }
@@ -878,6 +1705,27 @@
     }
     .crono-config-actions { display: flex; gap: 0.4rem; margin-left: auto; }
 
+    /* EPO dosis table inside config panel */
+    .crono-config-epo-section { display: flex; flex-direction: column; gap: 0.35rem; }
+    .crono-config-epo-label { font-size: 0.8rem; color: #475569; font-weight: 600; }
+    .crono-config-epo-table { border-collapse: collapse; font-size: 0.82rem; }
+    .crono-config-epo-table th,
+    .crono-config-epo-table td { padding: 0.2rem 0.6rem; text-align: left; }
+    .crono-config-epo-table th { color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
+    .crono-config-epo-table td:first-child { color: #1e293b; min-width: 80px; }
+
+    /* Campo monetario: el "$" delante evita leer 2,8000 como dos mil ochocientos */
+    .crono-config-money { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .crono-config-money-sign { color: #64748b; font-weight: 700; font-size: 0.82rem; }
+    .crono-config-money .crono-config-input { width: 92px; text-align: right; }
+    .crono-config-hint {
+        margin: 0.15rem 0 0;
+        font-size: 0.72rem;
+        color: #64748b;
+        font-style: italic;
+    }
+    .crono-config-hint-inline { margin: 0; white-space: nowrap; }
+
     /* Resumen costos */
     .crono-resumen {
         display: flex;
@@ -897,9 +1745,263 @@
     }
     .crono-resumen-item:last-child { border-right: none; }
     .crono-resumen-label { font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em; }
-    .crono-resumen-value { font-size: 1rem; font-weight: 700; color: #0f172a; }
+    .crono-resumen-value { font-size: 1rem; font-weight: 700; color: var(--dm-brand-ink); }
     .crono-cost { color: #0ea5e9; }
     .crono-resumen-total .crono-resumen-value { color: #7c3aed; font-size: 1.1rem; }
+
+    /* ── Botón Resumen en la barra de acciones ─────────────────────────────── */
+    .crono-btn-resumen {
+        background: var(--dm-brand-surface);
+        color: #e2e8f0;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .crono-btn-resumen:hover:not(:disabled) { background: var(--dm-brand-surface-hover); }
+    .crono-btn-resumen svg { width: 15px; height: 15px; flex: none; }
+    .crono-btn-badge {
+        background: rgba(56, 189, 248, 0.2);
+        color: #7dd3fc;
+        border-radius: 999px;
+        padding: 0.08rem 0.45rem;
+        font-size: 0.7rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    /* ── Modal de resumen ──────────────────────────────────────────────────── */
+    .crono-resumen-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+        padding: 1.5rem;
+        animation: crono-fade-in 0.16s ease;
+    }
+    .crono-resumen-modal {
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.35);
+        width: 100%;
+        max-width: 940px;
+        max-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: crono-modal-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .crono-resumen-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.1rem 1.4rem;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        flex: none;
+    }
+    .crono-resumen-modal-title {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: var(--dm-brand-ink);
+        margin: 0 0 0.15rem;
+    }
+    .crono-resumen-modal-sub { font-size: 0.78rem; color: #64748b; margin: 0; }
+    .crono-resumen-modal-close {
+        border: none;
+        background: transparent;
+        color: #94a3b8;
+        font-size: 1.6rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 0.25rem;
+        border-radius: 8px;
+        transition: all 0.15s;
+    }
+    .crono-resumen-modal-close:hover { background: #e2e8f0; color: var(--dm-brand-ink); }
+    .crono-resumen-modal-close:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
+
+    /* Solo el cuerpo scrollea: cabecera y pie quedan fijos */
+    .crono-resumen-modal-body {
+        padding: 1.1rem 1.4rem;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+    }
+    .crono-resumen-modal-footer {
+        padding: 0.8rem 1.4rem;
+        border-top: 1px solid #e2e8f0;
+        background: #f8fafc;
+        display: flex;
+        justify-content: flex-end;
+        flex: none;
+    }
+    .crono-resumen-modal-aviso {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 0.5rem 0.8rem;
+        font-size: 0.76rem;
+        color: #9a3412;
+    }
+
+    @@keyframes crono-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @@keyframes crono-modal-in {
+        from { opacity: 0; transform: translateY(12px) scale(0.985); }
+        to   { opacity: 1; transform: none; }
+    }
+    @@media (prefers-reduced-motion: reduce) {
+        .crono-resumen-overlay, .crono-resumen-modal { animation: none; }
+    }
+
+    /* Desglose EPO por dosis prescrita */
+    .crono-desglose-epo {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    /* Cabecera = control de disclosure: toda la barra es clickable (área grande,
+       ley de Fitts) y funciona con teclado por ser un button nativo. */
+    .crono-desglose-epo-header {
+        background: var(--dm-brand-surface);
+        color: var(--dm-on-brand-soft);
+        padding: 0.45rem 1rem;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        border: 0;
+        margin: 0;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.16s ease;
+    }
+    .crono-desglose-epo-header:hover  { background: var(--dm-brand-surface-hover); }
+    .crono-desglose-epo-header:active { background: var(--dm-brand-surface-strong); }
+    .crono-desglose-epo-header:focus-visible {
+        outline: 2px solid #38bdf8;
+        outline-offset: -2px;
+    }
+    .crono-desglose-epo-titulo { color: #e2e8f0; }
+    .crono-desglose-epo-sub { font-size: 0.6rem; color: var(--dm-on-brand-muted); text-transform: none; letter-spacing: 0; }
+
+    /* Chevron: única señal de estado que rota 180° al expandir */
+    .crono-desglose-chevron {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.05rem;
+        height: 1.05rem;
+        flex: none;
+        color: #94a3b8;
+        transform: rotate(0deg);
+        transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .crono-desglose-chevron svg { width: 100%; height: 100%; }
+    .crono-desglose-colapsado .crono-desglose-chevron { transform: rotate(-90deg); }
+
+    /* Cifras clave en la cabecera: colapsar oculta el detalle, nunca el total */
+    .crono-desglose-peek {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .crono-peek-chip {
+        background: rgba(148, 163, 184, 0.16);
+        color: #cbd5e1;
+        border-radius: 999px;
+        padding: 0.12rem 0.5rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+    }
+    .crono-peek-costo { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
+
+    /* Animación de altura sin JS: grid 1fr → 0fr anima a contenido variable */
+    .crono-desglose-epo-body {
+        display: grid;
+        grid-template-rows: 1fr;
+        transition: grid-template-rows 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .crono-desglose-epo-body-inner { overflow: hidden; min-height: 0; }
+    .crono-desglose-colapsado .crono-desglose-epo-body { grid-template-rows: 0fr; }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .crono-desglose-epo-body,
+        .crono-desglose-chevron { transition: none; }
+    }
+    .crono-desglose-epo-table { width: 100%; border-collapse: collapse; }
+    .crono-desglose-epo-table thead th {
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 0.63rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 0.28rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+        position: static;
+        top: auto;
+        z-index: 1;
+    }
+    .crono-desglose-epo-table thead th:not(:first-child) { text-align: right; }
+    .crono-desglose-epo-table tbody td {
+        padding: 0.32rem 1rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #1e293b;
+        font-size: 0.8rem;
+    }
+    .crono-desglose-epo-table tbody tr:last-child td { border-bottom: none; }
+    .crono-desglose-epo-table tbody tr:hover td { background: #f0f9ff; }
+    .crono-desglose-epo-dosis { font-weight: 700; color: #7c3aed; }
+    .crono-desglose-epo-num   { text-align: right; }
+    .crono-desglose-epo-costo { text-align: right; font-weight: 700; color: #0ea5e9; }
+    .crono-desglose-epo-table tfoot td {
+        background: var(--dm-brand-surface);
+        color: #e2e8f0;
+        font-weight: 700;
+        font-size: 0.78rem;
+        padding: 0.32rem 1rem;
+        border-top: 2px solid #334155;
+    }
+    .crono-desglose-epo-total-label { color: var(--dm-on-brand-muted); font-size: 0.65rem; letter-spacing: 0.06em; }
+    .crono-desglose-epo-total-val   { text-align: right; }
+    .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #bfe9ff; }
+    .crono-desglose-epo-sin-epo td  { color: #94a3b8; font-style: italic; border-top: 1px dashed #e2e8f0; }
+
+    /* Panel EPO pendiente — naranja oscuro para diferenciarlo del administrado */
+    .crono-desglose-pend { border-color: #fed7aa; }
+    .crono-desglose-pend .crono-desglose-epo-header { background: #7c2d12; color: #fed7aa; }
+    .crono-desglose-pend .crono-desglose-epo-header:hover  { background: #9a3412; }
+    .crono-desglose-pend .crono-desglose-epo-header:active { background: #8a3110; }
+    .crono-desglose-pend .crono-desglose-epo-header:focus-visible { outline-color: #fdba74; }
+    .crono-desglose-pend .crono-desglose-epo-titulo { color: #ffedd5; }
+    /* Antes #9a3412 sobre #7c2d12: contraste insuficiente para leer el subtítulo */
+    .crono-desglose-pend .crono-desglose-epo-sub { color: #fdba74; }
+    .crono-desglose-pend .crono-desglose-chevron { color: #fdba74; }
+    .crono-desglose-pend .crono-peek-chip  { background: rgba(253, 186, 116, 0.18); color: #fed7aa; }
+    .crono-desglose-pend .crono-peek-costo { background: rgba(249, 115, 22, 0.24); color: #ffedd5; }
+    .crono-desglose-pend .crono-desglose-epo-table thead th { background: #fff7ed; }
+    .crono-desglose-pend .crono-desglose-epo-table tfoot td { background: #7c2d12; border-top-color: #9a3412; }
+    .crono-desglose-pend .crono-desglose-epo-table tfoot .crono-desglose-epo-costo { color: #fdba74; }
+    .crono-desglose-pend-dosis { font-weight: 700; color: #f97316 !important; }
+    .crono-pend-costo-val { color: #f97316 !important; }
 
     /* Empty state */
     .crono-empty {
@@ -928,9 +2030,11 @@
     .crono-scroll-mirror::-webkit-scrollbar-track  { background: #e2e8f0; border-radius: 5px; }
     #cronoScrollMirrorInner                        { height: 1px; }
 
-    /* Table wrapper: scroll horizontal */
+    /* Table wrapper: scroll horizontal Y vertical para que position:sticky funcione */
     .crono-table-wrap {
-        overflow-x: auto;
+        overflow: auto;
+        max-height: calc(100svh - 480px);
+        min-height: 320px;
         border-radius: 0 0 12px 12px;
         border: 1px solid #e2e8f0;
         box-shadow: 0 1px 4px rgba(0,0,0,0.04);
@@ -944,60 +2048,89 @@
         font-size: 0.78rem;
     }
 
-    /* Cabecera sticky */
+    /* Cabecera sticky — fila 1 (título mes) en top:0; fila 2 (columnas) en top:44px */
     .crono-table thead th {
         position: sticky;
-        top: 0;
-        background: #0f172a;
-        color: #94a3b8;
+        top: 0;                     /* única fila de cabecera: se pega al tope */
+        background: var(--dm-brand-surface);
+        color: var(--dm-on-brand-soft);
         font-size: 0.65rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         padding: 0.55rem 0.5rem;
         text-align: center;
-        z-index: 2;
+        z-index: 10;                /* por encima de celdas de body */
         white-space: nowrap;
-    }
-
-    /* Fila título mes/año */
-    .crono-titulo-mes {
-        background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%) !important;
-        color: white !important;
-        font-size: 0.95rem !important;
-        font-weight: 800 !important;
-        letter-spacing: 0.08em !important;
-        text-transform: uppercase !important;
-        padding: 0.7rem 1rem !important;
-        text-align: left !important;
-        border-bottom: 2px solid #0ea5e9 !important;
-        position: sticky;
-        top: 0;
-        z-index: 5 !important;
-    }
-    .crono-titulo-filtro {
-        font-size: 0.75rem;
-        font-weight: 400;
-        color: #7dd3fc;
-        letter-spacing: 0.02em;
     }
 
     /* Columnas fijas (sticky left) */
     .crono-th-fixed, .crono-td-fixed {
         position: sticky;
         left: 0;
-        z-index: 3;
+        z-index: 6;                 /* body fixed > body scroll (auto) */
     }
-    .crono-th-fixed { z-index: 4; background: #0f172a !important; }
+    .crono-th-fixed { z-index: 15; background: var(--dm-brand-surface) !important; }
+    /* (0,2,1) > (0,1,2): gana sobre .crono-table thead th — fija las columnas sobre las de fecha al desplazarse */
+    .crono-table thead .crono-th-fixed { z-index: 25; }
     .crono-td-fixed { background: white; }
 
-    /* Posiciones sticky: Paciente(0/180) · Cédula(180/80) · Turno(260/90) · EPO(350/70) · Fe(420/70) */
+    /* Posiciones sticky: Paciente(0/180) · Cédula(180/80) · Sala(260/80) · Turno(340/90) · EPO(430/70) · Fe(500/70) */
     .crono-th-paciente, .crono-td-paciente { min-width: 180px; left: 0; text-align: left !important; }
-    .crono-th-cedula, .crono-td-cedula    { min-width: 80px;  left: 180px; text-align: center; font-size: 0.75rem; color: #64748b; }
-    .crono-th-turno, .crono-td-turno     { min-width: 90px;  left: 260px; }
-    .crono-th-dosis, .crono-td-dosis     { min-width: 70px; }
-    .crono-th-epo, .crono-td-epo         { left: 350px; }
-    .crono-th-fe,  .crono-td-fe          { left: 420px; }
+    .crono-th-cedula,   .crono-td-cedula   { min-width: 80px;  left: 180px; text-align: center; font-size: 0.75rem; color: #64748b; }
+    .crono-th-sala,     .crono-td-sala     { min-width: 80px;  left: 260px; text-align: center; }
+    .crono-th-turno,    .crono-td-turno    { min-width: 90px;  left: 340px; }
+    .crono-th-dosis,    .crono-td-dosis    { min-width: 70px; }
+    .crono-th-epo,      .crono-td-epo      { left: 430px; }
+    .crono-th-fe,       .crono-td-fe       { left: 500px; }
+    .crono-th-pendiente, .crono-td-pendiente { min-width: 86px; left: 570px; text-align: center; }
+
+    /* Badge dosis inicial pendiente — naranja */
+    .crono-badge-pendiente {
+        display: inline-block;
+        background: #f97316;
+        color: #fff;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 10px;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+    }
+
+    /* Badge pendiente cuando ya fue aplicada — verde */
+    .crono-badge-pendiente-aplicada { background: #16a34a; }
+
+    /* Fecha sugerida de compensación */
+    .crono-pend-fecha {
+        font-size: 0.65rem;
+        color: #64748b;
+        margin-top: 2px;
+        line-height: 1;
+    }
+
+    /* Botón "Aplicar" / "✓ Aplicada" */
+    .crono-btn-marcar-aplicada {
+        display: block;
+        margin-top: 3px;
+        padding: 1px 6px;
+        font-size: 0.62rem;
+        font-weight: 600;
+        border: 1px solid #f97316;
+        border-radius: 8px;
+        background: transparent;
+        color: #f97316;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, color 0.15s;
+    }
+    .crono-btn-marcar-aplicada:hover { background: #f97316; color: #fff; }
+    .crono-btn-ma-on {
+        background: #16a34a;
+        border-color: #16a34a;
+        color: #fff;
+    }
+    .crono-btn-ma-on:hover { background: #15803d; border-color: #15803d; }
 
     /* Celdas de datos — guías de tabla más visibles */
     .crono-table tbody tr { border-bottom: 1px solid #e2e8f0; }
@@ -1028,7 +2161,7 @@
     .crono-td-total {
         min-width: 85px;
         text-align: center;
-        border-left: 3px solid #0f172a;
+        border-left: 3px solid var(--dm-brand-surface);
         padding: 0.3rem 0.4rem;
         vertical-align: middle;
     }
@@ -1060,9 +2193,15 @@
 
     /* Fechas en encabezado */
     .crono-th-fecha { min-width: 62px; }
-    .crono-fds { background: #1e293b !important; color: #475569 !important; }
-    .crono-fecha-dia { font-size: 0.58rem; color: #64748b; }
-    .crono-fecha-num { font-size: 0.85rem; color: #e2e8f0; font-weight: 700; }
+    .crono-fecha-dia { font-size: 0.58rem; color: var(--dm-on-brand-muted); }
+    .crono-fecha-num { font-size: 0.85rem; color: var(--dm-on-brand); font-weight: 700; }
+
+    /* Fin de semana: no hay sesión. Se apaga con un tono más profundo de la
+       marca, no aclarando el fondo: al aclararlo, el número —que es blanco—
+       quedaba invisible y la columna entera se leía como un hueco. */
+    .crono-th-fecha.crono-fds { background: var(--dm-brand-surface-strong) !important; }
+    .crono-th-fecha.crono-fds .crono-fecha-dia,
+    .crono-th-fecha.crono-fds .crono-fecha-num { color: var(--dm-on-brand-soft); }
 
     /* Columna HOY — header */
     .crono-hoy-th {
@@ -1098,7 +2237,7 @@
     .crono-td-paciente {
         padding: 0.5rem 0.75rem;
         font-weight: 600;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         font-size: 0.8rem;
         border-right: 1px solid #f1f5f9;
         white-space: nowrap;
@@ -1145,6 +2284,26 @@
         font-weight: 600;
         color: #0891b2;
     }
+    .crono-val-fe-iv {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 1.25;
+        color: #c2410c;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 4px;
+        padding: 0.08rem 0.28rem;
+        cursor: pointer;
+    }
+    .crono-val-fe-iv small {
+        font-size: 0.58rem;
+        font-weight: 600;
+        color: #ea580c;
+        letter-spacing: 0.02em;
+    }
     .crono-manual-mark {
         font-size: 0.6rem;
         color: #f59e0b;
@@ -1165,7 +2324,7 @@
         border-radius: 4px;
         font-size: 0.72rem;
         text-align: center;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
     }
     .crono-cell-edit-btns {
         display: flex;
@@ -1198,6 +2357,24 @@
         gap: 0.3rem;
     }
     .crono-filtros-right { margin-left: auto; }
+    .crono-filtro-fecha {
+        width: 122px;
+        padding: 0.22rem 0.4rem;
+        font-size: 0.78rem;
+        cursor: pointer;
+    }
+    .crono-filtros-label-hasta { margin-left: 0.35rem; }
+    .crono-btn-clear-fecha {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        font-size: 0.75rem;
+        cursor: pointer;
+        padding: 0 0.2rem;
+        line-height: 1;
+        transition: color 0.12s;
+    }
+    .crono-btn-clear-fecha:hover { color: #ef4444; }
     .crono-filtros-label {
         font-size: 0.7rem;
         font-weight: 700;
@@ -1248,7 +2425,7 @@
         font-size: 0.72rem;
         text-align: center;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
     }
 
     /* ─── Gráficos de costo ─────────────────────────────────────────────── */
@@ -1261,7 +2438,7 @@
     .crono-grafico-titulo {
         font-size: 0.82rem;
         font-weight: 800;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         display: flex;
         align-items: center;
         gap: 1rem;
@@ -1323,7 +2500,7 @@
         flex-shrink: 0;
         font-size: 0.72rem;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--dm-brand-ink);
         text-align: right;
     }
     .crono-grafico-aviso {
@@ -1350,4 +2527,106 @@
     .crono-hb-alta { background: #fee2e2; color: #b91c1c; }
 
     .crono-row td { border-bottom: 1px solid #f1f5f9; }
+
+    /* ─── Ausente ──────────────────────────────────────────────────────────── */
+    .crono-row-ausente td { opacity: 0.65; }
+    .crono-row-ausente .crono-td-fixed { background: #fff7ed !important; }
+    .crono-row-ausente .crono-td-sesion { background: #fef9f0 !important; }
+    .crono-row-ausente:hover td { background: #fef3c7 !important; }
+    .crono-row-ausente:hover .crono-td-fixed { background: #fef3c7 !important; }
+
+    .crono-badge-ausente {
+        font-size: 0.68rem;
+        font-weight: 800;
+        padding: 0.18rem 0.45rem;
+        border-radius: 4px;
+        background: #fef2f2;
+        color: #dc2626;
+        white-space: nowrap;
+        display: inline-block;
+        border: 1px solid #fecaca;
+        letter-spacing: 0.03em;
+    }
+    .crono-btn-ausente {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.58rem;
+        font-weight: 600;
+        padding: 0.1rem 0.35rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 3px;
+        background: white;
+        color: #94a3b8;
+        cursor: pointer;
+        transition: all 0.12s;
+        white-space: nowrap;
+    }
+    .crono-btn-ausente:hover:not(:disabled) {
+        background: #fef2f2;
+        color: #dc2626;
+        border-color: #fecaca;
+    }
+    .crono-btn-ausente-on {
+        background: #fef2f2 !important;
+        color: #dc2626 !important;
+        border-color: #fecaca !important;
+    }
+    .crono-btn-ausente-on:hover:not(:disabled) {
+        background: #fee2e2 !important;
+    }
+    .crono-btn-ausente:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ─── Modo toggle (Mensual / Flexible) ─────────────────────────────────── */
+    .crono-modo-toggle {
+        display: inline-flex;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .crono-modo-btn {
+        padding: 0.38rem 0.75rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #64748b;
+        background: white;
+        border: none;
+        cursor: pointer;
+        transition: all 0.12s;
+        white-space: nowrap;
+    }
+    .crono-modo-btn:hover { background: #f1f5f9; }
+    .crono-modo-active {
+        background: #0ea5e9 !important;
+        color: white !important;
+    }
+    .crono-fecha-flex { min-width: 130px; }
+    .crono-flex-hasta {
+        font-size: 0.75rem;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    /* ─── Resumen filtrado ──────────────────────────────────────────────────── */
+    .crono-resumen-filtrado {
+        border-color: #bae6fd;
+        background: #f0f9ff;
+    }
+    .crono-resumen-filtrado .crono-resumen-label::after { content: " ▼"; color: #0ea5e9; }
+
+    /* ─── Sala column ───────────────────────────────────────────────────────── */
+    .crono-sala-select {
+        width: 72px;
+        padding: 0.2rem 0.25rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 5px;
+        font-size: 0.7rem;
+        color: #1e293b;
+        background: white;
+        cursor: pointer;
+        transition: border-color 0.12s;
+    }
+    .crono-sala-select:focus { outline: none; border-color: #0ea5e9; }
+    .crono-sala-select:disabled { opacity: 0.6; cursor: wait; }
+    .crono-td-sala { padding: 0.25rem; border-right: 1px solid #f1f5f9; }
+    .crono-select-sala { font-size: 0.78rem; }
 </style>

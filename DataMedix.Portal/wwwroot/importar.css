@@ -10,7 +10,7 @@
     display: block;
     font-size: 15px;
     font-weight: 700;
-    color: #0f172a;
+    color: var(--dm-brand-ink);
     margin-bottom: 12px;
 }
 

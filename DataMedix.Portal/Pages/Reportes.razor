@@ -1,5 +1,5 @@
 @page "/reportes"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:reportes.ver")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Application.DTOs
@@ -401,10 +401,10 @@ else
                                 <td>
                                     <div class="dm-pac-cell">
                                         <div class="dm-avatar-sm @(p.SeveridadMaxima == "CRITICA" ? "dm-avatar-critica" : "")">
-                                            @(p.NombreCompleto.FirstOrDefault())
+                                            @PacienteDisplay.Inicial(p.NombreCompleto)
                                         </div>
                                         <div>
-                                            <div class="dm-pac-nombre">@p.NombreCompleto</div>
+                                            <div class="dm-pac-nombre">@PacienteDisplay.Mask(p.NombreCompleto)</div>
                                             <div class="dm-pac-id">@p.Identificacion</div>
                                         </div>
                                     </div>

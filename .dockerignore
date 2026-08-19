@@ -2,6 +2,10 @@
 **/bin/
 **/obj/
 
+# Salidas de publish — 52 MB de DLLs que no deben viajar al contexto de build
+publish/
+publish_out/
+
 # IDE
 .vs/
 .vscode/

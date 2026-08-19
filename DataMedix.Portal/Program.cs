@@ -2,8 +2,10 @@ using DataMedix.Application;
 using DataMedix.Infrastructure;
 using DataMedix.Portal.Components;
 using DataMedix.Portal.Middleware;
+using DataMedix.Portal.Security;
 using DataMedix.Portal.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
@@ -68,6 +70,13 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
+
+// ── AUTORIZACIÓN POR PERMISOS ─────────────────────────────────────────────────
+// Los permisos se configuran por tenant desde la aplicación, así que las
+// policies "perm:<codigo>" se generan bajo demanda en lugar de registrarse una
+// por una en el arranque.
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermisoPolicyProvider>();
+builder.Services.AddScoped<IAuthorizationHandler, PermisoAuthorizationHandler>();
 
 // ── LOGGING ────────────────────────────────────────────────────────────────────
 builder.Logging.ClearProviders();

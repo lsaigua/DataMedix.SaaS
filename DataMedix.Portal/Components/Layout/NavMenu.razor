@@ -1,5 +1,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
+@using DataMedix.Application.Interfaces
+@using DataMedix.Domain.Entities
+
+@inject AuthenticationStateProvider AuthState
+@inject IPermisoService PermisoService
 
 <CascadingAuthenticationState>
 <div class="dm-nav">
@@ -16,6 +21,8 @@
     <!-- Menu -->
     <nav class="dm-nav-menu">
 
+        @if (Puede(Permisos.DashboardVer))
+        {
         <div class="dm-nav-section">GENERAL</div>
         <NavLink href="/dashboard" class="dm-nav-link" Match="NavLinkMatch.All" @onclick="HandleClick">
             <span class="dm-nav-li">
@@ -27,8 +34,15 @@
             </span>
             Dashboard
         </NavLink>
+        }
 
+        @if (AlgunPermiso(Permisos.LaboratorioImportar, Permisos.HistorialClinico,
+                          Permisos.LaboratorioHistorial, Permisos.LaboratorioManual))
+        {
         <div class="dm-nav-section">LABORATORIO</div>
+        }
+        @if (Puede(Permisos.LaboratorioImportar))
+        {
         <NavLink href="/laboratorio/importar" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -39,6 +53,9 @@
             </span>
             Cargar Resultados
         </NavLink>
+        }
+        @if (Puede(Permisos.HistorialClinico))
+        {
         <NavLink href="/historial-clinico" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -48,6 +65,9 @@
             </span>
             Historial Clínico
         </NavLink>
+        }
+        @if (Puede(Permisos.LaboratorioHistorial))
+        {
         <NavLink href="/laboratorio/historial" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -57,6 +77,9 @@
             </span>
             Resultados Crudos
         </NavLink>
+        }
+        @if (Puede(Permisos.LaboratorioManual))
+        {
         <NavLink href="/laboratorio/manual" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -67,8 +90,15 @@
             </span>
             Ingreso Manual
         </NavLink>
+        }
 
+        @if (AlgunPermiso(Permisos.PacientesVer, Permisos.PrescripcionesVer, Permisos.HojaEpoVer,
+                          Permisos.ReglasGestionar, Permisos.CronogramaVer, Permisos.CalidadVer))
+        {
         <div class="dm-nav-section">CLÍNICO</div>
+        }
+        @if (Puede(Permisos.PacientesVer))
+        {
         <NavLink href="/pacientes" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -80,6 +110,9 @@
             </span>
             Pacientes
         </NavLink>
+        }
+        @if (Puede(Permisos.PrescripcionesVer))
+        {
         <NavLink href="/prescripciones" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -89,6 +122,9 @@
             </span>
             Prescripción Clínica
         </NavLink>
+        }
+        @if (Puede(Permisos.HojaEpoVer))
+        {
         <NavLink href="/hoja-epo" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -99,6 +135,9 @@
             </span>
             Prescripción Sugerida
         </NavLink>
+        }
+        @if (Puede(Permisos.ReglasGestionar))
+        {
         <NavLink href="/clinico/reglas" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -109,6 +148,9 @@
             </span>
             Reglas Clínicas
         </NavLink>
+        }
+        @if (Puede(Permisos.CronogramaVer))
+        {
         <NavLink href="/cronograma-medicacion" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -121,6 +163,9 @@
             </span>
             Cronograma Medicación
         </NavLink>
+        }
+        @if (Puede(Permisos.CalidadVer))
+        {
         <NavLink href="/clinico/dashboard-calidad" class="dm-nav-link" @onclick="HandleClick">
             <span class="dm-nav-li">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -130,10 +175,16 @@
             </span>
             Calidad Clínica KDOQI
         </NavLink>
+        }
 
-        <AuthorizeView Roles="SUPERADMIN,ADMIN">
-            <Authorized>
+        @if (AlgunPermiso(Permisos.CargasVer, Permisos.ReportesVer, Permisos.UsuariosGestionar,
+                          Permisos.RolesGestionar, Permisos.ConfiguracionVer, Permisos.FacturacionVer,
+                          Permisos.AuditoriaVer, Permisos.DepuracionEjecutar))
+        {
                 <div class="dm-nav-section">ADMINISTRACIÓN</div>
+        }
+        @if (Puede(Permisos.CargasVer))
+        {
                 <NavLink href="/cargas" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -143,6 +194,9 @@
                     </span>
                     Lotes de Carga
                 </NavLink>
+        }
+        @if (Puede(Permisos.ReportesVer))
+        {
                 <NavLink href="/reportes" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -153,6 +207,9 @@
                     </span>
                     Reportes
                 </NavLink>
+        }
+        @if (Puede(Permisos.UsuariosGestionar))
+        {
                 <NavLink href="/usuarios" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -163,6 +220,22 @@
                     </span>
                     Usuarios
                 </NavLink>
+        }
+        @if (Puede(Permisos.RolesGestionar))
+        {
+                <NavLink href="/admin/roles-permisos" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                    </span>
+                    Roles y Permisos
+                </NavLink>
+        }
+        @if (Puede(Permisos.ConfiguracionVer))
+        {
                 <NavLink href="/configuracion" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -173,6 +246,22 @@
                     </span>
                     Configuración
                 </NavLink>
+        }
+        @if (Puede(Permisos.FacturacionVer))
+        {
+                <NavLink href="/facturacion" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 3h16a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1z"/>
+                            <line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/>
+                        </svg>
+                    </span>
+                    Facturación
+                </NavLink>
+        }
+        @if (Puede(Permisos.AuditoriaVer))
+        {
                 <NavLink href="/auditoria" class="dm-nav-link" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -185,6 +274,9 @@
                     </span>
                     Auditoría
                 </NavLink>
+        }
+        @if (Puede(Permisos.DepuracionEjecutar))
+        {
                 <NavLink href="/admin/depuracion" class="dm-nav-link dm-nav-link-danger" @onclick="HandleClick">
                     <span class="dm-nav-li">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -197,8 +289,53 @@
                     </span>
                     Depuración de Datos
                 </NavLink>
-            </Authorized>
-        </AuthorizeView>
+        }
+
+        @* Consola del proveedor del SaaS: los permisos de plataforma están
+           marcados solo_superadmin, así que ningún tenant puede concedérselos. *@
+        @if (AlgunPermiso(Permisos.TenantsGestionar, Permisos.TarifasConfigurar, Permisos.FacturacionGlobal))
+        {
+                <div class="dm-nav-section">PLATAFORMA</div>
+        }
+        @if (Puede(Permisos.TenantsGestionar))
+        {
+                <NavLink href="/admin/clientes" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 21h18M5 21V7l7-4 7 4v14"/>
+                            <path d="M9 21v-6h6v6"/><path d="M9 11h.01M15 11h.01"/>
+                        </svg>
+                    </span>
+                    Clientes
+                </NavLink>
+        }
+        @if (Puede(Permisos.TarifasConfigurar))
+        {
+                <NavLink href="/admin/tarifas" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                            <line x1="7" y1="7" x2="7.01" y2="7"/>
+                        </svg>
+                    </span>
+                    Tarifas y Planes
+                </NavLink>
+        }
+        @if (Puede(Permisos.FacturacionGlobal))
+        {
+                <NavLink href="/admin/facturacion-global" class="dm-nav-link" @onclick="HandleClick">
+                    <span class="dm-nav-li">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="1" x2="12" y2="23"/>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                    </span>
+                    Facturación Global
+                </NavLink>
+        }
 
     </nav>
 
@@ -276,6 +413,59 @@
     [Parameter] public EventCallback OnNavClick { get; set; }
 
     private async Task HandleClick() => await OnNavClick.InvokeAsync();
+
+    // Permisos efectivos del usuario dentro de su tenant. Se resuelven una vez
+    // por sesión de circuito: el menú se redibuja en cada navegación y consultar
+    // la base en cada render sería un costo innecesario (el servicio cachea igual).
+    private HashSet<string> _permisos = new(StringComparer.OrdinalIgnoreCase);
+    private bool _permisosCargados;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var user = auth.User;
+
+        if (user.Identity is not { IsAuthenticated: true })
+        {
+            _permisosCargados = true;
+            return;
+        }
+
+        var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
+
+        // El proveedor del sistema ve todo el menú aunque el tenant haya
+        // recortado su matriz: necesita entrar para dar soporte.
+        if (roles.Any(r => string.Equals(r, "SUPERADMIN", StringComparison.OrdinalIgnoreCase)))
+        {
+            _esSuperadmin = true;
+            _permisosCargados = true;
+            return;
+        }
+
+        if (Guid.TryParse(user.FindFirst("tenant_id")?.Value, out var tenantId) && tenantId != Guid.Empty)
+        {
+            try
+            {
+                _permisos = await PermisoService.GetPermisosEfectivosAsync(tenantId, roles);
+            }
+            catch
+            {
+                // Sin permisos resueltos el menú queda vacío, pero la aplicación
+                // sigue navegable: cada página valida por su cuenta.
+            }
+        }
+
+        _permisosCargados = true;
+    }
+
+    private bool _esSuperadmin;
+
+    /// <summary>¿Se muestra esta opción del menú?</summary>
+    private bool Puede(string codigo) =>
+        _esSuperadmin || (_permisosCargados && _permisos.Contains(codigo));
+
+    /// <summary>¿Hay alguna opción visible en el grupo? Evita títulos de sección huérfanos.</summary>
+    private bool AlgunPermiso(params string[] codigos) => codigos.Any(Puede);
 }
 
 <style>
@@ -283,8 +473,8 @@
         height: 100%;
         display: flex;
         flex-direction: column;
-        background: #0f172a;
-        color: #cbd5e1;
+        background: var(--dm-brand-surface);
+        color: var(--dm-on-brand-soft);
         overflow: hidden;
     }
 
@@ -294,7 +484,7 @@
         align-items: center;
         gap: 0.75rem;
         padding: 1.25rem 1.25rem 1rem;
-        border-bottom: 1px solid rgba(255,255,255,0.07);
+        border-bottom: 1px solid rgba(255,255,255,0.20);
         flex-shrink: 0;
     }
 
@@ -307,7 +497,7 @@
 
     .dm-nav-subtitle {
         font-size: 0.65rem;
-        color: #475569;
+        color: var(--dm-on-brand-muted);
         font-weight: 500;
         letter-spacing: 0.03em;
     }
@@ -319,13 +509,13 @@
         overflow-x: hidden;
         padding: 0.875rem 0.75rem;
         scrollbar-width: thin;
-        scrollbar-color: #1e293b transparent;
+        scrollbar-color: rgba(255,255,255,0.30) transparent;
     }
 
     .dm-nav-section {
         font-size: 0.6rem;
         font-weight: 800;
-        color: #334155;
+        color: var(--dm-on-brand-muted);
         letter-spacing: 0.1em;
         padding: 0.875rem 0.75rem 0.35rem;
         text-transform: uppercase;
@@ -337,7 +527,7 @@
         gap: 0.65rem;
         padding: 0.55rem 0.75rem;
         border-radius: 8px;
-        color: #94a3b8;
+        color: var(--dm-on-brand-soft);
         text-decoration: none;
         font-size: 0.85rem;
         font-weight: 500;
@@ -347,13 +537,15 @@
     }
 
     .dm-nav-link:hover {
-        background: rgba(255,255,255,0.06);
-        color: #e2e8f0;
+        background: rgba(255,255,255,0.14);
+        color: var(--dm-on-brand);
     }
 
+    /* Sobre el azul claro un celeste no destacaría lo suficiente: el activo
+       se marca con blanco pleno y un fondo más sólido. */
     .dm-nav-link.active {
-        background: rgba(14,165,233,0.15);
-        color: #38bdf8;
+        background: rgba(255,255,255,0.20);
+        color: var(--dm-on-brand);
         font-weight: 600;
     }
 
@@ -374,7 +566,7 @@
     /* Footer */
     .dm-nav-footer {
         padding: 0.875rem 0.75rem;
-        border-top: 1px solid rgba(255,255,255,0.07);
+        border-top: 1px solid rgba(255,255,255,0.20);
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
@@ -411,7 +603,7 @@
     .dm-nav-user-name {
         font-size: 0.78rem;
         font-weight: 600;
-        color: #e2e8f0;
+        color: var(--dm-on-brand);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -419,7 +611,7 @@
 
     .dm-nav-user-role {
         font-size: 0.62rem;
-        color: #475569;
+        color: var(--dm-on-brand-muted);
         text-transform: uppercase;
         font-weight: 700;
         letter-spacing: 0.06em;
@@ -429,7 +621,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        color: #475569;
+        color: var(--dm-on-brand-soft);
         text-decoration: none;
         font-size: 0.8rem;
         font-weight: 500;
@@ -468,15 +660,15 @@
         gap: 0.3rem;
         padding: 0.2rem 0;
         font-size: 0.62rem;
-        color: #1e293b;
+        color: var(--dm-on-brand-muted);
     }
     .dm-nav-legal a {
-        color: #334155;
+        color: var(--dm-on-brand-soft);
         text-decoration: none;
         font-weight: 500;
     }
-    .dm-nav-legal a:hover { color: #94a3b8; text-decoration: underline; }
-    .dm-nav-legal span { color: #1e293b; }
+    .dm-nav-legal a:hover { color: var(--dm-on-brand); text-decoration: underline; }
+    .dm-nav-legal span { color: var(--dm-on-brand-muted); }
 
     /* PetMac Labs — créditos de desarrollo */
     .dm-nav-dev {
@@ -486,7 +678,7 @@
     }
     .dm-nav-dev-label {
         font-size: 0.55rem;
-        color: #1e293b;
+        color: var(--dm-on-brand-muted);
         text-transform: uppercase;
         letter-spacing: 0.08em;
         font-weight: 700;

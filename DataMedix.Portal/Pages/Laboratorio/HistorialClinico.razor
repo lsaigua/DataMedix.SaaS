@@ -1,6 +1,6 @@
 @page "/historial-clinico"
 @page "/historial-clinico/{PacienteId:guid}"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:historial.clinico")]
 @using Microsoft.AspNetCore.Authorization
 @using DataMedix.Application.Interfaces
 @using DataMedix.Domain.Entities
@@ -18,7 +18,7 @@
         @if (PacienteSeleccionado != null)
         {
             <p class="dm-page-subtitle">
-                @PacienteSeleccionado.NombreCompleto —
+                @PacienteDisplay.Mask(PacienteSeleccionado.NombreCompleto) —
                 <span class="dm-ident-badge">@PacienteSeleccionado.Identificacion</span>
             </p>
         }
@@ -130,7 +130,7 @@ else
                                 <div class="dm-paciente-cell">
                                     <div class="dm-avatar">@snap.Paciente?.PrimerNombre?.FirstOrDefault()</div>
                                     <div>
-                                        <div class="dm-nombre">@snap.Paciente?.NombreCompleto</div>
+                                        <div class="dm-nombre">@PacienteDisplay.Mask(snap.Paciente?.NombreCompleto)</div>
                                         <div class="dm-ident-small">@snap.Paciente?.Identificacion</div>
                                     </div>
                                 </div>

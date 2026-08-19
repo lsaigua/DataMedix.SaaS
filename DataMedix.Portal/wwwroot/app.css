@@ -10,6 +10,26 @@
     --dm-text-soft: #64748b;
     --dm-error: #dc2626;
     --dm-success: #16a34a;
+
+    /* ── Superficie de marca ──────────────────────────────────────────────
+       Reemplaza al antiguo #0f172a (casi negro) por el azul del logo, más
+       fresco y menos pesado. Se usa en el menú lateral, encabezados y pies
+       de tabla, y cabeceras de panel.
+
+       Contraste calculado sobre --dm-brand-surface:
+         --dm-on-brand         blanco puro ....... ~7.0:1  (AAA)
+         --dm-on-brand-soft    texto secundario .. ~5.9:1  (AA)
+         --dm-on-brand-muted   etiquetas tenues .. ~4.5:1  (AA)
+       Al aclarar el fondo, el texto tenue tuvo que aclararse también: los
+       grises oscuros de antes quedarían ilegibles sobre este tono. */
+    --dm-brand-surface:        #125e8a;
+    --dm-brand-surface-strong: #0e4c73;   /* pies de tabla y acentos */
+    --dm-brand-surface-hover:  #16709f;
+    --dm-brand-ink:            #14405c;   /* títulos sobre fondo claro */
+
+    --dm-on-brand:       #ffffff;
+    --dm-on-brand-soft:  #dbeefa;
+    --dm-on-brand-muted: #a8d5ec;
 }
 
 html, body {
