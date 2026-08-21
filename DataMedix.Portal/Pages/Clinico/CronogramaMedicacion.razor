@@ -393,10 +393,13 @@
         <div class="crono-filtros-bar">
             <div class="crono-filtros-grupo">
                 <span class="crono-filtros-label">Turno:</span>
-                @foreach (var turno in new[] { "Todos", "LMV", "MJS" })
+                @* Se derivan de los datos: los turnos posibles son diez y listarlos
+                   todos llenaría la barra de botones que no filtran nada. *@
+                @foreach (var turno in _turnosPresentes)
                 {
                     var localTurno = turno;
                     <button class="crono-seg-btn @(_filtroTurno == localTurno ? "crono-seg-active" : "")"
+                            title="@(localTurno == "Todos" ? "Todos los turnos" : TurnoDialisis.Describir(localTurno))"
                             @onclick="() => _filtroTurno = localTurno">@localTurno</button>
                 }
             </div>
@@ -598,8 +601,10 @@
                                            sin días de sesión sin explicar por qué. *@
                                         <select class="crono-input-turno" @bind="_editTurnoValor">
                                             <option value="">— Sin turno —</option>
-                                            <option value="LMV">LMV</option>
-                                            <option value="MJS">MJS</option>
+                                            @foreach (var (valor, _) in TurnoDialisis.Opciones)
+                                            {
+                                                <option value="@valor">@valor</option>
+                                            }
                                         </select>
                                         <div class="crono-cell-edit-btns">
                                             <button class="crono-btn-ok" @onclick="() => GuardarTurnoAsync(crono.Id)">✓</button>
@@ -834,9 +839,11 @@
             .Where(c => string.IsNullOrWhiteSpace(_busqueda) ||
                 c.Paciente.Identificacion.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ||
                 c.Paciente.NombreCompleto.Contains(_busqueda, StringComparison.OrdinalIgnoreCase))
+            // Comparación por código normalizado, no por Contains: filtrar "L"
+            // con subcadena habría arrastrado LMV, LMXJVSAD y cualquier turno
+            // que contenga esa letra.
             .Where(c => _filtroTurno == "Todos" ||
-                (!string.IsNullOrWhiteSpace(c.PlanSalud) &&
-                 c.PlanSalud.ToUpperInvariant().Contains(_filtroTurno)))
+                        TurnoDialisis.Normalizar(c.PlanSalud) == _filtroTurno)
             .Where(c => TieneFiltroFecha
                 ? c.Dias.Any(d => FechaEnRango(d.FechaSesion))
                 : _filtroDia == 0 || c.Dias.Any(d => (int)d.FechaSesion.DayOfWeek == _filtroDia))
@@ -851,6 +858,9 @@
     /// </summary>
     private List<string> _tiposAtencion = new();
 
+    /// <summary>Turnos presentes en el período, con "Todos" al frente.</summary>
+    private List<string> _turnosPresentes = new() { "Todos" };
+
     private readonly HashSet<string> _filtrosTipo = new(StringComparer.OrdinalIgnoreCase);
 
     private void ToggleTipoAtencion(string tipo)
@@ -858,7 +868,8 @@
         if (!_filtrosTipo.Add(tipo)) _filtrosTipo.Remove(tipo);
     }
 
-    private void RecalcularTiposAtencion() =>
+    private void RecalcularTiposAtencion()
+    {
         _tiposAtencion = _cronogramas
             .Select(c => c.Paciente?.TipoAtencion)
             .Where(t => !string.IsNullOrWhiteSpace(t))
@@ -866,6 +877,20 @@
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(t => t)
             .ToList();
+
+        _turnosPresentes = _cronogramas
+            .Select(c => TurnoDialisis.Normalizar(c.PlanSalud))
+            .Where(t => t is not null)
+            .Select(t => t!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t.Length).ThenBy(t => t)
+            .Prepend("Todos")
+            .ToList();
+
+        // Si el turno filtrado ya no existe en el período, el filtro se cae
+        // en silencio y la grilla quedaría vacía sin explicación
+        if (!_turnosPresentes.Contains(_filtroTurno)) _filtroTurno = "Todos";
+    }
 
     // RF3: computed
     private DateTime FechaFinFlex => _fechaInicioFlex.AddMonths(1).AddDays(-1);
@@ -923,7 +948,7 @@
             if (resumenCompleto && crono.EpoDosisPendienteUI > 0 && crono.EpoUiSemana > 0)
             {
                 var pendUI      = crono.EpoDosisPendienteUI!.Value;
-                var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value);
+                var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value, crono.PlanSalud);
                 if (dosisSesion > 0)
                 {
                     bool evAplic = _eventosPendientes.TryGetValue(crono.Id, out var evC) &&
@@ -982,8 +1007,22 @@
     private decimal _precioHierro = 0;
 
     // Dosis UI que se asigna en cada sesión según la prescripción semanal
-    private static decimal DosisPorSesionEpo(decimal epoUiSemana) =>
-        (int)Math.Round(epoUiSemana) switch
+    /// <summary>
+    /// Dosis de una sesión, usada para convertir las UI pendientes en
+    /// sesiones equivalentes.
+    ///
+    /// Los turnos clásicos de 3 sesiones conservan su tabla validada; el
+    /// resto se deriva del reparto por unidades, que es lo que realmente
+    /// aplica el cronograma para esos turnos.
+    /// </summary>
+    private static decimal DosisPorSesionEpo(decimal epoUiSemana, string? planSalud)
+    {
+        var dias = TurnoDialisis.Detectar(planSalud);
+
+        if (dias is not null && !TurnoDialisis.EsPatronClasico(dias))
+            return DistribucionEpo.DosisTipicaPorSesion(epoUiSemana, dias);
+
+        return (int)Math.Round(epoUiSemana) switch
         {
             2000  => 2000m,
             4000  => 2000m,
@@ -993,6 +1032,7 @@
             18000 => 6000m,
             _     => 0m
         };
+    }
 
     /// <summary>
     /// Costo del hierro IV según el precio por ampolla configurado.
@@ -1016,7 +1056,7 @@
     {
         var pendiente = crono.EpoDosisPendienteUI ?? 0;
         if (pendiente <= 0 || !(crono.EpoUiSemana > 0)) return 0;
-        var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value);
+        var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value, crono.PlanSalud);
         if (dosisSesion <= 0) return 0;
         return (pendiente / dosisSesion) * _preciosEpo.GetValueOrDefault(dosisSesion, 0);
     }

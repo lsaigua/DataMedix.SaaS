@@ -49,9 +49,9 @@ namespace DataMedix.Application.Services
             var errores = new List<ErrorImportacionDto>();
             var filasValidas = new List<LabRowDto>();
 
-            // Se avisa del turno en la previsualización para que el usuario lo
+            // Se avisa en la previsualización para que el usuario lo
             // vea ANTES de confirmar, no después de importar
-            errores.AddRange(NormalizarTurnos(filas));
+            errores.AddRange(NormalizarCamposPaciente(filas));
 
             foreach (var fila in filas)
             {
@@ -86,9 +86,9 @@ namespace DataMedix.Application.Services
             if (!filas.Any())
                 return Error(Guid.Empty, "El archivo no contiene datos.");
 
-            // Solo LMV y MJS llegan al paciente y al snapshot: cualquier otro
-            // texto dejaría al paciente sin días en el cronograma
-            var avisosTurno = NormalizarTurnos(filas);
+            // El plan de salud se guarda tal cual; solo se controla el largo
+            // para que un valor desmedido no tumbe el lote completo
+            var avisosCampos = NormalizarCamposPaciente(filas);
 
             // 2. Determinar período del lote (usar la fecha más frecuente)
             var periodDate = DeterminarPeriodo(filas);
@@ -125,9 +125,9 @@ namespace DataMedix.Application.Services
                 var resultados = new List<ResultadoLaboratorio>();
                 var pacientesCache = new Dictionary<string, Paciente>(StringComparer.OrdinalIgnoreCase);
 
-                // Los turnos no reconocidos quedan registrados en el lote para
+                // Los avisos de longitud quedan registrados en el lote para
                 // que se puedan revisar después desde Cargas
-                foreach (var aviso in avisosTurno)
+                foreach (var aviso in avisosCampos)
                 {
                     errores.Add(new ImportacionError
                     {
@@ -508,37 +508,62 @@ namespace DataMedix.Application.Services
         /// Se avisa una vez por cada valor distinto, no por fila, para no
         /// inundar el reporte: un mismo paciente trae muchas filas de resultados.
         /// </summary>
-        private static List<ErrorImportacionDto> NormalizarTurnos(IEnumerable<LabRowDto> filas)
+        /// <summary>Largo de las columnas plan_salud y tipo_atencion en base de datos.</summary>
+        private const int MaxLargoPlanSalud = 200;
+
+        /// <summary>
+        /// Prepara los campos del paciente que vienen del archivo.
+        ///
+        /// El Plan Salud se guarda TAL CUAL viene: los centros manejan turnos
+        /// fuera del estándar y rechazar lo que no se reconoce hacía perder el
+        /// dato original. La interpretación del turno se hace al leer, cuando el
+        /// cronograma calcula los días; un texto que no se entienda simplemente
+        /// no genera sesiones, pero queda registrado.
+        ///
+        /// Lo único que se controla es el largo: la columna admite 200
+        /// caracteres y un valor más largo haría fallar el lote entero con un
+        /// error de base de datos. Se reporta la fila y se recorta, para no
+        /// perder el resto de la importación por un dato mal formado.
+        /// </summary>
+        private static List<ErrorImportacionDto> NormalizarCamposPaciente(IEnumerable<LabRowDto> filas)
         {
             var avisos     = new List<ErrorImportacionDto>();
             var reportados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var fila in filas)
             {
+                // La modalidad sí se normaliza: es una lista cerrada de dos
+                // valores y el archivo trae variantes ("HD", "hemodialisis").
+                // Si no se reconoce, se conserva el texto original.
+                fila.TipoAtencion = TipoAtencionPaciente.Detectar(fila.TipoAtencion) ?? fila.TipoAtencion;
+
                 var crudo = fila.PlanSalud?.Trim();
-
-                var modalidad = TipoAtencionPaciente.Detectar(fila.TipoAtencion);
-                if (modalidad is not null) fila.TipoAtencion = modalidad;
-
-                var turno = TurnoDialisis.Detectar(crudo);
-                fila.PlanSalud = turno;
-
-                bool esPeritoneal = modalidad == TipoAtencionPaciente.Peritoneal;
-
-                if (turno is null && !esPeritoneal &&
-                    !string.IsNullOrWhiteSpace(crudo) && reportados.Add(crudo))
+                if (string.IsNullOrWhiteSpace(crudo))
                 {
-                    avisos.Add(new ErrorImportacionDto
-                    {
-                        NumeroFila    = fila.LineNumber,
-                        Campo         = "PlanSalud",
-                        TipoError     = TipoErrorImportacion.Formato,
-                        ValorRecibido = crudo,
-                        Mensaje       = $"Turno «{crudo}» no reconocido; solo se admiten LMV y MJS. " +
-                                        "Los resultados se importan igual, pero estos pacientes quedarán " +
-                                        "sin turno y habrá que asignárselo en el Cronograma de Medicación."
-                    });
+                    fila.PlanSalud = null;
+                    continue;
                 }
+
+                if (crudo.Length > MaxLargoPlanSalud)
+                {
+                    if (reportados.Add(crudo))
+                    {
+                        avisos.Add(new ErrorImportacionDto
+                        {
+                            NumeroFila    = fila.LineNumber,
+                            Campo         = "PlanSalud",
+                            TipoError     = TipoErrorImportacion.Formato,
+                            ValorRecibido = crudo[..Math.Min(60, crudo.Length)] + "…",
+                            Mensaje       = $"El plan de salud tiene {crudo.Length} caracteres y el máximo " +
+                                            $"admitido es {MaxLargoPlanSalud}. Se guardó recortado; " +
+                                            "revise el archivo de origen."
+                        });
+                    }
+
+                    crudo = crudo[..MaxLargoPlanSalud];
+                }
+
+                fila.PlanSalud = crudo;
             }
 
             return avisos;

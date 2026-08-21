@@ -16,20 +16,30 @@ namespace DataMedix.Application.Services
     /// <summary>
     /// Genera y gestiona el cronograma mensual de medicamentos (EPO e Hierro IV).
     ///
-    /// Turnos:
-    ///   LMV (Lunes/Miércoles/Viernes) → 1er, 2do, 3er LMV
-    ///   MJS (Martes/Jueves/Sábado)    → 1er, 2do, 3er MJS
+    /// TURNOS
+    /// El turno es el conjunto de días de sesión, leído de PlanSalud por
+    /// <see cref="TurnoDialisis"/>: días sueltos (L, M, X, J, V, SA/S, D),
+    /// combinaciones (LMV, MJS, LMXJVSAD) o cualquier concatenación de ellos.
     ///
-    /// Distribución EPO (UI semanales → UI por sesión):
-    ///   2000  → solo día central (Mié / Jue)
-    ///   4000  → primer + último día (2000 c/u)
-    ///   6000  → 3 días (2000 c/u)
-    ///   8000  → primer + último (4000 c/u)
-    ///   12000 → 3 días (4000 c/u)
-    ///   18000 → 3 días (6000 c/u)
+    /// DISTRIBUCIÓN DE EPO — dos caminos, a propósito
     ///
-    /// Distribución Hierro: HierroMgMes ÷ 3 sesiones/semana (redondeado a entero),
-    /// aplicado a CADA sesión del turno. Ej: 600 mg → 200 mg por sesión en MJS.
+    /// 1. Patrón clásico de 3 sesiones (LMV / MJS). Conserva la tabla validada,
+    ///    que es asimétrica adrede y también en semanas parciales:
+    ///      2000  → solo día central          8000  → primer + último (4000 c/u)
+    ///      4000  → primer + último (2000)   12000  → 3 días (4000 c/u)
+    ///      6000  → 3 días (2000 c/u)        18000  → 3 días (6000 c/u)
+    ///
+    /// 2. Cualquier otro turno, de 1 a 7 días. Reparto por unidades de la
+    ///    presentación mínima (ver <see cref="DistribucionEpo"/>): conserva el
+    ///    total semanal exacto y nunca genera dosis fuera de presentación.
+    ///
+    /// La separación existe para que los pacientes que ya están en LMV/MJS no
+    /// cambien ni una dosis al incorporarse los turnos nuevos.
+    ///
+    /// DISTRIBUCIÓN DE HIERRO
+    /// Independiente del turno: n = ceil(HierroMgMes / 200) aplicaciones
+    /// repartidas entre las sesiones del mes con separación mínima de 48 h.
+    /// En turnos diarios esa separación es la que manda y espacia las dosis.
     /// </summary>
     public class CronogramaService
     {
@@ -193,9 +203,9 @@ namespace DataMedix.Application.Services
 
                 // Calcular dosis inicial pendiente (primera semana parcial del cronograma)
                 var turnoGeneracion = ParsearTurno(crono.PlanSalud);
-                crono.EpoDosisPendienteUI = turnoGeneracion.HasValue
+                crono.EpoDosisPendienteUI = turnoGeneracion is not null
                     ? CalcularDosisInicialPendiente(
-                        crono.EpoUiSemana, turnoGeneracion.Value,
+                        crono.EpoUiSemana, turnoGeneracion,
                         nuevasDias.Select(d => d.FechaSesion).ToList())
                     : null;
 
@@ -398,9 +408,9 @@ namespace DataMedix.Application.Services
 
                 // Actualizar dosis pendiente con el nuevo turno
                 var turnoActualizado = ParsearTurno(crono.PlanSalud);
-                crono.EpoDosisPendienteUI = turnoActualizado.HasValue
+                crono.EpoDosisPendienteUI = turnoActualizado is not null
                     ? CalcularDosisInicialPendiente(
-                        crono.EpoUiSemana, turnoActualizado.Value,
+                        crono.EpoUiSemana, turnoActualizado,
                         nuevasDias.Select(d => d.FechaSesion).ToList())
                     : null;
                 await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
@@ -476,9 +486,9 @@ namespace DataMedix.Application.Services
                 // Reactivar: recalcular dosis pendiente + regenerar días y aplicaciones
                 var nuevasDias = GenerarDias(crono);
                 var turnoReact = ParsearTurno(crono.PlanSalud);
-                crono.EpoDosisPendienteUI = turnoReact.HasValue
+                crono.EpoDosisPendienteUI = turnoReact is not null
                     ? CalcularDosisInicialPendiente(
-                        crono.EpoUiSemana, turnoReact.Value,
+                        crono.EpoUiSemana, turnoReact,
                         nuevasDias.Select(d => d.FechaSesion).ToList())
                     : null;
                 await _repo.UpsertBatchAsync(new List<CronogramaMedicamento>());
@@ -574,8 +584,8 @@ namespace DataMedix.Application.Services
                 return new List<CronogramaDia>();
 
             var fechasSesion = ObtenerFechasSesion(
-                cronograma.PeriodoAnio, cronograma.PeriodoMes, turno.Value, cronograma.FechaInicioFlex);
-            var dosisEpoPorDia = DistribuirEpo(cronograma.EpoUiSemana, turno.Value, fechasSesion);
+                cronograma.PeriodoAnio, cronograma.PeriodoMes, turno, cronograma.FechaInicioFlex);
+            var dosisEpoPorDia = DistribuirEpo(cronograma.EpoUiSemana, turno, fechasSesion);
             var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(cronograma.HierroMgMes, fechasSesion);
             decimal dosisAplicacion = fechasHierro.Count > 0
                 ? Math.Round((cronograma.HierroMgMes ?? 0) / fechasHierro.Count, 0)
@@ -623,24 +633,18 @@ namespace DataMedix.Application.Services
             );
         }
 
-        private static TipoTurno? ParsearTurno(string? planSalud)
-        {
-            if (string.IsNullOrWhiteSpace(planSalud)) return null;
-            var upper = planSalud.ToUpperInvariant();
-            if (upper.Contains("LMV")) return TipoTurno.LMV;
-            if (upper.Contains("MJS")) return TipoTurno.MJS;
-            return null;
-        }
+        /// <summary>
+        /// Días de sesión del turno. Delega en el dominio, que es donde vive la
+        /// interpretación de los códigos (L, M, X, J, V, SA/S, D y compuestos).
+        /// </summary>
+        private static IReadOnlyList<DayOfWeek>? ParsearTurno(string? planSalud) =>
+            TurnoDialisis.Detectar(planSalud);
 
         // fechaInicioFlex: si se provee, define el rango [fechaInicioFlex, fechaInicioFlex + 1 mes).
         // Si es null se usa el rango clásico [1ro del mes, fin del mes].
-        private static List<DateTime> ObtenerFechasSesion(int anio, int mes, TipoTurno turno,
-            DateTime? fechaInicioFlex = null)
+        private static List<DateTime> ObtenerFechasSesion(int anio, int mes,
+            IReadOnlyList<DayOfWeek> diasSemana, DateTime? fechaInicioFlex = null)
         {
-            var diasSemana = turno == TipoTurno.LMV
-                ? new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday }
-                : new[] { DayOfWeek.Tuesday, DayOfWeek.Thursday, DayOfWeek.Saturday };
-
             var inicio = fechaInicioFlex.HasValue ? fechaInicioFlex.Value.Date : new DateTime(anio, mes, 1);
             var fin    = inicio.AddMonths(1);   // exclusivo: genera [inicio, fin)
             var fechas = new List<DateTime>();
@@ -652,11 +656,72 @@ namespace DataMedix.Application.Services
             return fechas;
         }
 
+        /// <summary>
+        /// Reparte la dosis SEMANAL de EPO entre los días de sesión.
+        ///
+        /// Hay dos caminos a propósito:
+        ///
+        /// • Patrón clásico de 3 sesiones (LMV / MJS): conserva intacta la tabla
+        ///   validada, incluido su manejo asimétrico de semanas parciales. No se
+        ///   toca ni una dosis de los pacientes que ya están en estos turnos.
+        ///
+        /// • Cualquier otro turno (1 a 7 días): reparto general por unidades.
+        /// </summary>
         private static Dictionary<DateTime, decimal> DistribuirEpo(
-            decimal? epoUiSemana, TipoTurno turno, List<DateTime> fechasSesion)
+            decimal? epoUiSemana, IReadOnlyList<DayOfWeek> dias, List<DateTime> fechasSesion)
+        {
+            if (!epoUiSemana.HasValue || epoUiSemana <= 0)
+                return new Dictionary<DateTime, decimal>();
+
+            return TurnoDialisis.EsPatronClasico(dias)
+                ? DistribuirEpoClasico(epoUiSemana.Value, fechasSesion)
+                : DistribuirEpoGeneral(epoUiSemana.Value, dias, fechasSesion);
+        }
+
+        /// <summary>
+        /// Reparto general: convierte la dosis semanal a UNIDADES de la
+        /// presentación mínima y las distribuye entre los días del turno.
+        ///
+        /// Se razona en unidades y no en fracciones porque una división directa
+        /// produce dosis inadministrables: 8000 UI entre 7 días darían 1142,86 UI,
+        /// que no existe en ningún vial. Trabajando en múltiplos de la
+        /// presentación mínima, toda dosis resultante es administrable y el
+        /// total semanal se conserva exacto.
+        ///
+        /// Los días que reciben una unidad extra se eligen con la misma fórmula
+        /// de índice centrado que usa el programador de hierro, para que queden
+        /// repartidos y no amontonados al inicio de la semana.
+        /// </summary>
+        private static Dictionary<DateTime, decimal> DistribuirEpoGeneral(
+            decimal epoUiSemana, IReadOnlyList<DayOfWeek> dias, List<DateTime> fechasSesion)
         {
             var resultado = new Dictionary<DateTime, decimal>();
-            if (!epoUiSemana.HasValue || epoUiSemana <= 0) return resultado;
+            if (dias.Count == 0 || fechasSesion.Count == 0) return resultado;
+
+            var dosisPorDia = CalcularDosisPorDia(epoUiSemana, dias);
+
+            foreach (var fecha in fechasSesion)
+                if (dosisPorDia.TryGetValue(fecha.DayOfWeek, out var dosis) && dosis > 0)
+                    resultado[fecha] = dosis;
+
+            return resultado;
+        }
+
+        /// <summary>
+        /// Dosis que corresponde a cada día del turno en una semana completa.
+        /// Los días que quedan en cero son sesión de diálisis sin EPO, algo
+        /// esperable en turnos diarios: el paciente se dializa todos los días
+        /// pero recibe EPO solo algunos.
+        /// </summary>
+        internal static Dictionary<DayOfWeek, decimal> CalcularDosisPorDia(
+            decimal epoUiSemana, IReadOnlyList<DayOfWeek> dias) =>
+            DistribucionEpo.PorDia(epoUiSemana, dias);
+
+        private static Dictionary<DateTime, decimal> DistribuirEpoClasico(
+            decimal epoUiSemanaValor, List<DateTime> fechasSesion)
+        {
+            var resultado = new Dictionary<DateTime, decimal>();
+            decimal? epoUiSemana = epoUiSemanaValor;
 
             var semanas = AgruparPorSemana(fechasSesion);
             var ui = (int)Math.Round(epoUiSemana.Value);
@@ -743,7 +808,7 @@ namespace DataMedix.Application.Services
                 if (turno == null) continue;
 
                 var fechasSesion = ObtenerFechasSesion(
-                    crono.PeriodoAnio, crono.PeriodoMes, turno.Value, crono.FechaInicioFlex);
+                    crono.PeriodoAnio, crono.PeriodoMes, turno, crono.FechaInicioFlex);
                 var fechasHierro = _hierroScheduler.GenerarFechasAplicacion(crono.HierroMgMes, fechasSesion);
                 decimal dosisAplicacion = fechasHierro.Count > 0
                     ? Math.Round((crono.HierroMgMes ?? 0) / fechasHierro.Count, 0)
@@ -797,7 +862,7 @@ namespace DataMedix.Application.Services
         /// con la lógica normal de distribución.
         /// </summary>
         private static decimal CalcularDosisInicialPendiente(
-            decimal? epoUiSemana, TipoTurno turno, List<DateTime> fechasSesion)
+            decimal? epoUiSemana, IReadOnlyList<DayOfWeek> dias, List<DateTime> fechasSesion)
         {
             if (!epoUiSemana.HasValue || epoUiSemana <= 0 || fechasSesion.Count == 0) return 0;
 
@@ -805,6 +870,21 @@ namespace DataMedix.Application.Services
             if (semanas.Count == 0) return 0;
 
             var primeraSemana = semanas[0];
+
+            // Turnos no clásicos: la dosis de cada día está fijada por el turno,
+            // así que lo pendiente es simplemente lo que no alcanzó a colocarse
+            // en la primera semana por haber empezado el mes a media semana.
+            if (!TurnoDialisis.EsPatronClasico(dias))
+            {
+                if (primeraSemana.Count >= dias.Count) return 0;
+
+                var porDia = CalcularDosisPorDia(epoUiSemana.Value, dias);
+                var colocado = primeraSemana.Sum(f =>
+                    porDia.TryGetValue(f.DayOfWeek, out var d) ? d : 0m);
+
+                return Math.Max(0, porDia.Values.Sum() - colocado);
+            }
+
             // Semana completa: ninguna dosis quedó pendiente
             if (primeraSemana.Count >= 3) return 0;
 
@@ -852,7 +932,6 @@ namespace DataMedix.Application.Services
                 tenantId, pacienteId, periodoActual.AddMonths(-1));
         }
 
-        private enum TipoTurno { LMV, MJS }
     }
 
     public class ResumenCostos

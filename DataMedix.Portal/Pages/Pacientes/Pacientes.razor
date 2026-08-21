@@ -118,7 +118,9 @@ else
                                     </div>
                                 </div>
                             </td>
-                            <td>@(p.PlanSalud ?? "—")</td>
+                            @* El tooltip traduce el código a días: "LMXJVSAD" no
+                               se lee de un vistazo. *@
+                            <td title="@TurnoDialisis.Describir(p.PlanSalud)">@(p.PlanSalud ?? "—")</td>
                             <td>@(p.TipoAtencion ?? "—")</td>
                             <td>@(p.FechaIngreso?.ToString("dd/MM/yyyy") ?? "—")</td>
                             <td>
@@ -589,8 +591,11 @@ else
             Genero            = p.Genero,
             Email             = p.Email,
             Telefono          = p.Telefono,
-            PlanSalud         = p.PlanSalud,
-            TipoAtencion      = p.TipoAtencion,
+            // Se normalizan al código canónico para que coincidan con una opción
+            // del desplegable. Sin esto, un paciente con "1er LMV" mostraría
+            // «Sin turno» y al guardar perdería su turno en silencio.
+            PlanSalud         = TurnoDialisis.Normalizar(p.PlanSalud),
+            TipoAtencion      = TipoAtencionPaciente.Detectar(p.TipoAtencion) ?? p.TipoAtencion,
             FechaIngreso      = p.FechaIngreso,
             MedicoResponsable = p.MedicoResponsable,
             Observaciones     = p.Observaciones,
