@@ -41,3 +41,14 @@ window.dmPrefs = {
         try { localStorage.setItem(key, value ? 'true' : 'false'); } catch (e) { }
     }
 };
+
+// Posición en pantalla de un elemento, para anclar overlays que deben escapar
+// del overflow de un contenedor con scroll (la grilla del cronograma recorta
+// cualquier position:absolute que nazca dentro de ella).
+window.dmRectDe = function (id) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { top: r.top, left: r.left, width: r.width, height: r.height,
+             vw: window.innerWidth, vh: window.innerHeight };
+};

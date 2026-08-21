@@ -595,22 +595,14 @@
                             <td class="crono-td-fixed crono-td-turno">
                                 @if (_editTurnoId == crono.Id)
                                 {
-                                    @* El selector va en un popover sobre la celda: la fila
-                                       del cronograma es angosta y una lista desplegable
-                                       tapaba las columnas de días. *@
-                                    <div class="crono-turno-pop-anchor">
-                                        <span class="crono-badge-turno crono-badge-turno-edit">
-                                            @(string.IsNullOrEmpty(_editTurnoValor) ? "—" : _editTurnoValor)
-                                        </span>
-
-                                        <div class="crono-turno-flotante">
-                                            <SelectorTurno Valor="@_editTurnoValor"
-                                                           ValorChanged="@(c => _editTurnoValor = c)"
-                                                           EpoUiSemana="@crono.EpoUiSemana"
-                                                           OnAplicar="@(c => GuardarTurnoAsync(crono.Id, c))"
-                                                           OnCancelar="@CancelarEditTurno" />
-                                        </div>
-                                    </div>
+                                    @* La barra se dibuja fuera de la tabla, al final de la
+                                       página: aquí solo queda la celda marcada. El
+                                       contenedor de la grilla tiene overflow y recortaba
+                                       cualquier overlay que naciera dentro de él. *@
+                                    <span class="crono-badge-turno crono-badge-turno-activo"
+                                          id="@($"turno-{crono.Id}")">
+                                        @(string.IsNullOrEmpty(_editTurnoValor) ? "—" : _editTurnoValor)
+                                    </span>
                                 }
                                 else
                                 {
@@ -627,7 +619,7 @@
                                     else
                                     {
                                         <span class="crono-badge-turno crono-badge-turno-edit"
-                                              @onclick="() => IniciarEditTurno(crono.Id, crono.PlanSalud)"
+                                              @onclick="() => IniciarEditTurnoAsync(crono.Id, crono.PlanSalud)"
                                               title="Click para editar turno">
                                             @(crono.PlanSalud ?? "—")
                                         </span>
@@ -761,6 +753,21 @@
     }
 
 </div>
+
+@* ═══ Barra de selección de turno ══════════════════════════════════════════
+   Vive fuera de la tabla y se posiciona con coordenadas de pantalla: dentro
+   del contenedor con scroll quedaba recortada y solo asomaba la cabecera. *@
+@if (_editTurnoId is not null && _editTurnoCrono is not null)
+{
+    <div class="crono-turno-backdrop" @onclick="CancelarEditTurno"></div>
+    <div class="crono-turno-fija" style="@EstiloBarraTurno">
+        <SelectorTurno Valor="@_editTurnoValor"
+                       ValorChanged="@(c => _editTurnoValor = c)"
+                       EpoUiSemana="@_editTurnoCrono.EpoUiSemana"
+                       OnAplicar="@(c => GuardarTurnoAsync(_editTurnoId.Value, c))"
+                       OnCancelar="@CancelarEditTurno" />
+    </div>
+}
 
 @code {
     private int _anio = DateTime.Today.Year;
@@ -1444,16 +1451,54 @@
     }
 
 
-    private void IniciarEditTurno(Guid cronogramaId, string? planSalud)
+    private CronogramaMedicamento? _editTurnoCrono;
+    private double _editTurnoTop;
+    private double _editTurnoLeft;
+
+    /// <summary>Coordenadas de pantalla de la barra, ya ajustadas al viewport.</summary>
+    private string EstiloBarraTurno =>
+        $"top:{_editTurnoTop.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;" +
+        $"left:{_editTurnoLeft.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
+
+    private async Task IniciarEditTurnoAsync(Guid cronogramaId, string? planSalud)
     {
         _editTurnoId    = cronogramaId;
+        _editTurnoCrono = _cronogramas.FirstOrDefault(c => c.Id == cronogramaId);
         _editTurnoValor = TurnoDialisis.Normalizar(planSalud) ?? "";
+
+        // La celda ya está marcada; hace falta un render para que exista el id
+        StateHasChanged();
+        await Task.Yield();
+
+        try
+        {
+            var r = await JS.InvokeAsync<RectPantalla?>("dmRectDe", $"turno-{cronogramaId}");
+            if (r is null) return;
+
+            const double ancho = 470, alto = 86;
+
+            // Se centra bajo la celda, pero sin salirse de la pantalla: en las
+            // últimas columnas o en el pie de la tabla se habría dibujado fuera.
+            _editTurnoLeft = Math.Clamp(r.Left + r.Width / 2 - ancho / 2, 8, Math.Max(8, r.Vw - ancho - 8));
+            _editTurnoTop  = r.Top + r.Height + 6 + alto > r.Vh
+                ? Math.Max(8, r.Top - alto - 6)      // no cabe abajo: se abre hacia arriba
+                : r.Top + r.Height + 6;
+        }
+        catch (JSException)
+        {
+            // Sin coordenadas la barra sale arriba a la izquierda, pero se usa
+            _editTurnoTop = 80; _editTurnoLeft = 24;
+        }
     }
+
+    private sealed record RectPantalla(double Top, double Left, double Width, double Height,
+                                       double Vw, double Vh);
 
     private void CancelarEditTurno()
     {
         _editTurnoId    = null;
         _editTurnoValor = "";
+        _editTurnoCrono = null;
 
     }
 
@@ -2473,7 +2518,21 @@
     /* El selector flota sobre la celda: la fila del cronograma es angosta y
        desplegarlo en flujo empujaba las columnas de días. */
     .crono-turno-pop-anchor { position: relative; display: inline-block; }
-    .crono-turno-flotante {
+    .crono-turno-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 900;
+        background: transparent;   /* solo captura el clic para cerrar */
+    }
+    .crono-turno-fija {
+        position: fixed;
+        z-index: 901;
+    }
+    .crono-badge-turno-activo {
+        outline: 2px solid var(--dm-brand-surface);
+        outline-offset: 1px;
+    }
+    .crono-turno-flotante-viejo {
         position: absolute;
         top: calc(100% + 6px);
         left: 50%;
