@@ -53,4 +53,82 @@ namespace DataMedix.Tests.Services
             CostoMedicacion.CostoHierro(400m, 0m).Should().Be(0m);
         }
     }
+
+    /// <summary>
+    /// Precio de EPO cuando la dosis del día no coincide con una presentación.
+    ///
+    /// Al concentrar la dosis semanal en pocos días aparecen valores fuera de
+    /// la tabla. Antes se buscaba por coincidencia exacta y esas dosis se
+    /// cobraban en CERO, que es una pérdida silenciosa de facturación.
+    /// </summary>
+    public class CostoEpoTests
+    {
+        // Tabla de precios típica del tenant
+        private static readonly Dictionary<decimal, decimal> Precios = new()
+        {
+            [2000m] = 2.80m,
+            [4000m] = 4.30m,
+            [6000m] = 6.00m,
+        };
+
+        [Fact]
+        public void Dosis_concentrada_se_descompone_en_viales_de_la_presentacion_del_paciente()
+        {
+            // 12.000 UI en un solo día = 3 viales de 4.000 → 3 × $4.30 = $12.90
+            var (viales, resto) = CostoMedicacion.DescomponerEpo(12000m, Precios.Keys, 4000m);
+
+            viales.Should().Equal(4000m, 4000m, 4000m);
+            resto.Should().Be(0m);
+            CostoMedicacion.CostoEpoDia(12000m, Precios, 4000m).Should().Be(12.90m);
+        }
+
+        [Fact]
+        public void Dosis_repartida_en_dos_dias_se_cobra_por_tabla()
+        {
+            // 12.000 UI en L y J = 6.000 cada día, que sí está en la tabla
+            CostoMedicacion.CostoEpoDia(6000m, Precios, 4000m).Should().Be(6.00m);
+        }
+
+        [Fact]
+        public void Una_dosis_que_esta_en_la_tabla_no_se_descompone()
+        {
+            var (viales, _) = CostoMedicacion.DescomponerEpo(4000m, Precios.Keys, 2000m);
+
+            viales.Should().Equal(4000m);
+        }
+
+        [Fact]
+        public void Sin_referencia_usa_la_descomposicion_con_menos_viales()
+        {
+            var (viales, resto) = CostoMedicacion.DescomponerEpo(12000m, Precios.Keys);
+
+            viales.Should().Equal(6000m, 6000m);
+            resto.Should().Be(0m);
+        }
+
+        [Fact]
+        public void La_referencia_solo_manda_si_divide_exacto()
+        {
+            // 10.000 no es múltiplo de 4.000: se cae a la descomposición voraz
+            var (viales, resto) = CostoMedicacion.DescomponerEpo(10000m, Precios.Keys, 4000m);
+
+            viales.Sum().Should().Be(10000m);
+            resto.Should().Be(0m);
+        }
+
+        [Fact]
+        public void El_resto_no_cubierto_se_informa_en_vez_de_cobrarse_en_silencio()
+        {
+            var (viales, resto) = CostoMedicacion.DescomponerEpo(5000m, new[] { 2000m });
+
+            viales.Should().Equal(2000m, 2000m);
+            resto.Should().Be(1000m);
+        }
+
+        [Fact]
+        public void Sin_precios_configurados_no_se_inventa_ninguno()
+        {
+            CostoMedicacion.CostoEpoDia(12000m, new Dictionary<decimal, decimal>()).Should().Be(0m);
+        }
+    }
 }
