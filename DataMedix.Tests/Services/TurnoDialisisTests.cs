@@ -193,4 +193,122 @@ namespace DataMedix.Tests.Services
             TipoAtencionPaciente.Detectar(entrada).Should().BeNull();
         }
     }
+
+    /// <summary>
+    /// Reglas de selección del turno, compartidas por el cronograma, la
+    /// prescripción sugerida y el alta de pacientes. Viven en el dominio para
+    /// que un mismo paciente no acabe con turnos distintos según dónde se edite.
+    /// </summary>
+    public class TurnoSeleccionTests
+    {
+        [Fact]
+        public void Un_combinado_no_convive_con_otro_combinado()
+        {
+            var sel = new[] { "LMV" };
+
+            TurnoDialisis.PuedeSeleccionar(sel, "MJS").Should().BeFalse();
+            TurnoDialisis.PuedeSeleccionar(sel, "LMXJVSAD").Should().BeFalse();
+        }
+
+        [Fact]
+        public void Un_combinado_bloquea_los_dias_sueltos()
+        {
+            var sel = new[] { "LMV" };
+
+            TurnoDialisis.PuedeSeleccionar(sel, "M").Should().BeFalse();
+            TurnoDialisis.PuedeSeleccionar(sel, "D").Should().BeFalse();
+        }
+
+        [Fact]
+        public void Los_dias_sueltos_se_combinan_entre_ellos()
+        {
+            var sel = new[] { "L" };
+
+            TurnoDialisis.PuedeSeleccionar(sel, "J").Should().BeTrue();
+        }
+
+        [Fact]
+        public void Un_dia_suelto_bloquea_los_combinados()
+        {
+            var sel = new[] { "L" };
+
+            TurnoDialisis.PuedeSeleccionar(sel, "LMV").Should().BeFalse();
+        }
+
+        [Fact]
+        public void Lo_ya_elegido_siempre_se_puede_quitar()
+        {
+            TurnoDialisis.PuedeSeleccionar(new[] { "LMV" }, "LMV").Should().BeTrue();
+        }
+
+        [Fact]
+        public void Con_dias_sueltos_elegidos_el_combinado_queda_bloqueado()
+        {
+            // La regla del diagrama es explicita: elegir dias sueltos impide
+            // seleccionar LMV o MJS. Para cambiar a un combinado hay que pasar
+            // antes por «Sin turno», que es el boton de escape del selector.
+            var sel = TurnoDialisis.Alternar(new[] { "L", "J" }, "LMV");
+
+            sel.Should().Equal("L", "J");
+        }
+
+        [Fact]
+        public void Desde_cero_un_combinado_se_puede_elegir()
+        {
+            TurnoDialisis.Alternar(Array.Empty<string>(), "LMV").Should().Equal("LMV");
+        }
+
+        [Fact]
+        public void Alternar_quita_lo_que_ya_estaba()
+        {
+            var sel = TurnoDialisis.Alternar(new[] { "L", "J" }, "J");
+
+            sel.Should().Equal("L");
+        }
+
+        [Fact]
+        public void Alternar_ignora_lo_que_la_regla_no_permite()
+        {
+            var sel = TurnoDialisis.Alternar(new[] { "LMV" }, "M");
+
+            sel.Should().Equal("LMV");
+        }
+
+        [Fact]
+        public void Componer_ordena_los_dias_por_semana_no_por_orden_de_clic()
+        {
+            // El médico pulsó J y luego L: debe guardarse "LJ"
+            TurnoDialisis.Componer(new[] { "J", "L" }).Should().Be("LJ");
+        }
+
+        [Fact]
+        public void Componer_de_un_combinado_devuelve_el_combinado()
+        {
+            TurnoDialisis.Componer(new[] { "LMXJVSAD" }).Should().Be("LMXJVSAD");
+        }
+
+        [Fact]
+        public void Componer_sin_seleccion_es_vacio()
+        {
+            TurnoDialisis.Componer(Array.Empty<string>()).Should().BeEmpty();
+        }
+
+        [Theory]
+        [InlineData("LMV",      new[] { "LMV" })]
+        [InlineData("LMXJVSAD", new[] { "LMXJVSAD" })]
+        [InlineData("LJ",       new[] { "L", "J" })]
+        [InlineData("1er MJS",  new[] { "MJS" })]
+        [InlineData("IESS",     new string[0])]
+        public void Descomponer_reabre_el_selector_con_lo_guardado(string codigo, string[] esperado)
+        {
+            TurnoDialisis.Descomponer(codigo).Should().Equal(esperado);
+        }
+
+        [Fact]
+        public void Componer_y_descomponer_son_inversas()
+        {
+            foreach (var codigo in new[] { "L", "LJ", "LMXJVSAD", "LMV", "MJS", "MXV" })
+                TurnoDialisis.Componer(TurnoDialisis.Descomponer(codigo)).Should().Be(codigo);
+        }
+    }
 }

@@ -1,3 +1,4 @@
+using DataMedix.Domain.Entities;
 using DataMedix.Application.DTOs.HojaEpo;
 using DataMedix.Application.Interfaces;
 
@@ -7,11 +8,16 @@ namespace DataMedix.Application.Services
     {
         private readonly ISnapshotMensualRepository _snapRepo;
         private readonly IPrescripcionRepository _prescRepo;
+        private readonly IPacienteRepository _pacienteRepo;
+        private readonly IUnitOfWork _uow;
 
-        public HojaEpoService(ISnapshotMensualRepository snapRepo, IPrescripcionRepository prescRepo)
+        public HojaEpoService(ISnapshotMensualRepository snapRepo, IPrescripcionRepository prescRepo,
+            IPacienteRepository pacienteRepo, IUnitOfWork uow)
         {
             _snapRepo = snapRepo;
             _prescRepo = prescRepo;
+            _pacienteRepo = pacienteRepo;
+            _uow = uow;
         }
 
         public async Task<List<HojaEpoRowDto>> GetMatrizAsync(Guid tenantId, HojaEpoFiltroDto filtro)
@@ -61,6 +67,7 @@ namespace DataMedix.Application.Services
                     NombrePaciente       = paciente.NombreCompleto,
                     TiempoDialisisMeses  = paciente.MesesEnDialisis ?? 0,
                     TipoAtencion         = paciente.TipoAtencion,
+                    Turno                = TurnoDialisis.Normalizar(paciente.PlanSalud),
                 };
 
                 foreach (var mes in meses)
@@ -140,6 +147,40 @@ namespace DataMedix.Application.Services
             var hierroVals = row.Meses.Values.Where(c => c.HierroEfectivo.HasValue).Select(c => c.HierroEfectivo!.Value).ToList();
             row.PromedioHierro = hierroVals.Count > 0 ? Math.Round(hierroVals.Average(), 0) : null;
             row.SumaHierro     = hierroVals.Count > 0 ? hierroVals.Sum() : null;
+        }
+
+        public async Task ActualizarTurnoAsync(Guid tenantId, Guid pacienteId, string? codigoTurno,
+            IReadOnlyList<DateTime> periodos)
+        {
+            // Cadena vacía = quitar el turno. Cualquier otro texto se normaliza
+            // al código canónico o se rechaza: no se guarda algo que después el
+            // cronograma no sabría interpretar.
+            var codigo = string.IsNullOrWhiteSpace(codigoTurno)
+                ? null
+                : TurnoDialisis.Normalizar(codigoTurno)
+                  ?? throw new InvalidOperationException($"Turno «{codigoTurno}» no es válido.");
+
+            var paciente = await _pacienteRepo.GetByIdAsync(tenantId, pacienteId)
+                ?? throw new InvalidOperationException("Paciente no encontrado.");
+
+            paciente.PlanSalud = codigo;
+            paciente.UpdatedAt = DateTime.UtcNow;
+            await _pacienteRepo.UpdateAsync(paciente);
+
+            // El cronograma de un mes ya cargado lee el turno del snapshot de
+            // ese mes, así que se propaga al rango visible; si no, la
+            // prescripción y el cronograma mostrarían turnos distintos.
+            foreach (var periodo in periodos)
+            {
+                var snap = await _snapRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodo);
+                if (snap is null) continue;
+
+                snap.PlanSalud = codigo;
+                snap.UpdatedAt = DateTime.UtcNow;
+                await _snapRepo.UpsertAsync(snap);
+            }
+
+            await _uow.SaveChangesAsync();
         }
     }
 }

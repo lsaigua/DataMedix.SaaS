@@ -600,66 +600,15 @@
                                        tapaba las columnas de días. *@
                                     <div class="crono-turno-pop-anchor">
                                         <span class="crono-badge-turno crono-badge-turno-edit">
-                                            @(_editTurnoSel.Count > 0 ? CodigoTurnoSeleccionado() : "—")
+                                            @(string.IsNullOrEmpty(_editTurnoValor) ? "—" : _editTurnoValor)
                                         </span>
 
-                                        <div class="crono-turno-pop" @onclick:stopPropagation="true">
-                                            <div class="crono-turno-pop-head">
-                                                <span>Turno de sesión</span>
-                                                <button class="crono-turno-pop-x" title="Cerrar"
-                                                        @onclick="CancelarEditTurno">&times;</button>
-                                            </div>
-
-                                            <div class="crono-turno-grupo-lbl">Combinados</div>
-                                            <div class="crono-turno-chips">
-                                                @foreach (var op in TurnosCombinados)
-                                                {
-                                                    var v = op;
-                                                    <button type="button"
-                                                            class="crono-turno-chip @(_editTurnoSel.Contains(v) ? "crono-turno-chip-on" : "")"
-                                                            disabled="@(!PuedeElegirTurno(v))"
-                                                            title="@TurnoDialisis.Describir(v)"
-                                                            @onclick="() => AlternarTurno(v)">@v</button>
-                                                }
-                                            </div>
-
-                                            <div class="crono-turno-grupo-lbl">Días sueltos</div>
-                                            <div class="crono-turno-chips">
-                                                @foreach (var op in TurnosDiaSuelto)
-                                                {
-                                                    var v = op;
-                                                    <button type="button"
-                                                            class="crono-turno-chip @(_editTurnoSel.Contains(v) ? "crono-turno-chip-on" : "")"
-                                                            disabled="@(!PuedeElegirTurno(v))"
-                                                            title="@TurnoDialisis.Describir(v)"
-                                                            @onclick="() => AlternarTurno(v)">@v</button>
-                                                }
-                                            </div>
-
-                                            <div class="crono-turno-pop-info">
-                                                @if (_editTurnoSel.Count == 0)
-                                                {
-                                                    <span>Elija uno o varios días, o una combinación.</span>
-                                                }
-                                                else
-                                                {
-                                                    <strong>@CodigoTurnoSeleccionado()</strong>
-                                                    <span> · @TurnoDialisis.Describir(CodigoTurnoSeleccionado())</span>
-                                                    @if (crono.EpoUiSemana > 0)
-                                                    {
-                                                        <div class="crono-turno-pop-dosis">@VistaPreviaDosis(crono.EpoUiSemana!.Value)</div>
-                                                    }
-                                                }
-                                            </div>
-
-                                            <div class="crono-turno-pop-btns">
-                                                <button class="crono-btn crono-btn-ghost crono-btn-xs"
-                                                        @onclick="LimpiarTurnoSeleccion">Sin turno</button>
-                                                <button class="crono-btn crono-btn-ghost crono-btn-xs"
-                                                        @onclick="CancelarEditTurno">Cancelar</button>
-                                                <button class="crono-btn crono-btn-primary crono-btn-xs"
-                                                        @onclick="() => GuardarTurnoAsync(crono.Id)">Aplicar</button>
-                                            </div>
+                                        <div class="crono-turno-flotante">
+                                            <SelectorTurno Valor="@_editTurnoValor"
+                                                           ValorChanged="@(c => _editTurnoValor = c)"
+                                                           EpoUiSemana="@crono.EpoUiSemana"
+                                                           OnAplicar="@(c => GuardarTurnoAsync(crono.Id, c))"
+                                                           OnCancelar="@CancelarEditTurno" />
                                         </div>
                                     </div>
                                 }
@@ -1494,117 +1443,21 @@
                System.Globalization.ISOWeek.GetWeekOfYear(fecha);
     }
 
-    // ── Selección de turno ────────────────────────────────────────────────────
-    // Reglas de exclusión:
-    //   • Los combinados (LMXJVSAD, LMV, MJS) son EXCLUSIVOS entre sí y con
-    //     todo lo demás: al elegir uno se descarta cualquier otra selección.
-    //   • Los días sueltos se combinan libremente entre ellos, pero bloquean
-    //     los combinados. Un turno no puede ser "LMV y además el martes":
-    //     o se describe por combinado o se describe día a día.
-
-    private static readonly string[] TurnosCombinados = ["LMXJVSAD", "LMV", "MJS"];
-    private static readonly string[] TurnosDiaSuelto  = ["L", "M", "X", "J", "V", "SA", "D"];
-
-    private readonly List<string> _editTurnoSel = new();
 
     private void IniciarEditTurno(Guid cronogramaId, string? planSalud)
     {
         _editTurnoId    = cronogramaId;
         _editTurnoValor = TurnoDialisis.Normalizar(planSalud) ?? "";
-        _editTurnoSel.Clear();
-
-        if (string.IsNullOrEmpty(_editTurnoValor)) return;
-
-        // Un combinado se muestra como una sola ficha; lo demás, día por día
-        if (TurnosCombinados.Contains(_editTurnoValor))
-        {
-            _editTurnoSel.Add(_editTurnoValor);
-            return;
-        }
-
-        var dias = TurnoDialisis.Detectar(_editTurnoValor);
-        if (dias is null) return;
-
-        foreach (var codigo in TurnosDiaSuelto)
-        {
-            var d = TurnoDialisis.Detectar(codigo);
-            if (d is { Count: 1 } && dias.Contains(d[0])) _editTurnoSel.Add(codigo);
-        }
-    }
-
-    private bool HayCombinadoElegido => _editTurnoSel.Any(TurnosCombinados.Contains);
-    private bool HayDiaSueltoElegido => _editTurnoSel.Any(TurnosDiaSuelto.Contains);
-
-    /// <summary>¿Se puede pulsar esta opción con lo que ya está elegido?</summary>
-    private bool PuedeElegirTurno(string codigo)
-    {
-        if (_editTurnoSel.Contains(codigo)) return true;   // siempre se puede quitar
-
-        return TurnosCombinados.Contains(codigo)
-            ? !HayCombinadoElegido && !HayDiaSueltoElegido
-            : !HayCombinadoElegido;
-    }
-
-    private void AlternarTurno(string codigo)
-    {
-        if (_editTurnoSel.Remove(codigo)) return;
-        if (!PuedeElegirTurno(codigo)) return;
-
-        // Un combinado reemplaza cualquier selección previa
-        if (TurnosCombinados.Contains(codigo)) _editTurnoSel.Clear();
-
-        _editTurnoSel.Add(codigo);
-    }
-
-    private void LimpiarTurnoSeleccion() => _editTurnoSel.Clear();
-
-    /// <summary>
-    /// Código resultante. Los días sueltos se concatenan en orden de semana,
-    /// no en el orden en que el médico los fue pulsando.
-    /// </summary>
-    private string CodigoTurnoSeleccionado()
-    {
-        if (_editTurnoSel.Count == 0) return "";
-        if (HayCombinadoElegido) return _editTurnoSel.First(TurnosCombinados.Contains);
-
-        return string.Concat(TurnosDiaSuelto.Where(_editTurnoSel.Contains));
-    }
-
-    /// <summary>Cómo quedaría repartida la dosis semanal con lo seleccionado.</summary>
-    private string VistaPreviaDosis(decimal epoUiSemana)
-    {
-        var codigo = CodigoTurnoSeleccionado();
-        var dias   = TurnoDialisis.Detectar(codigo);
-        if (dias is null || dias.Count == 0) return "";
-
-        // Los patrones clásicos conservan su tabla, que no es uniforme
-        if (TurnoDialisis.EsPatronClasico(dias))
-            return $"{epoUiSemana:N0} UI/sem según la pauta de {codigo}";
-
-        var porDia = DistribucionEpo.PorDia(epoUiSemana, dias);
-        if (porDia.Count == 0) return "";
-
-        var conDosis = porDia.Count;
-        var distintas = porDia.Values.Distinct().OrderBy(v => v).ToList();
-
-        var detalle = distintas.Count == 1
-            ? $"{distintas[0]:N0} UI en {conDosis} día(s)"
-            : string.Join(" + ", porDia.Values.OrderByDescending(v => v).Select(v => $"{v:N0}"));
-
-        var sinEpo = dias.Count - conDosis;
-        var nota   = sinEpo > 0 ? $" · {sinEpo} sesión(es) sin EPO" : "";
-
-        return $"{detalle}{nota}";
     }
 
     private void CancelarEditTurno()
     {
         _editTurnoId    = null;
         _editTurnoValor = "";
-        _editTurnoSel.Clear();
+
     }
 
-    private async Task GuardarTurnoAsync(Guid cronogramaId)
+    private async Task GuardarTurnoAsync(Guid cronogramaId, string codigo)
     {
         try
         {
@@ -1615,7 +1468,7 @@
                 usuarioId = uid;
 
             var actualizado = await CronogramaService.ActualizarTurnoYRegenerarAsync(
-                _tenantId, cronogramaId, CodigoTurnoSeleccionado(), usuarioId);
+                _tenantId, cronogramaId, codigo, usuarioId);
 
             var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
             if (idx >= 0) _cronogramas[idx] = actualizado;
@@ -2616,90 +2469,17 @@
         background: #e0f2fe;
         border-color: #0ea5e9;
     }
-    /* ── Popover de selección de turno ─────────────────────────────────────
-       Va flotando sobre la celda porque la fila del cronograma es angosta:
-       una lista desplegable empujaba o tapaba las columnas de días. */
+
+    /* El selector flota sobre la celda: la fila del cronograma es angosta y
+       desplegarlo en flujo empujaba las columnas de días. */
     .crono-turno-pop-anchor { position: relative; display: inline-block; }
-    .crono-turno-pop {
+    .crono-turno-flotante {
         position: absolute;
         top: calc(100% + 6px);
         left: 50%;
         transform: translateX(-50%);
-        z-index: 60;                 /* por encima de celdas sticky */
-        width: 232px;
-        background: white;
-        border: 1px solid #cbd5e1;
-        border-radius: 12px;
-        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22);
-        padding: 0.6rem 0.7rem 0.55rem;
-        text-align: left;
-        cursor: default;
+        z-index: 60;                 /* por encima de las celdas sticky */
     }
-    .crono-turno-pop-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        font-size: 0.68rem;
-        font-weight: 800;
-        color: #475569;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        margin-bottom: 0.45rem;
-    }
-    .crono-turno-pop-x {
-        border: none; background: transparent; color: #94a3b8;
-        font-size: 1.05rem; line-height: 1; cursor: pointer; padding: 0 0.15rem;
-    }
-    .crono-turno-pop-x:hover { color: #0f172a; }
-
-    .crono-turno-grupo-lbl {
-        font-size: 0.6rem;
-        font-weight: 700;
-        color: #94a3b8;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin: 0.35rem 0 0.25rem;
-    }
-    .crono-turno-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-    .crono-turno-chip {
-        border: 1.5px solid #e2e8f0;
-        background: white;
-        color: #475569;
-        border-radius: 7px;
-        padding: 0.22rem 0.45rem;
-        font-size: 0.72rem;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.12s;
-        min-width: 30px;
-    }
-    .crono-turno-chip:hover:not(:disabled) { background: #f1f5f9; border-color: #cbd5e1; }
-    .crono-turno-chip-on {
-        background: var(--dm-brand-surface);
-        border-color: var(--dm-brand-surface);
-        color: white;
-    }
-    /* Deshabilitado por la regla de exclusión, no por falta de permiso */
-    .crono-turno-chip:disabled { opacity: 0.32; cursor: not-allowed; }
-
-    .crono-turno-pop-info {
-        margin-top: 0.5rem;
-        padding-top: 0.45rem;
-        border-top: 1px dashed #e2e8f0;
-        font-size: 0.7rem;
-        color: #64748b;
-        line-height: 1.4;
-        min-height: 2.1rem;
-    }
-    .crono-turno-pop-dosis { color: #0e7490; font-weight: 600; margin-top: 0.15rem; }
-
-    .crono-turno-pop-btns {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.3rem;
-        margin-top: 0.5rem;
-    }
-    .crono-btn-xs { padding: 0.28rem 0.6rem; font-size: 0.72rem; border-radius: 7px; }
 
     .crono-turno-edit {
         display: flex;

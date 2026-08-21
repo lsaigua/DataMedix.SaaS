@@ -161,6 +161,99 @@ namespace DataMedix.Domain.Entities
         /// <summary>Cantidad de sesiones semanales del turno. 0 si no es válido.</summary>
         public static int SesionesPorSemana(string? texto) => Detectar(texto)?.Count ?? 0;
 
+        // ──────────────────────────────────────────────────────────────────────
+        // REGLAS DE SELECCIÓN
+        //
+        // Viven aquí y no en cada pantalla: las aplican el cronograma, la
+        // prescripción sugerida y el alta de pacientes, y si divergieran un
+        // mismo paciente podría acabar con turnos distintos según dónde se
+        // edite.
+        // ──────────────────────────────────────────────────────────────────────
+
+        /// <summary>Códigos que describen una semana completa por sí solos.</summary>
+        public static readonly string[] Combinados = [TodosLosDias, Lmv, Mjs];
+
+        /// <summary>Códigos de un solo día, en orden de semana.</summary>
+        public static readonly string[] DiasSueltos = ["L", "M", "X", "J", "V", "SA", "D"];
+
+        public static bool EsCombinado(string codigo)  => Combinados.Contains(codigo, StringComparer.OrdinalIgnoreCase);
+        public static bool EsDiaSuelto(string codigo)  => DiasSueltos.Contains(codigo, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// ¿Se puede añadir este código a la selección actual?
+        ///
+        /// • Un combinado es exclusivo: no convive con nada más.
+        /// • Los días sueltos se combinan entre ellos, pero no con un combinado.
+        ///   Un turno no puede ser "LMV y además el martes": o se describe por
+        ///   combinado o se describe día a día.
+        ///
+        /// Lo ya seleccionado siempre se puede quitar.
+        /// </summary>
+        public static bool PuedeSeleccionar(IReadOnlyCollection<string> seleccion, string codigo)
+        {
+            if (seleccion.Contains(codigo, StringComparer.OrdinalIgnoreCase)) return true;
+
+            var hayCombinado = seleccion.Any(EsCombinado);
+            var hayDiaSuelto = seleccion.Any(EsDiaSuelto);
+
+            return EsCombinado(codigo)
+                ? !hayCombinado && !hayDiaSuelto
+                : !hayCombinado;
+        }
+
+        /// <summary>
+        /// Añade o quita un código respetando las reglas. Devuelve la selección
+        /// resultante; elegir un combinado descarta lo anterior.
+        /// </summary>
+        public static List<string> Alternar(IReadOnlyCollection<string> seleccion, string codigo)
+        {
+            var resultado = seleccion.ToList();
+
+            if (resultado.RemoveAll(c => string.Equals(c, codigo, StringComparison.OrdinalIgnoreCase)) > 0)
+                return resultado;
+
+            if (!PuedeSeleccionar(seleccion, codigo)) return resultado;
+
+            if (EsCombinado(codigo)) resultado.Clear();
+            resultado.Add(codigo);
+            return resultado;
+        }
+
+        /// <summary>
+        /// Código único a partir de la selección. Los días sueltos se concatenan
+        /// en orden de semana, no en el orden en que se fueron pulsando: elegir
+        /// primero J y luego L debe producir "LJ", no "JL".
+        /// </summary>
+        public static string Componer(IReadOnlyCollection<string> seleccion)
+        {
+            if (seleccion.Count == 0) return "";
+
+            var combinado = seleccion.FirstOrDefault(EsCombinado);
+            if (combinado is not null) return combinado.ToUpperInvariant();
+
+            return string.Concat(
+                DiasSueltos.Where(d => seleccion.Contains(d, StringComparer.OrdinalIgnoreCase)));
+        }
+
+        /// <summary>
+        /// Selección equivalente a un código guardado, para reabrir el selector
+        /// con lo que el paciente ya tiene.
+        /// </summary>
+        public static List<string> Descomponer(string? codigo)
+        {
+            var canonico = Normalizar(codigo);
+            if (canonico is null) return [];
+
+            if (EsCombinado(canonico)) return [canonico];
+
+            var dias = Detectar(canonico);
+            if (dias is null) return [];
+
+            return DiasSueltos
+                .Where(d => Detectar(d) is { Count: 1 } uno && dias.Contains(uno[0]))
+                .ToList();
+        }
+
         /// <summary>Etiqueta legible del turno, para pantallas y reportes.</summary>
         public static string Describir(string? texto)
         {

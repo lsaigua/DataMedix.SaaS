@@ -779,20 +779,33 @@ namespace DataMedix.Application.Services
             };
         }
 
+        /// <summary>
+        /// Respaldo para dosis semanales que no están en la tabla validada.
+        ///
+        /// Reparte en UNIDADES de la presentación mínima, igual que el resto del
+        /// sistema. Antes dividía entre 3 o entre 2 sin más, y una dosis como
+        /// 10.000 UI producía 5.000 por sesión: no es múltiplo de 2.000, no
+        /// existe como vial y tampoco tiene precio en la tabla.
+        ///
+        /// Ninguna de las seis dosis validadas pasa por aquí, así que este
+        /// endurecimiento no altera a ningún paciente actual.
+        /// </summary>
         private static (decimal, decimal, decimal) DistribuirEpoGenerico(int ui)
         {
-            // Fallback: si es múltiplo de 3 → 3 días; si no → 2 días (1er + último)
-            if (ui % 3 == 0)
-            {
-                var parte = (decimal)ui / 3;
-                return (parte, parte, parte);
-            }
-            else
-            {
-                var parte = (decimal)ui / 2;
-                return (parte, 0, parte);
-            }
+            var porDia = DistribucionEpo.PorDia(ui, DiasPatronClasico);
+
+            decimal Dosis(int i) =>
+                porDia.TryGetValue(DiasPatronClasico[i], out var d) ? d : 0m;
+
+            return (Dosis(0), Dosis(1), Dosis(2));
         }
+
+        /// <summary>
+        /// Días de referencia del patrón clásico. Solo se usan como plantilla de
+        /// tres ranuras: el turno real puede ser LMV o MJS.
+        /// </summary>
+        private static readonly DayOfWeek[] DiasPatronClasico =
+            [DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday];
 
         private async Task RegenerarAplicacionesHierroAsync(
             IEnumerable<CronogramaMedicamento> cronogramas,

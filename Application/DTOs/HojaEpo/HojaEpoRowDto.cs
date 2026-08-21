@@ -8,6 +8,8 @@ namespace DataMedix.Application.DTOs.HojaEpo
         public int TiempoDialisisMeses { get; set; }
         /// <summary>Modalidad del paciente: alimenta el filtro de tipo de atención.</summary>
         public string? TipoAtencion { get; set; }
+        /// <summary>Turno de sesión del paciente, en código canónico.</summary>
+        public string? Turno { get; set; }
         public Dictionary<DateTime, HojaEpoCeldaDto> Meses { get; set; } = new();
 
         // Resumen calculado

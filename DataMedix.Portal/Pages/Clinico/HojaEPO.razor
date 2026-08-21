@@ -183,6 +183,7 @@ else
                     <th class="epo-th epo-col-sticky epo-col-ident" rowspan="2">Identificación</th>
                     <th class="epo-th epo-col-sticky epo-col-nombre" rowspan="2">Paciente</th>
                     <th class="epo-th epo-col-dialisis" rowspan="2" title="Tiempo en diálisis">T. Diál.</th>
+                    <th class="epo-th epo-col-turno" rowspan="2" title="Turno de sesión — clic en la celda para asignarlo">Turno</th>
                     @foreach (var mes in FiltroActual.Meses)
                     {
                         <th class="epo-th epo-th-mes" colspan="11">@mes.ToString("MMM yyyy", _esEs).ToUpper()</th>
@@ -226,6 +227,28 @@ else
                         </td>
                         <td class="epo-td epo-td-center epo-td-sm">
                             <span class="epo-dialisis-badge">@row.TiempoDialisisMeses m</span>
+                        </td>
+                        @* Mismo selector y mismas reglas que el cronograma *@
+                        <td class="epo-td epo-td-center epo-td-turno">
+                            @if (_editTurnoPaciente == row.PacienteId)
+                            {
+                                <div class="epo-turno-anchor">
+                                    <div class="epo-turno-flotante">
+                                        <SelectorTurno Valor="@row.Turno"
+                                                       EpoUiSemana="@PromedioEpoSemanal(row)"
+                                                       OnAplicar="@(c => GuardarTurnoAsync(row, c))"
+                                                       OnCancelar="@(() => _editTurnoPaciente = null)" />
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="epo-turno-badge @(string.IsNullOrEmpty(row.Turno) ? "epo-turno-vacio" : "")"
+                                      title="@(string.IsNullOrEmpty(row.Turno) ? "Sin turno — clic para asignar" : TurnoDialisis.Describir(row.Turno))"
+                                      @onclick="() => _editTurnoPaciente = row.PacienteId">
+                                    @(string.IsNullOrEmpty(row.Turno) ? "—" : row.Turno)
+                                </span>
+                            }
                         </td>
 
                         @foreach (var mes in FiltroActual.Meses)
@@ -540,6 +563,18 @@ else
     .epo-col-ident { left: 0; min-width: 120px; z-index: 6; }
     .epo-col-nombre { left: 120px; min-width: 180px; z-index: 6; }
     .epo-col-dialisis { min-width: 60px; }
+    .epo-col-turno { min-width: 64px; }
+    .epo-td-turno { padding: 0.25rem; position: relative; }
+    .epo-turno-anchor { position: relative; display: inline-block; }
+    .epo-turno-flotante { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 40; }
+    .epo-turno-badge {
+        display: inline-block; padding: 0.15rem 0.4rem; border-radius: 5px;
+        background: #e0f2fe; color: #075985; font-size: 0.7rem; font-weight: 700;
+        cursor: pointer; white-space: nowrap;
+    }
+    .epo-turno-badge:hover { background: #bae6fd; }
+    /* Sin turno: se ve como hueco accionable, no como dato faltante */
+    .epo-turno-vacio { background: #f1f5f9; color: #94a3b8; }
     thead .epo-col-sticky { background: var(--dm-brand-surface); z-index: 20; }
 
     /* ── Table cells ─────────────────────────────────────────────────────── */
@@ -677,6 +712,38 @@ else
     // ── Estado ───────────────────────────────────────────────────────────────
     private List<HojaEpoRowDto>    Filas       = new();
 
+
+    // ── Turno del paciente ────────────────────────────────────────────────────
+    private Guid? _editTurnoPaciente;
+
+    /// <summary>
+    /// Dosis semanal de referencia para la vista previa del reparto. Se toma el
+    /// promedio de los meses cargados: la matriz abarca un rango y no hay una
+    /// sola dosis "actual".
+    /// </summary>
+    private decimal? PromedioEpoSemanal(HojaEpoRowDto row) => row.PromedioEpo;
+
+    private async Task GuardarTurnoAsync(HojaEpoRowDto row, string codigo)
+    {
+        try
+        {
+            await HojaEpoSvc.ActualizarTurnoAsync(
+                TenantId, row.PacienteId, codigo, FiltroActual.Meses);
+
+            // Se refleja en memoria para no recargar toda la matriz por un turno
+            row.Turno = string.IsNullOrWhiteSpace(codigo) ? null : codigo;
+            _editTurnoPaciente = null;
+
+            Toast.ShowSuccess(string.IsNullOrWhiteSpace(codigo)
+                ? "Turno retirado"
+                : $"Turno {codigo} asignado — {TurnoDialisis.Describir(codigo)}");
+        }
+        catch (Exception ex)
+        {
+            ErrorMensaje = $"Error al asignar el turno: {ex.Message}";
+            _editTurnoPaciente = null;
+        }
+    }
     // ── Filtro por tipo de atención ───────────────────────────────────────────
     // Mismo comportamiento que en Resultados Crudos: las modalidades se derivan
     // de lo cargado, para no ofrecer un chip que devolvería la tabla vacía.

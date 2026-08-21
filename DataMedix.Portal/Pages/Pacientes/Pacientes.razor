@@ -269,15 +269,12 @@ else
                     @* Turno y modalidad son listas cerradas: el cronograma solo
                        sabe repartir LMV y MJS, y texto libre dejaba pacientes
                        con valores como "LMXJVSAD" que no generan sesiones. *@
-                    <div class="pac-form-group">
+                    @* Mismo selector que el cronograma: un paciente puede tener
+                       varios días sueltos ("L" y "J"), no solo un código de la
+                       lista, y las reglas de exclusión deben ser las mismas. *@
+                    <div class="pac-form-group pac-form-group-ancho">
                         <label>Turno de Diálisis</label>
-                        <select class="pac-input" @bind="_form.PlanSalud">
-                            <option value="">— Sin turno asignado —</option>
-                            @foreach (var (valor, etiqueta) in TurnoDialisis.Opciones)
-                            {
-                                <option value="@valor">@etiqueta</option>
-                            }
-                        </select>
+                        <SelectorTurno @bind-Valor="_form.PlanSalud" Compacto="true" />
                         @if (string.IsNullOrWhiteSpace(_form.PlanSalud))
                         {
                             <span class="pac-hint">
@@ -479,6 +476,7 @@ else
                          background:white; width:100%; box-sizing:border-box; }
     .pac-input:focus   { border-color:#0ea5e9; }
     .pac-hint          { font-size:.72rem; color:#94a3b8; line-height:1.4; }
+    .pac-form-group-ancho { grid-column: 1 / -1; }
     .pac-input-error   { border-color:#dc2626; }
     .pac-textarea      { resize:vertical; min-height:56px; }
 
