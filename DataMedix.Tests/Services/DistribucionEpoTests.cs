@@ -128,5 +128,31 @@ namespace DataMedix.Tests.Services
             DistribucionEpo.DosisTipicaPorSesion(8000,  Turno("L")).Should().Be(8000);
             DistribucionEpo.DosisTipicaPorSesion(0,     Turno("L")).Should().Be(0);
         }
+
+        [Theory]
+        [InlineData(2000,  2000)]
+        [InlineData(4000,  2000)]
+        [InlineData(6000,  2000)]
+        [InlineData(8000,  4000)]
+        [InlineData(12000, 4000)]
+        [InlineData(18000, 6000)]
+        public void PresentacionReferencia_es_el_vial_que_implica_la_prescripcion(int semanal, int esperado)
+        {
+            DistribucionEpo.PresentacionReferencia(semanal).Should().Be(esperado);
+        }
+
+        [Fact]
+        public void La_referencia_no_depende_del_turno()
+        {
+            // 8.000 UI/sem se administran en viales de 4.000 tanto si se
+            // reparten en dos días como si se concentran en uno solo.
+            DistribucionEpo.PresentacionReferencia(8000).Should().Be(4000m);
+        }
+
+        [Fact]
+        public void Una_dosis_semanal_fuera_de_la_tabla_no_impone_referencia()
+        {
+            DistribucionEpo.PresentacionReferencia(10000).Should().Be(0m);
+        }
     }
 }

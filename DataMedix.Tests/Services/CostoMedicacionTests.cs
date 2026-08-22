@@ -130,5 +130,40 @@ namespace DataMedix.Tests.Services
         {
             CostoMedicacion.CostoEpoDia(12000m, new Dictionary<decimal, decimal>()).Should().Be(0m);
         }
+
+        [Fact]
+        public void Ocho_mil_en_un_dia_se_factura_como_dos_viales_de_cuatro_mil()
+        {
+            // Caso reportado: 9 aplicaciones de 8.000 UI salían a $8.50 cada una
+            // (descomposición voraz 6.000 + 2.000 = 76,50 en total) porque la
+            // referencia era la dosis del día. Con la referencia correcta —el
+            // vial que implica la prescripción semanal— son 2 x 4.000.
+            var referencia = DistribucionEpo.PresentacionReferencia(8000);
+
+            var (viales, resto) = CostoMedicacion.DescomponerEpo(8000m, Precios.Keys, referencia);
+
+            viales.Should().Equal(4000m, 4000m);
+            resto.Should().Be(0m);
+            CostoMedicacion.CostoEpoDia(8000m, Precios, referencia).Should().Be(8.60m);
+        }
+
+        [Fact]
+        public void El_incidente_reportado_con_los_precios_reales()
+        {
+            // Tabla real del tenant al momento del reporte
+            var reales = new Dictionary<decimal, decimal>
+            {
+                [2000m] = 2.10m, [4000m] = 4.30m, [6000m] = 6.40m,
+            };
+
+            // Lo que se facturaba: voraz 6.000 + 2.000, 9 aplicaciones = $76,50
+            CostoMedicacion.CostoEpoDia(8000m, reales).Should().Be(8.50m);
+            (9 * 8.50m).Should().Be(76.50m);
+
+            // Lo correcto: 2 viales de 4.000, 9 aplicaciones = $77,40
+            var referencia = DistribucionEpo.PresentacionReferencia(8000);
+            CostoMedicacion.CostoEpoDia(8000m, reales, referencia).Should().Be(8.60m);
+            (9 * 8.60m).Should().Be(77.40m);
+        }
     }
 }

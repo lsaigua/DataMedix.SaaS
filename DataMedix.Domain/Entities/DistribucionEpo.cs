@@ -73,5 +73,29 @@ namespace DataMedix.Domain.Entities
             var valores = PorDia(epoUiSemana, dias).Values.Where(v => v > 0).ToList();
             return valores.Count == 0 ? 0m : valores.Min();
         }
+
+        /// <summary>
+        /// Vial que implica la prescripción SEMANAL, con independencia del turno.
+        ///
+        /// Es la presentación con la que se le administra habitualmente a ese
+        /// paciente: 8.000 UI/sem se administran en viales de 4.000, se repartan
+        /// en dos días o se concentren en uno solo.
+        ///
+        /// Sirve para facturar: al concentrar la dosis en pocos días aparecen
+        /// valores que no están en la tabla de precios y hay que descomponerlos.
+        /// NO usar la dosis del día como referencia — para un turno de un día,
+        /// 8.000 UI sería su propia referencia y no descompondría nada.
+        /// </summary>
+        public static decimal PresentacionReferencia(decimal epoUiSemana) =>
+            (int)Math.Round(epoUiSemana) switch
+            {
+                2000  => 2000m,
+                4000  => 2000m,
+                6000  => 2000m,
+                8000  => 4000m,
+                12000 => 4000m,
+                18000 => 6000m,
+                _     => 0m       // sin referencia: la descomposición decide
+            };
     }
 }

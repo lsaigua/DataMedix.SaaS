@@ -168,7 +168,8 @@
                 <div>
                     <h2 class="crono-resumen-modal-title">Resumen del período</h2>
                     <p class="crono-resumen-modal-sub">
-                        @NombreMes(_mes) @_anio · @SubtituloModo
+                        @* SubtituloModo ya trae el mes en modo mensual: repetirlo daba «Agosto 2026 · Agosto 2026» *@
+                        @SubtituloModo
                     </p>
                 </div>
                 <button class="crono-resumen-modal-close" @onclick="() => _showResumen = false"
@@ -305,7 +306,7 @@
         @if (desglPend.Count > 0)
         {
             bool hayCostosPend = _preciosEpo.Values.Any(v => v > 0);
-            var  pendPac       = desglPend.Sum(r => r.Aplicaciones);
+            var  pendPac       = desglPend.Sum(r => r.Pacientes);
             var  pendUI        = desglPend.Sum(r => r.TotalUI);
             var  pendCosto     = desglPend.Sum(r => r.Costo);
             <section class="crono-desglose-epo crono-desglose-pend @(_showEpoPendiente ? "" : "crono-desglose-colapsado")">
@@ -342,6 +343,7 @@
                         <tr>
                             <th>Dosis UI</th>
                             <th>Pacientes</th>
+                            <th title="Un paciente puede deber más de una sesión">Aplicaciones</th>
                             <th>Total UI</th>
                             @if (hayCostosPend) { <th title="Precio de una aplicación">Precio x aplic.</th><th>Costo potencial</th> }
                         </tr>
@@ -351,6 +353,7 @@
                         {
                             <tr>
                                 <td class="crono-desglose-epo-dosis crono-desglose-pend-dosis">@fila.DosisUI.ToString("N0") UI</td>
+                                <td class="crono-desglose-epo-num">@fila.Pacientes</td>
                                 <td class="crono-desglose-epo-num">@fila.Aplicaciones</td>
                                 <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
                                 @if (hayCostosPend)
@@ -365,6 +368,7 @@
                         <tr>
                             <td class="crono-desglose-epo-total-label">TOTAL</td>
                             <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendPac</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglPend.Sum(r => r.Aplicaciones)</td>
                             <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendUI.ToString("N0")</td>
                             @if (hayCostosPend)
                             {
@@ -818,7 +822,12 @@
     // Gráficos
     private bool _showGraficos = false;
     private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal EpoCosto, decimal Costo);
-    private record ResumenDosisAdmRow(decimal DosisUI, int Aplicaciones, decimal TotalUI, decimal Precio, decimal Costo);
+    /// <summary>
+    /// Fila del desglose. Precio es el EFECTIVO por aplicación (Costo/Aplicaciones):
+    /// una dosis fuera de la tabla se factura descomponiéndola en viales, así que
+    /// su precio unitario no existe como tal en la configuración.
+    /// </summary>
+    private record ResumenDosisAdmRow(decimal DosisUI, int Aplicaciones, decimal TotalUI, decimal Precio, decimal Costo, int Pacientes = 0);
 
     private IEnumerable<CostoPaciente> Top20Pacientes =>
         _cronogramas
@@ -920,7 +929,7 @@
         if (visible.Count == 0) return (null, new(), new());
 
         var aplsPorDosis  = new Dictionary<decimal, (int Apps, decimal TotalUI, decimal Costo)>();
-        var pendPorDosis  = new Dictionary<decimal, (int Pacientes, decimal TotalUI, decimal Costo)>();
+        var pendPorDosis  = new Dictionary<decimal, (int Pacientes, int Aplicaciones, decimal TotalUI, decimal Costo)>();
         int totalSesiones = 0;
         decimal totalEpoUI = 0, totalHierroMg = 0, costoEpo = 0, costoHierro = 0;
 
@@ -977,8 +986,12 @@
                     else
                     {
                         if (!pendPorDosis.TryGetValue(dosisSesion, out var pacc))
-                            pacc = (0, 0, 0);
-                        pendPorDosis[dosisSesion] = (pacc.Pacientes + 1, pacc.TotalUI + pendUI, pacc.Costo + costoPend);
+                            pacc = (0, 0, 0, 0);
+                        // Se guardan pacientes Y aplicaciones: un paciente puede deber
+                        // varias sesiones, y sin ese dato precio x pacientes no cuadra
+                        // con el costo en la tabla.
+                        pendPorDosis[dosisSesion] = (pacc.Pacientes + 1, pacc.Aplicaciones + sesEq,
+                                                     pacc.TotalUI + pendUI, pacc.Costo + costoPend);
                     }
                 }
             }
@@ -998,14 +1011,18 @@
             .OrderBy(kv => kv.Key)
             .Select(kv => new ResumenDosisAdmRow(
                 kv.Key, kv.Value.Apps, kv.Value.TotalUI,
-                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
+                // Precio efectivo: mostrar el de la tabla daría $0,00 en las dosis
+                // que se facturan por descomposición, contradiciendo la columna Costo
+                kv.Value.Apps > 0 ? Math.Round(kv.Value.Costo / kv.Value.Apps, 2) : 0m,
+                kv.Value.Costo))
             .ToList();
 
         var desglPend = pendPorDosis
             .OrderBy(kv => kv.Key)
             .Select(kv => new ResumenDosisAdmRow(
-                kv.Key, kv.Value.Pacientes, kv.Value.TotalUI,
-                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
+                kv.Key, kv.Value.Aplicaciones, kv.Value.TotalUI,
+                kv.Value.Aplicaciones > 0 ? Math.Round(kv.Value.Costo / kv.Value.Aplicaciones, 2) : 0m,
+                kv.Value.Costo, kv.Value.Pacientes))
             .ToList();
 
         return (resumen, desglose, desglPend);
@@ -1068,8 +1085,13 @@
         var d = dosisUI ?? 0;
         if (d <= 0) return 0;
 
+        // La referencia es el vial que implica la prescripción SEMANAL, no la
+        // dosis del día: con un turno de un solo día, 8.000 UI sería su propia
+        // referencia y no descompondría nada, cayendo en la descomposición
+        // voraz (6.000 + 2.000) en vez de los dos viales de 4.000 que
+        // realmente se le administran a ese paciente.
         var referencia = epoUiSemana is > 0
-            ? DosisPorSesionEpo(epoUiSemana.Value, planSalud)
+            ? DistribucionEpo.PresentacionReferencia(epoUiSemana.Value)
             : 0m;
 
         return CostoMedicacion.CostoEpoDia(d, _preciosEpo, referencia);
