@@ -972,7 +972,11 @@
                     bool evAplic = _eventosPendientes.TryGetValue(crono.Id, out var evC) &&
                                    evC.Estado == EstadoDosisPendiente.Aplicada;
                     var sesEq     = (int)Math.Round(pendUI / dosisSesion);
-                    var precio    = _preciosEpo.GetValueOrDefault(dosisSesion, 0);
+                    // Mismo criterio que la dosis administrada: si la dosis de
+                    // sesión no existe como presentación se descompone en viales.
+                    // Con la búsqueda exacta, un turno de un día con 8.000 UI
+                    // pendientes se habría valorado en cero.
+                    var precio    = PrecioAplicacionEpo(dosisSesion, crono.EpoUiSemana, crono.PlanSalud);
                     var costoPend = sesEq * precio;
 
                     if (evAplic)
@@ -1103,7 +1107,7 @@
         if (pendiente <= 0 || !(crono.EpoUiSemana > 0)) return 0;
         var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value, crono.PlanSalud);
         if (dosisSesion <= 0) return 0;
-        return (pendiente / dosisSesion) * _preciosEpo.GetValueOrDefault(dosisSesion, 0);
+        return (pendiente / dosisSesion) * PrecioAplicacionEpo(dosisSesion, crono.EpoUiSemana, crono.PlanSalud);
     }
 
     private (Guid CronogramaId, DateTime Fecha)? _editKey;

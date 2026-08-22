@@ -166,4 +166,66 @@ namespace DataMedix.Tests.Services
             (9 * 8.60m).Should().Be(77.40m);
         }
     }
+
+    /// <summary>
+    /// Comprobación de extremo a extremo del caso reportado: 8.000 UI en una
+    /// sola aplicación deben facturarse con el precio de la presentación de
+    /// 4.000, y el precio unitario mostrado tiene que cuadrar con el costo.
+    /// </summary>
+    public class OchoMilUnidadesTests
+    {
+        private static readonly Dictionary<decimal, decimal> Precios = new()
+        {
+            [2000m] = 2.10m, [4000m] = 4.30m, [6000m] = 6.40m,
+        };
+
+        private static decimal CostoAplicacion(decimal dosisDia, decimal semanal) =>
+            CostoMedicacion.CostoEpoDia(
+                dosisDia, Precios, DistribucionEpo.PresentacionReferencia(semanal));
+
+        [Fact]
+        public void Ocho_mil_toma_el_precio_de_la_presentacion_de_cuatro_mil()
+        {
+            DistribucionEpo.PresentacionReferencia(8000).Should().Be(4000m);
+            CostoAplicacion(8000m, 8000m).Should().Be(2 * Precios[4000m]);
+        }
+
+        [Fact]
+        public void Las_nueve_aplicaciones_del_reporte_cuadran()
+        {
+            const int aplicaciones = 9;
+            var costoUnitario = CostoAplicacion(8000m, 8000m);
+            var costoTotal    = aplicaciones * costoUnitario;
+
+            costoUnitario.Should().Be(8.60m);
+            costoTotal.Should().Be(77.40m);
+
+            // El precio que muestra la tabla es Costo / Aplicaciones: no puede
+            // salir en cero ni contradecir al costo, que era el sintoma original
+            var precioMostrado = Math.Round(costoTotal / aplicaciones, 2);
+            precioMostrado.Should().Be(costoUnitario);
+            precioMostrado.Should().NotBe(0m);
+        }
+
+        [Theory]
+        // Si la dosis del día EXISTE como presentación se usa un solo vial de
+        // esa: nadie pone tres viales de 2.000 teniendo uno de 6.000.
+        [InlineData(2000,  2000, 1)]
+        [InlineData(4000,  4000, 1)]
+        [InlineData(6000,  6000, 1)]
+        // Fuera de la tabla, se descompone con la presentación del paciente
+        [InlineData(8000,  8000, 2)]   // 2 viales de 4.000
+        [InlineData(12000, 12000, 3)]  // 3 viales de 4.000
+        [InlineData(18000, 18000, 3)]  // 3 viales de 6.000
+        public void Toda_la_dosis_semanal_concentrada_usa_su_propia_presentacion(
+            int dosisDia, int semanal, int vialesEsperados)
+        {
+            var referencia = DistribucionEpo.PresentacionReferencia(semanal);
+            var (viales, resto) = CostoMedicacion.DescomponerEpo(dosisDia, Precios.Keys, referencia);
+
+            viales.Should().HaveCount(vialesEsperados);
+            viales.Sum().Should().Be(dosisDia);
+            resto.Should().Be(0m);
+        }
+    }
 }
