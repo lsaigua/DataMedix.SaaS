@@ -60,8 +60,8 @@ namespace DataMedix.Application.Services
             // Turno de sesión. El cronograma lo lee de snapshot.PlanSalud para
             // saber en qué días hay diálisis; si no se guarda, el paciente sale
             // en la grilla pero sin días ni totales, que es lo que pasaba antes.
-            var turno = TurnoDialisis.Detectar(dto.Turno)
-                        ?? TurnoDialisis.Detectar(paciente.PlanSalud);
+            var turno = TurnoDialisis.Normalizar(dto.Turno)
+                        ?? TurnoDialisis.Normalizar(paciente.PlanSalud);
 
             if (!string.IsNullOrWhiteSpace(turno))
                 snapshot.PlanSalud = turno;
@@ -213,7 +213,7 @@ namespace DataMedix.Application.Services
                 PacienteId      = pacienteId,
                 PeriodoAnio     = anio,
                 PeriodoMes      = mes,
-                Turno           = TurnoDialisis.Detectar(snapshot.PlanSalud),
+                Turno           = TurnoDialisis.Normalizar(snapshot.PlanSalud),
                 TipoAtencion    = snapshot.TipoAtencion,
                 HbValor         = snapshot.HbValor,
                 HbUnidad        = snapshot.HbUnidad         ?? "g/dL",
@@ -251,7 +251,7 @@ namespace DataMedix.Application.Services
             var periodDate = new DateTime(anio, mes, 1);
 
             var actual = await _snapshotRepo.GetByPacienteYPeriodoAsync(tenantId, pacienteId, periodDate);
-            var turno  = TurnoDialisis.Detectar(actual?.PlanSalud);
+            var turno  = TurnoDialisis.Normalizar(actual?.PlanSalud);
             if (turno is not null) return turno;
 
             // Sin turno este mes, se hereda del más reciente que sí lo tenga
@@ -260,13 +260,13 @@ namespace DataMedix.Application.Services
             turno = historial
                 .Where(h => h.PeriodDate <= periodDate)
                 .OrderByDescending(h => h.PeriodDate)
-                .Select(h => TurnoDialisis.Detectar(h.PlanSalud))
+                .Select(h => TurnoDialisis.Normalizar(h.PlanSalud))
                 .FirstOrDefault(t => t is not null);
 
             if (turno is not null) return turno;
 
             var paciente = await _pacienteRepo.GetByIdAsync(tenantId, pacienteId);
-            return TurnoDialisis.Detectar(paciente?.PlanSalud);
+            return TurnoDialisis.Normalizar(paciente?.PlanSalud);
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

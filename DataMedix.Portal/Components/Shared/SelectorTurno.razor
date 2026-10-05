@@ -1,0 +1,273 @@
+@using DataMedix.Domain.Entities
+
+@*
+    Selector de turno de diálisis, compartido por el cronograma, la
+    prescripción sugerida y el alta de pacientes.
+
+    Es un componente y no código repetido en cada pantalla porque las reglas de
+    exclusión y la composición del código deben ser idénticas en las tres: si
+    divergieran, un mismo paciente podría acabar con turnos distintos según
+    dónde se le edite.
+
+    Las reglas viven en TurnoDialisis; aquí solo está la presentación.
+*@
+
+<div class="st-barra @(Compacto ? "st-barra-form" : "")" @onclick:stopPropagation="true">
+
+    <div class="st-fila">
+        @foreach (var op in TurnoDialisis.DiasSueltos)
+        {
+            var v = op;
+            <button type="button"
+                    class="st-dia @(_seleccion.Contains(v) ? "st-dia-on" : "")"
+                    disabled="@(!TurnoDialisis.PuedeSeleccionar(_seleccion, v))"
+                    title="@TituloChip(v)"
+                    @onclick="() => AlternarAsync(v)">@v</button>
+        }
+
+        <span class="st-sep"></span>
+
+        @foreach (var op in TurnoDialisis.Combinados)
+        {
+            var v = op;
+            <button type="button"
+                    class="st-combo @(_seleccion.Contains(v) ? "st-combo-on" : "")"
+                    disabled="@(!TurnoDialisis.PuedeSeleccionar(_seleccion, v))"
+                    title="@TituloChip(v)"
+                    @onclick="() => AlternarAsync(v)">@v</button>
+        }
+
+        @if (MostrarBotones)
+        {
+            <span class="st-sep"></span>
+            <button type="button" class="st-accion st-accion-ok" title="Aplicar"
+                    @onclick="AplicarAsync">✓</button>
+            <button type="button" class="st-accion" title="Quitar el turno"
+                    @onclick="LimpiarAsync">∅</button>
+            @if (OnCancelar.HasDelegate)
+            {
+                <button type="button" class="st-accion" title="Cancelar"
+                        @onclick="OnCancelar">✕</button>
+            }
+        }
+    </div>
+
+    <div class="st-pie">
+        @if (_seleccion.Count == 0)
+        {
+            <span class="st-pie-vacio">Sin turno — elija días o una combinación</span>
+        }
+        else
+        {
+            <strong class="st-pie-codigo">@Codigo</strong>
+            <span class="st-pie-dias">@TurnoDialisis.Describir(Codigo)</span>
+            @if (EpoUiSemana is > 0)
+            {
+                <span class="st-pie-dosis">@VistaPreviaDosis(EpoUiSemana.Value)</span>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Código guardado del paciente, si lo tiene.</summary>
+    [Parameter] public string? Valor { get; set; }
+
+    /// <summary>Se dispara en cada cambio de selección.</summary>
+    [Parameter] public EventCallback<string> ValorChanged { get; set; }
+
+    /// <summary>Se dispara al pulsar Aplicar. Si no se enlaza, no se muestran botones.</summary>
+    [Parameter] public EventCallback<string> OnAplicar { get; set; }
+
+    [Parameter] public EventCallback OnCancelar { get; set; }
+
+    /// <summary>Dosis semanal, para mostrar cómo quedaría repartida.</summary>
+    [Parameter] public decimal? EpoUiSemana { get; set; }
+
+    [Parameter] public string Titulo { get; set; } = "Turno de sesión";
+
+    /// <summary>Variante estrecha, para usarlo dentro de una celda de tabla.</summary>
+    [Parameter] public bool Compacto { get; set; }
+
+    private List<string> _seleccion = new();
+    private string? _valorAplicado;
+
+    private bool MostrarBotones => OnAplicar.HasDelegate;
+
+    private string Codigo => TurnoDialisis.Componer(_seleccion);
+
+    protected override void OnParametersSet()
+    {
+        // Se re-lee solo cuando el valor externo cambia de verdad: si se
+        // recargara en cada render, se perdería la selección a medio hacer.
+        if (Valor == _valorAplicado) return;
+
+        _valorAplicado = Valor;
+        _seleccion = TurnoDialisis.Descomponer(Valor);
+    }
+
+    private async Task AlternarAsync(string codigo)
+    {
+        _seleccion = TurnoDialisis.Alternar(_seleccion, codigo);
+        await NotificarAsync();
+    }
+
+    private async Task LimpiarAsync()
+    {
+        _seleccion.Clear();
+        await NotificarAsync();
+
+        if (OnAplicar.HasDelegate) await OnAplicar.InvokeAsync("");
+    }
+
+    private async Task AplicarAsync() => await OnAplicar.InvokeAsync(Codigo);
+
+    private async Task NotificarAsync()
+    {
+        _valorAplicado = Codigo;   // evita que OnParametersSet pise la selección
+        if (ValorChanged.HasDelegate) await ValorChanged.InvokeAsync(Codigo);
+    }
+
+    private static string TituloChip(string codigo)
+    {
+        var dias = TurnoDialisis.Describir(codigo);
+        var n    = TurnoDialisis.SesionesPorSemana(codigo);
+        return $"{dias} · {n} sesión(es) por semana";
+    }
+
+    /// <summary>Cómo quedaría repartida la dosis semanal con lo seleccionado.</summary>
+    private string VistaPreviaDosis(decimal epoUiSemana)
+    {
+        var dias = TurnoDialisis.Detectar(Codigo);
+        if (dias is null || dias.Count == 0) return "";
+
+        // Los patrones clásicos conservan su tabla, que no es uniforme
+        if (TurnoDialisis.EsPatronClasico(dias))
+            return $"{epoUiSemana:N0} UI/sem según la pauta de {Codigo}";
+
+        var porDia = DistribucionEpo.PorDia(epoUiSemana, dias);
+        if (porDia.Count == 0) return "";
+
+        var distintas = porDia.Values.Distinct().ToList();
+
+        var detalle = distintas.Count == 1
+            ? $"{distintas[0]:N0} UI en {porDia.Count} día(s)"
+            : string.Join(" + ", porDia.Values.OrderByDescending(v => v).Select(v => $"{v:N0}"));
+
+        var sinEpo = dias.Count - porDia.Count;
+        var nota   = sinEpo > 0 ? $" · {sinEpo} sesión(es) sin EPO" : "";
+
+        return $"{detalle}{nota}";
+    }
+}
+
+
+<style>
+    /* Barra horizontal de días, no una tarjeta desplegable: en la grilla del
+       cronograma el contenedor tiene overflow y recortaba cualquier popover
+       que naciera dentro de él. */
+    .st-barra {
+        background: white;
+        border: 2px solid var(--dm-brand-surface);
+        border-radius: 10px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28);
+        padding: 0.4rem 0.5rem 0.3rem;
+        cursor: default;
+        white-space: nowrap;
+    }
+    /* Dentro de un formulario no flota: ni sombra ni borde fuerte */
+    .st-barra-form {
+        box-shadow: none;
+        border-width: 1px;
+        border-color: #cbd5e1;
+        white-space: normal;
+    }
+
+    .st-fila { display: flex; align-items: center; gap: 0.22rem; flex-wrap: wrap; }
+
+    .st-sep {
+        width: 1px;
+        align-self: stretch;
+        background: #e2e8f0;
+        margin: 0 0.25rem;
+    }
+
+    /* Día suelto: cuadrado, como en el boceto */
+    .st-dia {
+        width: 30px;
+        height: 30px;
+        border: 2px solid var(--dm-brand-surface);
+        background: white;
+        color: var(--dm-brand-surface);
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 800;
+        cursor: pointer;
+        transition: all 0.12s;
+        flex: none;
+    }
+    .st-dia:hover:not(:disabled) { background: #e0f2fe; }
+    .st-dia-on {
+        background: var(--dm-brand-surface);
+        color: white;
+    }
+
+    /* Combinado: más ancho, para que se distinga del día suelto */
+    .st-combo {
+        height: 30px;
+        padding: 0 0.5rem;
+        border: 2px solid #94a3b8;
+        background: white;
+        color: #475569;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        cursor: pointer;
+        transition: all 0.12s;
+        flex: none;
+    }
+    .st-combo:hover:not(:disabled) { background: #f1f5f9; }
+    .st-combo-on {
+        background: #475569;
+        border-color: #475569;
+        color: white;
+    }
+
+    /* Atenuado, no oculto: así se ve POR QUÉ no se puede pulsar */
+    .st-dia:disabled, .st-combo:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .st-accion {
+        width: 28px;
+        height: 28px;
+        border: 1.5px solid #e2e8f0;
+        background: white;
+        color: #64748b;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        cursor: pointer;
+        flex: none;
+    }
+    .st-accion:hover { background: #f1f5f9; color: #0f172a; }
+    .st-accion-ok {
+        border-color: #16a34a;
+        color: #16a34a;
+    }
+    .st-accion-ok:hover { background: #dcfce7; color: #15803d; }
+
+    .st-pie {
+        margin-top: 0.3rem;
+        padding-top: 0.25rem;
+        border-top: 1px dashed #e2e8f0;
+        font-size: 0.68rem;
+        color: #64748b;
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+    }
+    .st-pie-vacio  { font-style: italic; color: #94a3b8; }
+    .st-pie-codigo { color: var(--dm-brand-surface); font-size: 0.75rem; }
+    .st-pie-dias   { color: #64748b; }
+    .st-pie-dosis  { color: #0e7490; font-weight: 600; }
+</style>
