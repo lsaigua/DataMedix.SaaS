@@ -168,7 +168,8 @@
                 <div>
                     <h2 class="crono-resumen-modal-title">Resumen del período</h2>
                     <p class="crono-resumen-modal-sub">
-                        @NombreMes(_mes) @_anio · @SubtituloModo
+                        @* SubtituloModo ya trae el mes en modo mensual: repetirlo daba «Agosto 2026 · Agosto 2026» *@
+                        @SubtituloModo
                     </p>
                 </div>
                 <button class="crono-resumen-modal-close" @onclick="() => _showResumen = false"
@@ -305,7 +306,7 @@
         @if (desglPend.Count > 0)
         {
             bool hayCostosPend = _preciosEpo.Values.Any(v => v > 0);
-            var  pendPac       = desglPend.Sum(r => r.Aplicaciones);
+            var  pendPac       = desglPend.Sum(r => r.Pacientes);
             var  pendUI        = desglPend.Sum(r => r.TotalUI);
             var  pendCosto     = desglPend.Sum(r => r.Costo);
             <section class="crono-desglose-epo crono-desglose-pend @(_showEpoPendiente ? "" : "crono-desglose-colapsado")">
@@ -342,6 +343,7 @@
                         <tr>
                             <th>Dosis UI</th>
                             <th>Pacientes</th>
+                            <th title="Un paciente puede deber más de una sesión">Aplicaciones</th>
                             <th>Total UI</th>
                             @if (hayCostosPend) { <th title="Precio de una aplicación">Precio x aplic.</th><th>Costo potencial</th> }
                         </tr>
@@ -351,6 +353,7 @@
                         {
                             <tr>
                                 <td class="crono-desglose-epo-dosis crono-desglose-pend-dosis">@fila.DosisUI.ToString("N0") UI</td>
+                                <td class="crono-desglose-epo-num">@fila.Pacientes</td>
                                 <td class="crono-desglose-epo-num">@fila.Aplicaciones</td>
                                 <td class="crono-desglose-epo-num">@fila.TotalUI.ToString("N0")</td>
                                 @if (hayCostosPend)
@@ -365,6 +368,7 @@
                         <tr>
                             <td class="crono-desglose-epo-total-label">TOTAL</td>
                             <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendPac</td>
+                            <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@desglPend.Sum(r => r.Aplicaciones)</td>
                             <td class="crono-desglose-epo-num crono-desglose-epo-total-val">@pendUI.ToString("N0")</td>
                             @if (hayCostosPend)
                             {
@@ -393,10 +397,13 @@
         <div class="crono-filtros-bar">
             <div class="crono-filtros-grupo">
                 <span class="crono-filtros-label">Turno:</span>
-                @foreach (var turno in new[] { "Todos", "LMV", "MJS" })
+                @* Se derivan de los datos: los turnos posibles son diez y listarlos
+                   todos llenaría la barra de botones que no filtran nada. *@
+                @foreach (var turno in _turnosPresentes)
                 {
                     var localTurno = turno;
                     <button class="crono-seg-btn @(_filtroTurno == localTurno ? "crono-seg-active" : "")"
+                            title="@(localTurno == "Todos" ? "Todos los turnos" : TurnoDialisis.Describir(localTurno))"
                             @onclick="() => _filtroTurno = localTurno">@localTurno</button>
                 }
             </div>
@@ -560,7 +567,7 @@
                             .ToList();
                         decimal totalEpo = diasFiltrados.Sum(d => d.EpoDosisuI ?? 0);
                         decimal totalHierro = diasFiltrados.Sum(d => d.HierroDosismg ?? 0);
-                        decimal epoRowCosto = diasFiltrados.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI));
+                        decimal epoRowCosto = diasFiltrados.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI, crono.EpoUiSemana, crono.PlanSalud));
                         // Solo sumar pendiente al total del row si ya fue marcada Aplicada
                         bool vistaCompleta = !TieneFiltroFecha && _filtroDia == 0;
                         if (vistaCompleta && crono.EpoDosisPendienteUI > 0 &&
@@ -592,20 +599,14 @@
                             <td class="crono-td-fixed crono-td-turno">
                                 @if (_editTurnoId == crono.Id)
                                 {
-                                    <div class="crono-turno-edit">
-                                        @* Select y no texto libre: el cronograma solo reconoce
-                                           LMV y MJS, y cualquier otro valor deja al paciente
-                                           sin días de sesión sin explicar por qué. *@
-                                        <select class="crono-input-turno" @bind="_editTurnoValor">
-                                            <option value="">— Sin turno —</option>
-                                            <option value="LMV">LMV</option>
-                                            <option value="MJS">MJS</option>
-                                        </select>
-                                        <div class="crono-cell-edit-btns">
-                                            <button class="crono-btn-ok" @onclick="() => GuardarTurnoAsync(crono.Id)">✓</button>
-                                            <button class="crono-btn-cancel" @onclick="CancelarEditTurno">✕</button>
-                                        </div>
-                                    </div>
+                                    @* La barra se dibuja fuera de la tabla, al final de la
+                                       página: aquí solo queda la celda marcada. El
+                                       contenedor de la grilla tiene overflow y recortaba
+                                       cualquier overlay que naciera dentro de él. *@
+                                    <span class="crono-badge-turno crono-badge-turno-activo"
+                                          id="@($"turno-{crono.Id}")">
+                                        @(string.IsNullOrEmpty(_editTurnoValor) ? "—" : _editTurnoValor)
+                                    </span>
                                 }
                                 else
                                 {
@@ -622,7 +623,7 @@
                                     else
                                     {
                                         <span class="crono-badge-turno crono-badge-turno-edit"
-                                              @onclick="() => IniciarEditTurno(crono.Id, crono.PlanSalud)"
+                                              @onclick="() => IniciarEditTurnoAsync(crono.Id, crono.PlanSalud)"
                                               title="Click para editar turno">
                                             @(crono.PlanSalud ?? "—")
                                         </span>
@@ -757,6 +758,21 @@
 
 </div>
 
+@* ═══ Barra de selección de turno ══════════════════════════════════════════
+   Vive fuera de la tabla y se posiciona con coordenadas de pantalla: dentro
+   del contenedor con scroll quedaba recortada y solo asomaba la cabecera. *@
+@if (_editTurnoId is not null && _editTurnoCrono is not null)
+{
+    <div class="crono-turno-backdrop" @onclick="CancelarEditTurno"></div>
+    <div class="crono-turno-fija" style="@EstiloBarraTurno">
+        <SelectorTurno Valor="@_editTurnoValor"
+                       ValorChanged="@(c => _editTurnoValor = c)"
+                       EpoUiSemana="@_editTurnoCrono.EpoUiSemana"
+                       OnAplicar="@(c => GuardarTurnoAsync(_editTurnoId.Value, c))"
+                       OnCancelar="@CancelarEditTurno" />
+    </div>
+}
+
 @code {
     private int _anio = DateTime.Today.Year;
     private int _mes = DateTime.Today.Month;
@@ -806,7 +822,12 @@
     // Gráficos
     private bool _showGraficos = false;
     private record CostoPaciente(string Nombre, string Cedula, decimal TotalEpo, decimal TotalHierro, decimal EpoCosto, decimal Costo);
-    private record ResumenDosisAdmRow(decimal DosisUI, int Aplicaciones, decimal TotalUI, decimal Precio, decimal Costo);
+    /// <summary>
+    /// Fila del desglose. Precio es el EFECTIVO por aplicación (Costo/Aplicaciones):
+    /// una dosis fuera de la tabla se factura descomponiéndola en viales, así que
+    /// su precio unitario no existe como tal en la configuración.
+    /// </summary>
+    private record ResumenDosisAdmRow(decimal DosisUI, int Aplicaciones, decimal TotalUI, decimal Precio, decimal Costo, int Pacientes = 0);
 
     private IEnumerable<CostoPaciente> Top20Pacientes =>
         _cronogramas
@@ -817,7 +838,7 @@
                 var epo = c.Dias.Sum(d => d.EpoDosisuI ?? 0) +
                           (evAplic ? (c.EpoDosisPendienteUI ?? 0) : 0);
                 var fe  = c.Dias.Sum(d => d.HierroDosismg ?? 0);
-                var epoCosto = c.Dias.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI))
+                var epoCosto = c.Dias.Sum(d => PrecioAplicacionEpo(d.EpoDosisuI, c.EpoUiSemana, c.PlanSalud))
                     + (evAplic ? CostoPendienteEpo(c) : 0);
                 return new CostoPaciente(
                     c.Paciente.NombreCompleto,
@@ -834,9 +855,11 @@
             .Where(c => string.IsNullOrWhiteSpace(_busqueda) ||
                 c.Paciente.Identificacion.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ||
                 c.Paciente.NombreCompleto.Contains(_busqueda, StringComparison.OrdinalIgnoreCase))
+            // Comparación por código normalizado, no por Contains: filtrar "L"
+            // con subcadena habría arrastrado LMV, LMXJVSAD y cualquier turno
+            // que contenga esa letra.
             .Where(c => _filtroTurno == "Todos" ||
-                (!string.IsNullOrWhiteSpace(c.PlanSalud) &&
-                 c.PlanSalud.ToUpperInvariant().Contains(_filtroTurno)))
+                        TurnoDialisis.Normalizar(c.PlanSalud) == _filtroTurno)
             .Where(c => TieneFiltroFecha
                 ? c.Dias.Any(d => FechaEnRango(d.FechaSesion))
                 : _filtroDia == 0 || c.Dias.Any(d => (int)d.FechaSesion.DayOfWeek == _filtroDia))
@@ -851,6 +874,9 @@
     /// </summary>
     private List<string> _tiposAtencion = new();
 
+    /// <summary>Turnos presentes en el período, con "Todos" al frente.</summary>
+    private List<string> _turnosPresentes = new() { "Todos" };
+
     private readonly HashSet<string> _filtrosTipo = new(StringComparer.OrdinalIgnoreCase);
 
     private void ToggleTipoAtencion(string tipo)
@@ -858,7 +884,8 @@
         if (!_filtrosTipo.Add(tipo)) _filtrosTipo.Remove(tipo);
     }
 
-    private void RecalcularTiposAtencion() =>
+    private void RecalcularTiposAtencion()
+    {
         _tiposAtencion = _cronogramas
             .Select(c => c.Paciente?.TipoAtencion)
             .Where(t => !string.IsNullOrWhiteSpace(t))
@@ -866,6 +893,20 @@
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(t => t)
             .ToList();
+
+        _turnosPresentes = _cronogramas
+            .Select(c => TurnoDialisis.Normalizar(c.PlanSalud))
+            .Where(t => t is not null)
+            .Select(t => t!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t.Length).ThenBy(t => t)
+            .Prepend("Todos")
+            .ToList();
+
+        // Si el turno filtrado ya no existe en el período, el filtro se cae
+        // en silencio y la grilla quedaría vacía sin explicación
+        if (!_turnosPresentes.Contains(_filtroTurno)) _filtroTurno = "Todos";
+    }
 
     // RF3: computed
     private DateTime FechaFinFlex => _fechaInicioFlex.AddMonths(1).AddDays(-1);
@@ -888,7 +929,7 @@
         if (visible.Count == 0) return (null, new(), new());
 
         var aplsPorDosis  = new Dictionary<decimal, (int Apps, decimal TotalUI, decimal Costo)>();
-        var pendPorDosis  = new Dictionary<decimal, (int Pacientes, decimal TotalUI, decimal Costo)>();
+        var pendPorDosis  = new Dictionary<decimal, (int Pacientes, int Aplicaciones, decimal TotalUI, decimal Costo)>();
         int totalSesiones = 0;
         decimal totalEpoUI = 0, totalHierroMg = 0, costoEpo = 0, costoHierro = 0;
 
@@ -909,8 +950,10 @@
                 totalHierroMg += feUI;
                 if (epoUI > 0)
                 {
-                    // Una sesión = una aplicación: cuesta el precio completo de la dosis
-                    var precio = _preciosEpo.GetValueOrDefault(epoUI, 0);
+                    // Una sesión cuesta los viales que hacen falta para esa dosis:
+                    // con turnos de pocos días la dosis del día puede no existir
+                    // como presentación y hay que descomponerla.
+                    var precio = PrecioAplicacionEpo(epoUI, crono.EpoUiSemana, crono.PlanSalud);
                     costoEpo += precio;
                     if (!aplsPorDosis.TryGetValue(epoUI, out var acc))
                         acc = (0, 0, 0);
@@ -923,13 +966,17 @@
             if (resumenCompleto && crono.EpoDosisPendienteUI > 0 && crono.EpoUiSemana > 0)
             {
                 var pendUI      = crono.EpoDosisPendienteUI!.Value;
-                var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value);
+                var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value, crono.PlanSalud);
                 if (dosisSesion > 0)
                 {
                     bool evAplic = _eventosPendientes.TryGetValue(crono.Id, out var evC) &&
                                    evC.Estado == EstadoDosisPendiente.Aplicada;
                     var sesEq     = (int)Math.Round(pendUI / dosisSesion);
-                    var precio    = _preciosEpo.GetValueOrDefault(dosisSesion, 0);
+                    // Mismo criterio que la dosis administrada: si la dosis de
+                    // sesión no existe como presentación se descompone en viales.
+                    // Con la búsqueda exacta, un turno de un día con 8.000 UI
+                    // pendientes se habría valorado en cero.
+                    var precio    = PrecioAplicacionEpo(dosisSesion, crono.EpoUiSemana, crono.PlanSalud);
                     var costoPend = sesEq * precio;
 
                     if (evAplic)
@@ -943,8 +990,12 @@
                     else
                     {
                         if (!pendPorDosis.TryGetValue(dosisSesion, out var pacc))
-                            pacc = (0, 0, 0);
-                        pendPorDosis[dosisSesion] = (pacc.Pacientes + 1, pacc.TotalUI + pendUI, pacc.Costo + costoPend);
+                            pacc = (0, 0, 0, 0);
+                        // Se guardan pacientes Y aplicaciones: un paciente puede deber
+                        // varias sesiones, y sin ese dato precio x pacientes no cuadra
+                        // con el costo en la tabla.
+                        pendPorDosis[dosisSesion] = (pacc.Pacientes + 1, pacc.Aplicaciones + sesEq,
+                                                     pacc.TotalUI + pendUI, pacc.Costo + costoPend);
                     }
                 }
             }
@@ -964,14 +1015,18 @@
             .OrderBy(kv => kv.Key)
             .Select(kv => new ResumenDosisAdmRow(
                 kv.Key, kv.Value.Apps, kv.Value.TotalUI,
-                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
+                // Precio efectivo: mostrar el de la tabla daría $0,00 en las dosis
+                // que se facturan por descomposición, contradiciendo la columna Costo
+                kv.Value.Apps > 0 ? Math.Round(kv.Value.Costo / kv.Value.Apps, 2) : 0m,
+                kv.Value.Costo))
             .ToList();
 
         var desglPend = pendPorDosis
             .OrderBy(kv => kv.Key)
             .Select(kv => new ResumenDosisAdmRow(
-                kv.Key, kv.Value.Pacientes, kv.Value.TotalUI,
-                _preciosEpo.GetValueOrDefault(kv.Key, 0), kv.Value.Costo))
+                kv.Key, kv.Value.Aplicaciones, kv.Value.TotalUI,
+                kv.Value.Aplicaciones > 0 ? Math.Round(kv.Value.Costo / kv.Value.Aplicaciones, 2) : 0m,
+                kv.Value.Costo, kv.Value.Pacientes))
             .ToList();
 
         return (resumen, desglose, desglPend);
@@ -982,8 +1037,22 @@
     private decimal _precioHierro = 0;
 
     // Dosis UI que se asigna en cada sesión según la prescripción semanal
-    private static decimal DosisPorSesionEpo(decimal epoUiSemana) =>
-        (int)Math.Round(epoUiSemana) switch
+    /// <summary>
+    /// Dosis de una sesión, usada para convertir las UI pendientes en
+    /// sesiones equivalentes.
+    ///
+    /// Los turnos clásicos de 3 sesiones conservan su tabla validada; el
+    /// resto se deriva del reparto por unidades, que es lo que realmente
+    /// aplica el cronograma para esos turnos.
+    /// </summary>
+    private static decimal DosisPorSesionEpo(decimal epoUiSemana, string? planSalud)
+    {
+        var dias = TurnoDialisis.Detectar(planSalud);
+
+        if (dias is not null && !TurnoDialisis.EsPatronClasico(dias))
+            return DistribucionEpo.DosisTipicaPorSesion(epoUiSemana, dias);
+
+        return (int)Math.Round(epoUiSemana) switch
         {
             2000  => 2000m,
             4000  => 2000m,
@@ -993,6 +1062,7 @@
             18000 => 6000m,
             _     => 0m
         };
+    }
 
     /// <summary>
     /// Costo del hierro IV según el precio por ampolla configurado.
@@ -1006,19 +1076,38 @@
     /// administrada (ej. 2,000 UI = $2.80 por aplicación), no por unidad
     /// internacional, así que no se multiplica por las UI.
     /// </summary>
-    private decimal PrecioAplicacionEpo(decimal? dosisUI)
+    /// <summary>
+    /// Costo de la EPO administrada en un día. Si la dosis no coincide con
+    /// ninguna presentación de la tabla —algo habitual cuando el turno tiene
+    /// pocos días y la dosis semanal se concentra— se descompone en viales.
+    ///
+    /// Sin esta descomposición, 12.000 UI en un solo día se cobraban en cero
+    /// porque la tabla solo tiene 2.000, 4.000 y 6.000.
+    /// </summary>
+    private decimal PrecioAplicacionEpo(decimal? dosisUI, decimal? epoUiSemana = null, string? planSalud = null)
     {
         var d = dosisUI ?? 0;
-        return d > 0 ? _preciosEpo.GetValueOrDefault(d, 0) : 0;
+        if (d <= 0) return 0;
+
+        // La referencia es el vial que implica la prescripción SEMANAL, no la
+        // dosis del día: con un turno de un solo día, 8.000 UI sería su propia
+        // referencia y no descompondría nada, cayendo en la descomposición
+        // voraz (6.000 + 2.000) en vez de los dos viales de 4.000 que
+        // realmente se le administran a ese paciente.
+        var referencia = epoUiSemana is > 0
+            ? DistribucionEpo.PresentacionReferencia(epoUiSemana.Value)
+            : 0m;
+
+        return CostoMedicacion.CostoEpoDia(d, _preciosEpo, referencia);
     }
 
     private decimal CostoPendienteEpo(CronogramaMedicamento crono)
     {
         var pendiente = crono.EpoDosisPendienteUI ?? 0;
         if (pendiente <= 0 || !(crono.EpoUiSemana > 0)) return 0;
-        var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value);
+        var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value, crono.PlanSalud);
         if (dosisSesion <= 0) return 0;
-        return (pendiente / dosisSesion) * _preciosEpo.GetValueOrDefault(dosisSesion, 0);
+        return (pendiente / dosisSesion) * PrecioAplicacionEpo(dosisSesion, crono.EpoUiSemana, crono.PlanSalud);
     }
 
     private (Guid CronogramaId, DateTime Fecha)? _editKey;
@@ -1387,19 +1476,59 @@
                System.Globalization.ISOWeek.GetWeekOfYear(fecha);
     }
 
-    private void IniciarEditTurno(Guid cronogramaId, string? planSalud)
+
+    private CronogramaMedicamento? _editTurnoCrono;
+    private double _editTurnoTop;
+    private double _editTurnoLeft;
+
+    /// <summary>Coordenadas de pantalla de la barra, ya ajustadas al viewport.</summary>
+    private string EstiloBarraTurno =>
+        $"top:{_editTurnoTop.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;" +
+        $"left:{_editTurnoLeft.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
+
+    private async Task IniciarEditTurnoAsync(Guid cronogramaId, string? planSalud)
     {
         _editTurnoId    = cronogramaId;
-        _editTurnoValor = planSalud ?? "";
+        _editTurnoCrono = _cronogramas.FirstOrDefault(c => c.Id == cronogramaId);
+        _editTurnoValor = TurnoDialisis.Normalizar(planSalud) ?? "";
+
+        // La celda ya está marcada; hace falta un render para que exista el id
+        StateHasChanged();
+        await Task.Yield();
+
+        try
+        {
+            var r = await JS.InvokeAsync<RectPantalla?>("dmRectDe", $"turno-{cronogramaId}");
+            if (r is null) return;
+
+            const double ancho = 470, alto = 86;
+
+            // Se centra bajo la celda, pero sin salirse de la pantalla: en las
+            // últimas columnas o en el pie de la tabla se habría dibujado fuera.
+            _editTurnoLeft = Math.Clamp(r.Left + r.Width / 2 - ancho / 2, 8, Math.Max(8, r.Vw - ancho - 8));
+            _editTurnoTop  = r.Top + r.Height + 6 + alto > r.Vh
+                ? Math.Max(8, r.Top - alto - 6)      // no cabe abajo: se abre hacia arriba
+                : r.Top + r.Height + 6;
+        }
+        catch (JSException)
+        {
+            // Sin coordenadas la barra sale arriba a la izquierda, pero se usa
+            _editTurnoTop = 80; _editTurnoLeft = 24;
+        }
     }
+
+    private sealed record RectPantalla(double Top, double Left, double Width, double Height,
+                                       double Vw, double Vh);
 
     private void CancelarEditTurno()
     {
         _editTurnoId    = null;
         _editTurnoValor = "";
+        _editTurnoCrono = null;
+
     }
 
-    private async Task GuardarTurnoAsync(Guid cronogramaId)
+    private async Task GuardarTurnoAsync(Guid cronogramaId, string codigo)
     {
         try
         {
@@ -1410,7 +1539,7 @@
                 usuarioId = uid;
 
             var actualizado = await CronogramaService.ActualizarTurnoYRegenerarAsync(
-                _tenantId, cronogramaId, _editTurnoValor, usuarioId);
+                _tenantId, cronogramaId, codigo, usuarioId);
 
             var idx = _cronogramas.FindIndex(c => c.Id == cronogramaId);
             if (idx >= 0) _cronogramas[idx] = actualizado;
@@ -2411,6 +2540,32 @@
         background: #e0f2fe;
         border-color: #0ea5e9;
     }
+
+    /* El selector flota sobre la celda: la fila del cronograma es angosta y
+       desplegarlo en flujo empujaba las columnas de días. */
+    .crono-turno-pop-anchor { position: relative; display: inline-block; }
+    .crono-turno-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 900;
+        background: transparent;   /* solo captura el clic para cerrar */
+    }
+    .crono-turno-fija {
+        position: fixed;
+        z-index: 901;
+    }
+    .crono-badge-turno-activo {
+        outline: 2px solid var(--dm-brand-surface);
+        outline-offset: 1px;
+    }
+    .crono-turno-flotante-viejo {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 60;                 /* por encima de las celdas sticky */
+    }
+
     .crono-turno-edit {
         display: flex;
         flex-direction: column;
