@@ -75,6 +75,23 @@ namespace DataMedix.Domain.Entities
         }
 
         /// <summary>
+        /// Dosis de una sesión del turno, usada para convertir las UI pendientes
+        /// en sesiones equivalentes.
+        ///
+        /// Los turnos clásicos de 3 sesiones (y los que no se reconocen) usan la
+        /// misma tabla que la presentación de referencia: en ellos la dosis de
+        /// cada sesión ES ese vial. El resto se deriva del reparto por unidades,
+        /// que es lo que realmente aplica el cronograma para esos turnos.
+        /// </summary>
+        public static decimal DosisPorSesion(decimal epoUiSemana, IReadOnlyList<DayOfWeek>? dias)
+        {
+            if (dias is not null && !TurnoDialisis.EsPatronClasico(dias))
+                return DosisTipicaPorSesion(epoUiSemana, dias);
+
+            return PresentacionReferencia(epoUiSemana);
+        }
+
+        /// <summary>
         /// Vial que implica la prescripción SEMANAL, con independencia del turno.
         ///
         /// Es la presentación con la que se le administra habitualmente a ese

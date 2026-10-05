@@ -97,14 +97,54 @@ namespace DataMedix.Domain.Entities
 
         /// <summary>
         /// Costo de la dosis de un día, cobrando cada vial a su precio.
+        ///
+        /// Solo se descompone en presentaciones con precio: una presentación
+        /// configurada en $0 regalaría la dosis aunque otra sí tenga precio
+        /// (8.000 UI en 2 viales de 4.000 a $0 en vez de 4 de 2.000 cobrados).
+        ///
+        /// Si queda un resto que ninguna presentación cubre, se cobra un vial
+        /// más de la presentación menor: es el vial que hay que abrir para
+        /// completar la dosis. El voraz deja siempre un resto menor que ella.
         /// </summary>
         public static decimal CostoEpoDia(
             decimal dosisDia,
             IReadOnlyDictionary<decimal, decimal> precios,
             decimal presentacionReferencia = 0)
         {
-            var (viales, _) = DescomponerEpo(dosisDia, precios.Keys, presentacionReferencia);
-            return viales.Sum(v => precios.TryGetValue(v, out var precio) ? precio : 0m);
+            var conPrecio = precios.Where(kv => kv.Key > 0 && kv.Value > 0).Select(kv => kv.Key).ToList();
+            if (conPrecio.Count == 0) return 0m;
+
+            var (viales, resto) = DescomponerEpo(dosisDia, conPrecio, presentacionReferencia);
+            var costo = viales.Sum(v => precios[v]);
+            if (resto > 0) costo += precios[conPrecio.Min()];
+            return costo;
+        }
+
+        /// <summary>
+        /// Valoración de la dosis pendiente de un cronograma.
+        ///
+        /// La dosis pendiente se compensa en sesiones de la dosis de sesión del
+        /// paciente: tantas sesiones completas como quepan, y si sobra algo,
+        /// una sesión más con el resto. Cada sesión se cobra por sus viales.
+        ///
+        /// Redondear las sesiones dejaba UI sin cobrar: 2.000 UI pendientes con
+        /// sesiones de 4.000 daban round(0,5) = 0 aplicaciones y $0.
+        /// </summary>
+        public static (int Aplicaciones, decimal Costo) ValorarPendienteEpo(
+            decimal pendienteUI,
+            decimal dosisSesion,
+            IReadOnlyDictionary<decimal, decimal> precios,
+            decimal presentacionReferencia = 0)
+        {
+            if (pendienteUI <= 0 || dosisSesion <= 0) return (0, 0m);
+
+            var completas = (int)Math.Floor(pendienteUI / dosisSesion);
+            var resto     = pendienteUI - completas * dosisSesion;
+
+            var costo = completas * CostoEpoDia(dosisSesion, precios, presentacionReferencia);
+            if (resto > 0) costo += CostoEpoDia(resto, precios, presentacionReferencia);
+
+            return (completas + (resto > 0 ? 1 : 0), costo);
         }
     }
 }

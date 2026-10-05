@@ -965,19 +965,12 @@
             // Dosis inicial pendiente: administrada solo si fue marcada Aplicada; sino va a pendPorDosis
             if (resumenCompleto && crono.EpoDosisPendienteUI > 0 && crono.EpoUiSemana > 0)
             {
-                var pendUI      = crono.EpoDosisPendienteUI!.Value;
-                var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value, crono.PlanSalud);
+                var pendUI = crono.EpoDosisPendienteUI!.Value;
+                var (dosisSesion, sesEq, costoPend) = ValorarPendienteEpo(crono);
                 if (dosisSesion > 0)
                 {
                     bool evAplic = _eventosPendientes.TryGetValue(crono.Id, out var evC) &&
                                    evC.Estado == EstadoDosisPendiente.Aplicada;
-                    var sesEq     = (int)Math.Round(pendUI / dosisSesion);
-                    // Mismo criterio que la dosis administrada: si la dosis de
-                    // sesión no existe como presentación se descompone en viales.
-                    // Con la búsqueda exacta, un turno de un día con 8.000 UI
-                    // pendientes se habría valorado en cero.
-                    var precio    = PrecioAplicacionEpo(dosisSesion, crono.EpoUiSemana, crono.PlanSalud);
-                    var costoPend = sesEq * precio;
 
                     if (evAplic)
                     {
@@ -1036,32 +1029,14 @@
     private Dictionary<decimal, decimal> _preciosEpo = new();
     private decimal _precioHierro = 0;
 
-    // Dosis UI que se asigna en cada sesión según la prescripción semanal
-    /// <summary>
-    /// Dosis de una sesión, usada para convertir las UI pendientes en
-    /// sesiones equivalentes.
-    ///
-    /// Los turnos clásicos de 3 sesiones conservan su tabla validada; el
-    /// resto se deriva del reparto por unidades, que es lo que realmente
-    /// aplica el cronograma para esos turnos.
-    /// </summary>
-    private static decimal DosisPorSesionEpo(decimal epoUiSemana, string? planSalud)
+    // Costo por (dosis del día, presentación de referencia). Se pide por día,
+    // paciente y render; la tabla de precios solo cambia al recargarla.
+    private readonly Dictionary<(decimal Dosis, decimal Referencia), decimal> _cacheCostoEpo = new();
+
+    private void AsignarPreciosEpo()
     {
-        var dias = TurnoDialisis.Detectar(planSalud);
-
-        if (dias is not null && !TurnoDialisis.EsPatronClasico(dias))
-            return DistribucionEpo.DosisTipicaPorSesion(epoUiSemana, dias);
-
-        return (int)Math.Round(epoUiSemana) switch
-        {
-            2000  => 2000m,
-            4000  => 2000m,
-            6000  => 2000m,
-            8000  => 4000m,
-            12000 => 4000m,
-            18000 => 6000m,
-            _     => 0m
-        };
+        _preciosEpo = _dosisEpoConfig.ToDictionary(p => p.DosisUI, p => p.Precio);
+        _cacheCostoEpo.Clear();
     }
 
     /// <summary>
@@ -1098,17 +1073,31 @@
             ? DistribucionEpo.PresentacionReferencia(epoUiSemana.Value)
             : 0m;
 
-        return CostoMedicacion.CostoEpoDia(d, _preciosEpo, referencia);
+        if (!_cacheCostoEpo.TryGetValue((d, referencia), out var costo))
+        {
+            costo = CostoMedicacion.CostoEpoDia(d, _preciosEpo, referencia);
+            _cacheCostoEpo[(d, referencia)] = costo;
+        }
+        return costo;
     }
 
-    private decimal CostoPendienteEpo(CronogramaMedicamento crono)
+    /// <summary>
+    /// Valoración de la dosis pendiente de un cronograma. Es la única que usan
+    /// el resumen, el costo de la fila y el Top 20, para que no puedan divergir.
+    /// </summary>
+    private (decimal DosisSesion, int Aplicaciones, decimal Costo) ValorarPendienteEpo(CronogramaMedicamento crono)
     {
         var pendiente = crono.EpoDosisPendienteUI ?? 0;
-        if (pendiente <= 0 || !(crono.EpoUiSemana > 0)) return 0;
-        var dosisSesion = DosisPorSesionEpo(crono.EpoUiSemana!.Value, crono.PlanSalud);
-        if (dosisSesion <= 0) return 0;
-        return (pendiente / dosisSesion) * PrecioAplicacionEpo(dosisSesion, crono.EpoUiSemana, crono.PlanSalud);
+        if (pendiente <= 0 || !(crono.EpoUiSemana > 0)) return (0m, 0, 0m);
+
+        var semanal     = crono.EpoUiSemana!.Value;
+        var dosisSesion = DistribucionEpo.DosisPorSesion(semanal, TurnoDialisis.Detectar(crono.PlanSalud));
+        var (aplicaciones, costo) = CostoMedicacion.ValorarPendienteEpo(
+            pendiente, dosisSesion, _preciosEpo, DistribucionEpo.PresentacionReferencia(semanal));
+        return (dosisSesion, aplicaciones, costo);
     }
+
+    private decimal CostoPendienteEpo(CronogramaMedicamento crono) => ValorarPendienteEpo(crono).Costo;
 
     private (Guid CronogramaId, DateTime Fecha)? _editKey;
     private decimal? _editEpo;
@@ -1204,7 +1193,7 @@
                 new() { TenantId = _tenantId, DosisUI = 6000, Precio = 0 },
             };
         }
-        _preciosEpo = _dosisEpoConfig.ToDictionary(p => p.DosisUI, p => p.Precio);
+        AsignarPreciosEpo();
     }
 
     private async Task CargarCronogramasAsync()
@@ -1269,7 +1258,7 @@
         try
         {
             await PrecioEpoDosisRepo.UpsertManyAsync(_dosisEpoConfig);
-            _preciosEpo = _dosisEpoConfig.ToDictionary(p => p.DosisUI, p => p.Precio);
+            AsignarPreciosEpo();
 
             await ConfigRepo.UpsertAsync(new ConfiguracionMedicamento
             {

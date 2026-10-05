@@ -210,22 +210,144 @@ namespace DataMedix.Tests.Services
         [Theory]
         // Si la dosis del día EXISTE como presentación se usa un solo vial de
         // esa: nadie pone tres viales de 2.000 teniendo uno de 6.000.
-        [InlineData(2000,  2000, 1)]
-        [InlineData(4000,  4000, 1)]
-        [InlineData(6000,  6000, 1)]
-        // Fuera de la tabla, se descompone con la presentación del paciente
-        [InlineData(8000,  8000, 2)]   // 2 viales de 4.000
-        [InlineData(12000, 12000, 3)]  // 3 viales de 4.000
-        [InlineData(18000, 18000, 3)]  // 3 viales de 6.000
+        [InlineData(2000,  2000, 2000, 1)]
+        [InlineData(4000,  4000, 4000, 1)]
+        [InlineData(6000,  6000, 6000, 1)]
+        // Fuera de la tabla, se descompone con la presentación del paciente.
+        // Se exige el vial exacto: 8.000 como 6.000 + 2.000 también son dos
+        // viales que suman 8.000, y es justo el error que se corrigió.
+        [InlineData(8000,  8000, 4000, 2)]
+        [InlineData(12000, 12000, 4000, 3)]
+        [InlineData(18000, 18000, 6000, 3)]
         public void Toda_la_dosis_semanal_concentrada_usa_su_propia_presentacion(
-            int dosisDia, int semanal, int vialesEsperados)
+            int dosisDia, int semanal, int vialEsperado, int vialesEsperados)
         {
             var referencia = DistribucionEpo.PresentacionReferencia(semanal);
             var (viales, resto) = CostoMedicacion.DescomponerEpo(dosisDia, Precios.Keys, referencia);
 
-            viales.Should().HaveCount(vialesEsperados);
-            viales.Sum().Should().Be(dosisDia);
+            viales.Should().Equal(Enumerable.Repeat((decimal)vialEsperado, vialesEsperados));
             resto.Should().Be(0m);
+        }
+    }
+
+    /// <summary>
+    /// Precios incompletos: presentaciones sin precio y dosis que ninguna
+    /// presentación cubre. En ambos casos el costo se perdía en silencio.
+    /// </summary>
+    public class CostoEpoPreciosIncompletosTests
+    {
+        [Fact]
+        public void Una_presentacion_sin_precio_no_se_usa_para_descomponer()
+        {
+            // 4.000 sin precio: 8.000 UI no pueden salir como 2 viales a $0
+            var precios = new Dictionary<decimal, decimal>
+            {
+                [2000m] = 2.10m, [4000m] = 0m, [6000m] = 0m,
+            };
+
+            CostoMedicacion.CostoEpoDia(8000m, precios, presentacionReferencia: 4000m)
+                .Should().Be(8.40m);   // 4 viales de 2.000
+        }
+
+        [Fact]
+        public void El_resto_no_cubierto_se_cobra_como_un_vial_de_la_presentacion_menor()
+        {
+            // 5.000 UI con solo 2.000: 2 viales + 1.000 que obligan a abrir otro
+            var precios = new Dictionary<decimal, decimal> { [2000m] = 2.80m };
+
+            CostoMedicacion.CostoEpoDia(5000m, precios).Should().Be(3 * 2.80m);
+        }
+
+        [Fact]
+        public void Una_dosis_menor_que_toda_presentacion_con_precio_se_cobra_como_un_vial()
+        {
+            // Solo 4.000 y 6.000 configurados: 2.000 UI no pueden quedar en $0
+            var precios = new Dictionary<decimal, decimal> { [4000m] = 4.30m, [6000m] = 6.00m };
+
+            CostoMedicacion.CostoEpoDia(2000m, precios).Should().Be(4.30m);
+        }
+    }
+
+    /// <summary>
+    /// Valoración de la dosis pendiente. Se compensa en sesiones de la dosis de
+    /// sesión del paciente; el resto, si lo hay, es una sesión más.
+    /// </summary>
+    public class PendienteEpoTests
+    {
+        private static readonly Dictionary<decimal, decimal> Precios = new()
+        {
+            [2000m] = 2.80m, [4000m] = 4.30m, [6000m] = 6.00m,
+        };
+
+        private static (int Aplicaciones, decimal Costo) Valorar(decimal pendiente, decimal semanal, string turno)
+        {
+            var dosisSesion = DistribucionEpo.DosisPorSesion(semanal, TurnoDialisis.Detectar(turno));
+            return CostoMedicacion.ValorarPendienteEpo(
+                pendiente, dosisSesion, Precios, DistribucionEpo.PresentacionReferencia(semanal));
+        }
+
+        [Fact]
+        public void Turno_clasico_cobra_las_sesiones_completas_a_su_vial()
+        {
+            // 8.000 UI/sem en LMV: sesiones de 4.000 → 2 × $4.30
+            Valorar(8000m, 8000m, "LMV").Should().Be((2, 8.60m));
+        }
+
+        [Fact]
+        public void Turno_clasico_con_sesiones_de_dos_mil_conserva_su_valoracion()
+        {
+            // 6.000 UI/sem en LMV: sesiones de 2.000. 4.000 pendientes son dos
+            // sesiones de 2.000, no un vial de 4.000.
+            Valorar(4000m, 6000m, "LMV").Should().Be((2, 5.60m));
+        }
+
+        [Fact]
+        public void Media_sesion_pendiente_es_una_aplicacion_y_se_cobra()
+        {
+            // Antes: round(2.000 / 4.000) = 0 aplicaciones y $0
+            Valorar(2000m, 8000m, "LMV").Should().Be((1, 2.80m));
+        }
+
+        [Fact]
+        public void El_resto_de_sesion_no_se_pierde_por_redondeo()
+        {
+            // Antes: round(10.000 / 4.000) = 2, dejando 2.000 UI sin cobrar.
+            // Ahora: 2 sesiones de 4.000 + 1 de 2.000
+            Valorar(10000m, 8000m, "LMV").Should().Be((3, 2 * 4.30m + 2.80m));
+        }
+
+        [Fact]
+        public void Turno_de_un_dia_descompone_la_sesion_en_viales_del_paciente()
+        {
+            // 8.000 UI/sem en un solo día: la sesión de 8.000 no está en la
+            // tabla y son 2 viales de 4.000, no cero
+            Valorar(8000m, 8000m, "L").Should().Be((1, 8.60m));
+        }
+
+        [Fact]
+        public void Turno_de_dos_dias_con_resto_cobra_la_sesion_parcial()
+        {
+            // 10.000 UI/sem en LJ = 4.000 + 6.000; la sesión típica es 4.000.
+            // 6.000 pendientes = 1 sesión de 4.000 + 1 de 2.000
+            Valorar(6000m, 10000m, "LJ").Should().Be((2, 4.30m + 2.80m));
+        }
+
+        [Fact]
+        public void Sin_dosis_de_sesion_no_se_valora()
+        {
+            CostoMedicacion.ValorarPendienteEpo(4000m, 0m, Precios).Should().Be((0, 0m));
+            CostoMedicacion.ValorarPendienteEpo(0m, 4000m, Precios).Should().Be((0, 0m));
+        }
+
+        [Fact]
+        public void El_precio_mostrado_cuadra_con_el_costo()
+        {
+            // La tabla muestra Costo / Aplicaciones; con las aplicaciones en
+            // cero el precio salía en blanco aunque hubiera UI pendientes
+            var (aplicaciones, costo) = Valorar(2000m, 8000m, "LMV");
+
+            aplicaciones.Should().BePositive();
+            (costo / aplicaciones).Should().Be(2.80m);
         }
     }
 }

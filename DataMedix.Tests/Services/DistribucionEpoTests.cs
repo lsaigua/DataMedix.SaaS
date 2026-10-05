@@ -149,6 +149,25 @@ namespace DataMedix.Tests.Services
             DistribucionEpo.PresentacionReferencia(8000).Should().Be(4000m);
         }
 
+        [Theory]
+        // Turnos clásicos: la sesión es el vial de referencia
+        [InlineData("LMV",  8000, 4000)]
+        [InlineData("MJS",  6000, 2000)]
+        [InlineData("LMV", 18000, 6000)]
+        // Resto de turnos: la menor dosis del reparto
+        [InlineData("L",    8000, 8000)]
+        [InlineData("LJ",  10000, 4000)]
+        public void DosisPorSesion_segun_el_turno(string codigo, int semanal, int esperado)
+        {
+            DistribucionEpo.DosisPorSesion(semanal, Turno(codigo)).Should().Be(esperado);
+        }
+
+        [Fact]
+        public void DosisPorSesion_sin_turno_reconocido_usa_la_referencia()
+        {
+            DistribucionEpo.DosisPorSesion(12000, null).Should().Be(4000);
+        }
+
         [Fact]
         public void Una_dosis_semanal_fuera_de_la_tabla_no_impone_referencia()
         {
